@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1000" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#0995df"/>
+      <stop offset="0.46" stop-color="#9bdcff"/>
+      <stop offset="0.76" stop-color="#d9f4ff"/>
+      <stop offset="1" stop-color="#f7fbff"/>
+    </linearGradient>
+    <linearGradient id="hillA" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#7fcf58"/>
+      <stop offset="1" stop-color="#1f7a3a"/>
+    </linearGradient>
+    <linearGradient id="hillB" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#a4df65"/>
+      <stop offset="1" stop-color="#2e8b47"/>
+    </linearGradient>
+    <linearGradient id="tree" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#f17d45"/>
+      <stop offset="0.44" stop-color="#45a847"/>
+      <stop offset="1" stop-color="#176d39"/>
+    </linearGradient>
+    <filter id="softBlur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="12"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="1000" fill="url(#sky)"/>
+  <ellipse cx="1080" cy="172" rx="360" ry="72" fill="#ffffff" opacity="0.76" filter="url(#softBlur)"/>
+  <ellipse cx="620" cy="204" rx="315" ry="62" fill="#ffffff" opacity="0.68" filter="url(#softBlur)"/>
+  <ellipse cx="265" cy="245" rx="180" ry="38" fill="#ffffff" opacity="0.54" filter="url(#softBlur)"/>
+
+  <path d="M0 565 C220 410 400 430 570 530 C760 382 970 380 1190 540 C1360 426 1500 470 1600 545 L1600 1000 L0 1000 Z" fill="#3aa65c"/>
+  <path d="M0 650 C230 510 480 515 690 650 C910 482 1240 505 1600 620 L1600 1000 L0 1000 Z" fill="url(#hillA)"/>
+  <path d="M0 760 C220 626 410 640 610 720 C820 605 1130 596 1600 736 L1600 1000 L0 1000 Z" fill="url(#hillB)"/>
+
+  <g opacity="0.42">
+    <path d="M760 635 C860 590 980 590 1090 635" fill="none" stroke="#d9f4a3" stroke-width="14"/>
+    <path d="M730 684 C870 625 1020 635 1158 690" fill="none" stroke="#d9f4a3" stroke-width="12"/>
+    <path d="M708 730 C885 680 1055 685 1244 748" fill="none" stroke="#d9f4a3" stroke-width="10"/>
+    <path d="M680 780 C910 720 1120 735 1350 812" fill="none" stroke="#d9f4a3" stroke-width="8"/>
+  </g>
+
+  <g opacity="0.82">
+    <rect x="870" y="382" width="9" height="190" rx="4" fill="#64748b"/>
+    <rect x="1044" y="382" width="9" height="190" rx="4" fill="#64748b"/>
+    <ellipse cx="962" cy="380" rx="122" ry="22" fill="#d8f2ff"/>
+    <ellipse cx="962" cy="376" rx="104" ry="16" fill="#7dd3fc"/>
+    <path d="M860 382 L790 530 M1060 382 L1135 530" stroke="#64748b" stroke-width="7" stroke-linecap="round"/>
+    <path d="M812 527 H1114" stroke="#64748b" stroke-width="8" stroke-linecap="round"/>
+    <path d="M945 350 L966 275 L988 350" fill="none" stroke="#11a9e8" stroke-width="8" stroke-linecap="round"/>
+    <circle cx="966" cy="272" r="10" fill="#11a9e8"/>
+    <path d="M924 342 C946 316 984 316 1008 342" fill="none" stroke="#22c55e" stroke-width="8" stroke-linecap="round"/>
+  </g>
+
+  <g>
+    <path d="M120 1000 C80 850 110 740 220 690 C330 640 410 720 450 1000 Z" fill="#166534"/>
+    <path d="M0 1000 C42 812 132 705 260 690 C374 676 468 760 520 1000 Z" fill="#15803d" opacity="0.88"/>
+    <path d="M1210 1000 C1240 835 1335 720 1460 705 C1550 696 1608 756 1600 1000 Z" fill="#166534"/>
+    <path d="M1080 1000 C1132 810 1250 718 1398 735 C1510 748 1588 828 1600 1000 Z" fill="#15803d" opacity="0.86"/>
+  </g>
+
+  <g opacity="0.96">
+    <circle cx="135" cy="742" r="48" fill="url(#tree)"/>
+    <circle cx="206" cy="720" r="58" fill="url(#tree)"/>
+    <circle cx="292" cy="753" r="62" fill="url(#tree)"/>
+    <circle cx="380" cy="720" r="50" fill="url(#tree)"/>
+    <circle cx="1268" cy="752" r="58" fill="url(#tree)"/>
+    <circle cx="1356" cy="712" r="70" fill="url(#tree)"/>
+    <circle cx="1460" cy="758" r="66" fill="url(#tree)"/>
+  </g>
+
+  <g opacity="0.8">
+    <rect x="1384" y="560" width="12" height="255" rx="6" fill="#8b5a2b"/>
+    <path d="M1390 560 C1342 520 1326 478 1336 430 C1374 468 1401 500 1390 560" fill="#1f8a46"/>
+    <path d="M1392 560 C1438 512 1488 490 1544 494 C1499 537 1456 566 1392 560" fill="#2f9e44"/>
+    <path d="M1388 562 C1348 590 1304 604 1254 596 C1300 558 1345 544 1388 562" fill="#22c55e"/>
+  </g>
+
+  <rect y="760" width="1600" height="240" fill="url(#hillB)" opacity="0.5"/>
+  <path d="M0 890 C250 840 420 866 610 908 C820 954 1120 928 1600 858 L1600 1000 L0 1000 Z" fill="#0f6d38" opacity="0.78"/>
+  <path d="M0 932 C260 900 510 918 790 955 C1070 994 1320 958 1600 915 L1600 1000 L0 1000 Z" fill="#075f32" opacity="0.82"/>
+</svg>

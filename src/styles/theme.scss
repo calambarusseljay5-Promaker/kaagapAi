@@ -1,0 +1,245 @@
+@use 'sass:color';
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+
+// Theme Color Variables
+$primary-color: #2563EB; // Royal Blue
+$bg-color: #F4F7FC; // Light Gray Background
+$card-bg: #FFFFFF;
+$text-main: #1F2937;
+$text-secondary: #6B7280;
+$border-color: #E5E7EB;
+$success-color: #22C55E;
+$warning-color: #F59E0B;
+$delete-color: #EF4444;
+$info-color: #3B82F6;
+
+// Typography Variables
+$font-family: 'Poppins', 'Segoe UI', system-ui, sans-serif;
+$font-size-title: 26px;
+$font-size-section: 18px;
+$font-size-button: 13px;
+$font-size-normal: 13px;
+$font-size-table: 12px;
+
+// Mixins
+@mixin btn-base {
+  font-family: $font-family !important;
+  font-size: $font-size-button !important;
+  font-weight: 600;
+  padding: 0.5rem 1.25rem;
+  border-radius: 8px;
+  transition: all 0.2s ease-in-out;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  border: none;
+}
+
+@mixin card-shadow {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+}
+
+// Global Reset Override
+body, button, input, select, textarea {
+  font-family: $font-family !important;
+  color: $text-main;
+}
+
+.gov-theme-bg {
+  background-color: $bg-color !important;
+  min-height: 100vh;
+}
+
+// Page Card Container
+.floating-card {
+  background-color: $card-bg;
+  border-radius: 20px;
+  @include card-shadow;
+  padding: 30px;
+  border: 1px solid $border-color;
+}
+
+// Search Area
+.search-rounded-pill {
+  border-radius: 40px !important;
+  padding-left: 2.5rem !important;
+  font-size: $font-size-normal !important;
+}
+
+// Consistent Gov Buttons
+.btn-gov {
+  @include btn-base;
+
+  &-primary {
+    background-color: $primary-color !important;
+    color: #ffffff !important;
+    &:hover {
+      background-color: color.adjust($primary-color, $lightness: -10%) !important;
+    }
+  }
+
+  &-secondary {
+    background-color: #f3f4f6 !important;
+    color: $text-secondary !important;
+    border: 1px solid $border-color !important;
+    &:hover {
+      background-color: #e5e7eb !important;
+    }
+  }
+
+  &-success {
+    background-color: $success-color !important;
+    color: #ffffff !important;
+    &:hover {
+      background-color: color.adjust($success-color, $lightness: -10%) !important;
+    }
+  }
+
+  &-danger {
+    background-color: $delete-color !important;
+    color: #ffffff !important;
+    &:hover {
+      background-color: color.adjust($delete-color, $lightness: -10%) !important;
+    }
+  }
+
+  &-info {
+    background-color: #eff6ff !important;
+    color: $primary-color !important;
+    border: 1px solid #bfdbfe !important;
+    &:hover {
+      background-color: #dbeafe !important;
+    }
+  }
+}
+
+// Gov Action Icon Buttons (typically used inside table list or card details)
+.gov-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: $text-secondary;
+
+  &:hover {
+    background-color: #f1f5f9;
+  }
+
+  &.view:hover {
+    color: $primary-color;
+    background-color: #eff6ff;
+  }
+
+  &.edit:hover {
+    color: $warning-color;
+    background-color: #fffbeb;
+  }
+
+  &.delete:hover {
+    color: $delete-color;
+    background-color: #fef2f2;
+  }
+}
+
+// Float Modal Styles
+.gov-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background-color: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.gov-modal-content {
+  background-color: $card-bg;
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  width: 100%;
+  max-width: 600px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid $border-color;
+}
+
+// ==========================================
+// GLOBAL MUI DATAGRID THEME OVERRIDES
+// ==========================================
+.MuiDataGrid-root {
+  border: none !important;
+  font-family: $font-family !important;
+  background-color: $card-bg;
+
+  // Header Container
+  .MuiDataGrid-columnHeaders {
+    background-color: #eff6ff !important;
+    border-bottom: 2px solid #dbeafe !important;
+  }
+
+  // Header Cells
+  .MuiDataGrid-columnHeader {
+    color: $primary-color !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    font-size: 11px !important;
+    outline: none !important;
+  }
+
+  // Cell Styles
+  .MuiDataGrid-cell {
+    font-size: $font-size-table !important;
+    border-bottom: 1px solid $border-color !important;
+    color: $text-main !important;
+    display: flex;
+    align-items: center;
+    outline: none !important;
+    padding: 8px 16px !important;
+  }
+
+  // Row Styles & Alternating Colors
+  .MuiDataGrid-row {
+    transition: background-color 0.15s ease;
+    
+    &:nth-of-type(even) {
+      background-color: #f8fafc;
+    }
+
+    &:hover {
+      background-color: #f1f5f9 !important;
+    }
+  }
+
+  // Footer / Pagination Styles
+  .MuiDataGrid-footerContainer {
+    border-top: 1px solid $border-color !important;
+  }
+
+  .MuiTablePagination-root {
+    color: $text-secondary !important;
+    font-family: $font-family !important;
+    font-size: 12px !important;
+  }
+
+  // Custom cell overrides for standard status tags inside grid
+  .status-tag {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 6px;
+    text-transform: capitalize;
+  }
+}

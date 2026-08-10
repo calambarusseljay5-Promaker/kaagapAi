@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://kaagapai-f-version-1-self.vercel.app/sitemap.xml
