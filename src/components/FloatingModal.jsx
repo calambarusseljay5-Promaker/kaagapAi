@@ -2,8 +2,19 @@ import React, { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 
+const widthMap = {
+  "max-w-sm": "384px",
+  "max-w-md": "480px",
+  "max-w-lg": "560px",
+  "max-w-xl": "640px",
+  "max-w-2xl": "720px",
+  "max-w-3xl": "840px",
+  "max-w-4xl": "960px",
+};
+
 const FloatingModal = ({
   open,
+  isOpen,
   title,
   eyebrow = "KaagapAI System",
   description,
@@ -13,8 +24,11 @@ const FloatingModal = ({
   maxWidth = "max-w-3xl",
   closeOnBackdropClick = true,
 }) => {
+  const isModalOpen = Boolean(open ?? isOpen);
+  const resolvedMaxWidth = widthMap[maxWidth] || (maxWidth.includes("px") || maxWidth.includes("rem") ? maxWidth : undefined);
+
   useEffect(() => {
-    if (!open) return;
+    if (!isModalOpen) return;
 
     const handleKeyDown = (event) => {
       if (event.key === "Escape") {
@@ -25,21 +39,21 @@ const FloatingModal = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+  }, [isModalOpen, onClose]);
 
-  if (!open) return null;
+  if (!isModalOpen) return null;
 
   return (
     <AnimatePresence>
-      {open && (
-        <div className="fixed inset-0 z-[999998] flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
-          {/* Dark Glassmorphism Backdrop Overlay */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[999998] flex items-start justify-center p-4 sm:p-6 overflow-y-auto">
+          {/* Light Glassmorphism Backdrop Overlay */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={closeOnBackdropClick ? onClose : undefined}
-            className="fixed inset-0 bg-slate-950/60 backdrop-blur-md z-0"
+            className="fixed inset-0 bg-slate-950/45 backdrop-blur-md z-0"
           />
 
           {/* Centered Floating Modal Window */}
@@ -48,23 +62,23 @@ const FloatingModal = ({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 12 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className={`relative z-10 flex max-h-[90vh] w-full ${maxWidth} flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-2xl backdrop-blur-xl`}
+            style={{ maxWidth: resolvedMaxWidth }}
+            className={`relative z-10 flex my-auto max-h-[90vh] w-full flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)] backdrop-blur-2xl text-slate-900`}
           >
-            {/* Sticky Modal Header */}
-            <header className="sticky top-0 z-20 flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 bg-white/95 px-6 py-4.5 backdrop-blur-md">
-              <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#14532D]/10 text-[#14532D] ring-1 ring-[#14532D]/20">
-                  <img src="/logo.png" alt="Seal" className="h-7 w-7 object-contain" />
-                </div>
-                <div>
+            {/* Sticky Modal Header - Sleek Dark Green */}
+            <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 border-b border-emerald-400/30 bg-gradient-to-r from-[#033E2A] via-[#045438] to-[#03442E] text-white px-4 sm:px-6 py-3 sm:py-4 shadow-md relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-transparent pointer-events-none" />
+              <div className="flex items-center gap-2.5 relative z-10 min-w-0">
+                <img src="/logo.png" alt="Seal" className="h-9 w-9 sm:h-10 sm:w-10 object-contain drop-shadow-md shrink-0" />
+                <div className="min-w-0">
                   {eyebrow ? (
-                    <p className="text-[10px] font-extrabold uppercase tracking-widest text-[#C8A14A]">
+                    <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-emerald-200 truncate">
                       {eyebrow}
                     </p>
                   ) : null}
-                  <h2 className="text-lg font-black text-slate-900 leading-snug">{title}</h2>
+                  <h2 className="text-sm sm:text-base font-black text-white leading-snug drop-shadow-sm truncate">{title}</h2>
                   {description ? (
-                    <p className="mt-0.5 text-xs font-semibold text-slate-500">{description}</p>
+                    <p className="mt-0.5 text-[10px] sm:text-xs font-medium text-emerald-100/90 truncate">{description}</p>
                   ) : null}
                 </div>
               </div>
@@ -72,21 +86,22 @@ const FloatingModal = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 active:scale-95"
+                className="relative z-10 flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-xl bg-black/40 hover:bg-rose-600 border border-white/40 text-white hover:border-rose-400 transition shadow-md active:scale-95 cursor-pointer"
                 aria-label="Close modal"
+                title="Close modal"
               >
-                <X size={18} />
+                <X size={16} className="text-white stroke-[2.5]" />
               </button>
             </header>
 
             {/* Scrollable Modal Content */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 custom-scrollbar space-y-4">
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-5 custom-scrollbar space-y-4 text-slate-900">
               {children}
             </div>
 
             {/* Sticky Modal Footer */}
             {footer ? (
-              <footer className="sticky bottom-0 z-20 flex shrink-0 items-center justify-end gap-3 border-t border-slate-100 bg-slate-50/90 px-6 py-4 backdrop-blur-md">
+              <footer className="sticky bottom-0 z-20 flex shrink-0 items-center justify-end gap-3 border-t border-slate-200/80 bg-slate-50/90 px-6 py-4 backdrop-blur-md">
                 {footer}
               </footer>
             ) : null}

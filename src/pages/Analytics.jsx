@@ -33,7 +33,7 @@ import { fetchResidents } from "../services/adminService";
 import { buildPurokSummary, calculateAge, formatPurok, getPurokDefinition } from "../utils/residentProfile";
 
 const SENIOR_AGE = 60;
-const BARANGAY_SECRETARY = "Jovelyn C. Cabaya";
+const BARANGAY_SECRETARY = "Jovy lyn C. Cabay";
 const PUNONG_BARANGAY = "Hon. Mamerto C. Clarito";
 const PWD_FIELDS = ["is_pwd", "pwd", "is_pwed", "pwed", "has_disability", "disability", "pwd_status"];
 const SK_FIELDS = ["is_sk_participant", "sk_participant", "is_sk_member", "sk_member", "participates_in_sk", "sk_program_participant"];
@@ -526,25 +526,42 @@ const ChartPanel = ({ title, subtitle, children }) => (
   </section>
 );
 
-const BarChartPanel = ({ title, subtitle, rows, dataKeyLabel = "Count" }) => {
+const BarChartPanel = ({ title, subtitle, rows }) => {
   const data = toChartData(rows);
+  const maxValue = Math.max(...data.map((d) => d.value), 1);
 
   return (
     <ChartPanel title={title} subtitle={subtitle}>
-      <div className="h-[190px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 4, right: 8, left: -24, bottom: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-            <XAxis dataKey="name" tick={{ fontSize: 9 }} interval={0} angle={-10} textAnchor="end" height={40} />
-            <YAxis tick={{ fontSize: 9 }} allowDecimals={false} />
-            <Tooltip formatter={(value) => [value, dataKeyLabel]} />
-            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-              {data.map((entry, index) => (
-                <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+      <div className="h-[210px] w-full pt-1 flex flex-col justify-between select-none">
+        {data.length === 0 ? (
+          <div className="h-full flex items-center justify-center text-xs text-slate-400 font-semibold">No data available</div>
+        ) : (
+          <div className="h-[175px] w-full flex items-end justify-between gap-1.5 px-2 pb-6 border-b border-slate-100 relative">
+            {/* Horizontal Grid lines */}
+            <div className="absolute inset-0 flex flex-col justify-between pointer-events-none pb-6">
+              <div className="border-b border-dashed border-slate-100 w-full" />
+              <div className="border-b border-dashed border-slate-100 w-full" />
+              <div className="border-b border-dashed border-slate-100 w-full" />
+            </div>
+
+            {data.map((item, idx) => {
+              const heightPct = Math.max((item.value / maxValue) * 100, 8);
+              const color = CHART_COLORS[idx % CHART_COLORS.length];
+              return (
+                <div key={item.name} className="flex-1 flex flex-col items-center h-full justify-end group relative z-10">
+                  <span className="text-[10px] font-black text-slate-800 mb-1 group-hover:scale-125 transition duration-200">{item.value}</span>
+                  <div
+                    className="w-full max-w-[28px] rounded-t-md transition-all duration-500 shadow-xs group-hover:brightness-110"
+                    style={{ height: `${heightPct}%`, backgroundColor: color }}
+                  />
+                  <span className="absolute -bottom-5 text-[9px] font-extrabold text-slate-600 truncate max-w-[55px] text-center" title={item.name}>
+                    {item.name}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </ChartPanel>
   );
@@ -552,32 +569,64 @@ const BarChartPanel = ({ title, subtitle, rows, dataKeyLabel = "Count" }) => {
 
 const PieChartPanel = ({ title, subtitle, rows }) => {
   const data = toChartData(rows);
+  const total = data.reduce((acc, curr) => acc + curr.value, 0);
+
+  let cumulativePercent = 0;
+  const pieSlices = data.map((item, index) => {
+    const percent = total > 0 ? item.value / total : 0;
+    const startAngle = cumulativePercent * 360;
+    cumulativePercent += percent;
+    const endAngle = cumulativePercent * 360;
+    return { ...item, percent, startAngle, endAngle, color: CHART_COLORS[index % CHART_COLORS.length] };
+  });
 
   return (
     <ChartPanel title={title} subtitle={subtitle}>
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px]">
-        <div className="h-[190px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie data={data} dataKey="value" nameKey="name" innerRadius={42} outerRadius={70} paddingAngle={2}>
-                {data.map((entry, index) => (
-                  <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px] items-center min-h-[190px] py-1">
+        {/* Bulletproof SVG Donut Chart */}
+        <div className="relative h-40 w-40 mx-auto flex items-center justify-center">
+          <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+            {pieSlices.map((slice, idx) => {
+              const dashArray = `${slice.percent * 238} 238`;
+              const dashOffset = -((pieSlices.slice(0, idx).reduce((acc, s) => acc + s.percent, 0)) * 238);
+              return (
+                <circle
+                  key={slice.name}
+                  cx="50"
+                  cy="50"
+                  r="38"
+                  fill="transparent"
+                  stroke={slice.color}
+                  strokeWidth="15"
+                  strokeDasharray={dashArray}
+                  strokeDashoffset={dashOffset}
+                  className="transition-all duration-500 hover:opacity-90 cursor-pointer"
+                >
+                  <title>{`${slice.name}: ${slice.value} (${Math.round(slice.percent * 100)}%)`}</title>
+                </circle>
+              );
+            })}
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+            <span className="text-base font-black text-slate-900 leading-none">{total}</span>
+            <span className="text-[7.5px] font-extrabold text-slate-400 uppercase tracking-widest mt-1">Total</span>
+          </div>
         </div>
-        <div className="space-y-1.5 self-center">
-          {data.map((item, index) => (
-            <div key={item.name} className="flex items-center justify-between gap-2.5 text-[10px]">
-              <span className="flex min-w-0 items-center gap-1.5 font-semibold text-slate-500">
-                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
-                <span className="truncate">{item.name}</span>
-              </span>
-              <span className="font-bold text-slate-800">{item.value}</span>
-            </div>
-          ))}
+
+        {/* Legend List */}
+        <div className="space-y-1.5 text-[10.5px]">
+          {data.map((item, index) => {
+            const pct = total > 0 ? Math.round((item.value / total) * 100) : 0;
+            return (
+              <div key={item.name} className="flex items-center justify-between gap-2 p-1 rounded-md hover:bg-slate-50 transition">
+                <span className="flex items-center gap-1.5 font-bold text-slate-600 truncate min-w-0">
+                  <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
+                  <span className="truncate">{item.name}</span>
+                </span>
+                <span className="font-black text-slate-900 shrink-0">{item.value} <span className="text-slate-400 font-semibold">({pct}%)</span></span>
+              </div>
+            );
+          })}
         </div>
       </div>
     </ChartPanel>
@@ -737,7 +786,7 @@ const ReportSummary = ({ title, items = [] }) => {
 
 // REUSABLE REPORT FOOTER COMPONENT
 const ReportFooter = ({
-  preparedBy = "JOVELYN C. CABAYA",
+  preparedBy = "JOVY LYN C. CABAY",
   preparedByTitle = "Barangay Secretary",
   certifiedBy = "HON. MAMERTO C. CLARITO",
   certifiedByTitle = "Punong Barangay"
@@ -1952,7 +2001,7 @@ const Analytics = () => {
                 }`}
               >
                 <FileText size={14} />
-                Print Preview (WYSIWYG)
+                Print Preview
               </button>
             </div>
 

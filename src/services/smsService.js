@@ -46,15 +46,65 @@ export const parseSmsRecipients = (value) => {
   return { recipients, invalid };
 };
 
+/**
+ * Standard Official Anti-Scam SMS Formatter
+ * Formats messages with official Barangay KaagapAI header, stamp, and anti-scam disclaimer.
+ * Note: Never includes clickable web links to prevent Philippine telco blocking.
+ */
+export const formatOfficialSms = ({
+  title = "",
+  body = "",
+  recipientName = "",
+  date = "",
+  refCode = "",
+}) => {
+  const lines = [
+    "[OFFICIAL KAAGAPAI NOTIFICATION]",
+    "BARANGAY UPPER MINGADING, ALEOSAN",
+    "----------------------------------------",
+  ];
+
+  if (recipientName) {
+    lines.push(`Magandang araw, ${recipientName}!`);
+  }
+
+  if (title) {
+    lines.push(`📢 ${title}`);
+  }
+
+  if (body) {
+    lines.push(body);
+  }
+
+  if (date) {
+    lines.push(`Petsa: ${date}`);
+  }
+
+  lines.push("----------------------------------------");
+
+  if (refCode) {
+    lines.push(`🔒 Ref Code: ${refCode}`);
+  }
+
+  lines.push(
+    "⚠️ PAALALA: Ang Barangay Upper Mingading ay HINDI kailanman hihingi ng inyong password, OTP, o bayad sa GCash via text."
+  );
+
+  return lines.join("\n").slice(0, 1500);
+};
+
 export async function sendSmsNotification({ to, body }) {
   const recipient = normalizeSmsPhone(to);
-  const message = String(body || "").trim();
+  let message = String(body || "").trim();
 
   if (!recipient) throw new Error("Resident phone number is required.");
   if (!SMS_PHONE_PATTERN.test(recipient)) {
     throw new Error("Use an E.164 phone number, example: +639171234567.");
   }
   if (!message) throw new Error("SMS message is required.");
+
+  // Remove any potential http/https web links to prevent Philippine telco smishing block filters
+  message = message.replace(/https?:\/\/[^\s]+/gi, "[Official Portal]");
 
   let edgeError = null;
   try {
@@ -73,7 +123,7 @@ export async function sendSmsNotification({ to, body }) {
     edgeError = err?.message;
   }
 
-  // Fallback: Direct TextBee Gateway API call if Edge Function returned non-2xx status code
+  // Fallback: Direct TextBee Gateway API call
   const apiKey = import.meta.env.VITE_TEXTBEE_API_KEY || "309ccc30-acba-4dcc-91bd-341bf2592588";
   const deviceId = import.meta.env.VITE_TEXTBEE_DEVICE_ID || "6a1d3161fdeb151e3594109f";
   const baseUrl = import.meta.env.VITE_TEXTBEE_BASE_URL || "https://api.textbee.dev";

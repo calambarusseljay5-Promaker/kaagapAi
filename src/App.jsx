@@ -26,20 +26,20 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import RecycleBin from "./pages/RecycleBin";
 import { getSystemSettings } from "./services/adminActivityService";
 import { ConfirmProvider } from "./context/ConfirmContext";
+import { isTargetAdminPortal, isTargetResidentPortal } from "./utils/authRoutes";
 import "./App.css";
 
 const PortGuard = ({ target, children }) => {
-  const currentPort = typeof window !== "undefined" ? window.location.port : "";
-  const isResidentPort = currentPort === "5174" || currentPort === "3000";
-  const isAdminPort = currentPort === "5173";
+  const isAdmin = isTargetAdminPortal();
+  const isResident = isTargetResidentPortal();
 
-  // Strict Lock: Resident Port (5174) cannot open Admin routes
-  if (isResidentPort && target === "admin") {
+  // Strict Lock: Resident Port/Domain cannot open Admin routes
+  if (isResident && target === "admin") {
     return <Navigate to="/resident-dashboard" replace />;
   }
 
-  // Strict Lock: Admin Port (5173) cannot open Resident routes
-  if (isAdminPort && target === "resident") {
+  // Strict Lock: Admin Port/Domain cannot open Resident routes
+  if (isAdmin && target === "resident") {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -54,76 +54,89 @@ const ResidentPortalGate = ({ children }) => {
   return children;
 };
 
+const RootPortal = () => {
+  const isAdmin = isTargetAdminPortal();
+  return <Login portalMode={isAdmin ? "admin" : "resident"} />;
+};
+
 function App() {
   return (
     <ConfirmProvider>
       <BrowserRouter>
         <Routes>
-        {/* Public Routes */}
-        <Route path="/" element={<Login />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
-        <Route path="/goodbye" element={<Goodbye />} />
+          {/* Public Routes - Auto-detected based on Port / Subdomain / Explicit Route */}
+          <Route path="/" element={<RootPortal />} />
+          <Route path="/login" element={<RootPortal />} />
+          <Route path="/portal" element={<Login portalMode="resident" />} />
 
-        {/* Shared welcome transition */}
-        <Route element={<ProtectedRoute requiredRole={["admin", "resident", "user"]} />}>
-          <Route path="/welcome" element={<Welcome />} />
-        </Route>
+          {/* Hidden Admin & Staff Login Routes */}
+          <Route path="/admin" element={<Login portalMode="admin" />} />
+          <Route path="/admin-login" element={<Login portalMode="admin" />} />
+          <Route path="/staff" element={<Login portalMode="admin" />} />
 
-        {/* Admin Routes (Strictly locked to Port 5173 / Admin server) */}
-        <Route element={<ProtectedRoute requiredRole="admin" />}>
-          <Route element={<PortGuard target="admin"><MainLayout /></PortGuard>}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/analytics" element={<Analytics />} />
-            <Route path="/residents" element={<ResidentsManagement />} />
-            <Route path="/residents-management" element={<ResidentsManagement />} />
-            <Route path="/resident-activations" element={<ResidentActivationRequests />} />
-            <Route path="/resident-profile-updates" element={<ResidentProfileUpdateRequests />} />
-            <Route path="/archive" element={<Archive />} />
-            <Route path="/documents" element={<DocumentManagement />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/livelihood" element={<Livelihood />} />
-            <Route path="/announcements" element={<Announcements />} />
-            <Route path="/ai-knowledge" element={<AIKnowledge />} />
-            <Route path="/organization" element={<OrganizationChart />} />
-            <Route path="/users" element={<Users />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/system-settings" element={<Settings />} />
-            <Route path="/profile-settings" element={<ProfileSettings />} />
-            <Route path="/my-account" element={<ProfileSettings />} />
-            <Route path="/account-security" element={<AccountSecurity />} />
-            <Route path="/audit" element={<AuditLogs />} />
-            <Route path="/recycle-bin" element={<RecycleBin />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/goodbye" element={<Goodbye />} />
+
+          {/* Shared welcome transition */}
+          <Route element={<ProtectedRoute requiredRole={["admin", "resident", "user"]} />}>
+            <Route path="/welcome" element={<Welcome />} />
           </Route>
-        </Route>
 
-        {/* Resident/User Routes (Strictly locked to Port 5174 / Resident server) */}
-        <Route element={<ProtectedRoute requiredRole={["resident", "user"]} />}>
-          <Route
-            path="/resident-dashboard"
-            element={
-              <PortGuard target="resident">
-                <ResidentPortalGate>
-                  <UserDashboard />
-                </ResidentPortalGate>
-              </PortGuard>
-            }
-          />
-          <Route
-            path="/user-dashboard"
-            element={
-              <PortGuard target="resident">
-                <ResidentPortalGate>
-                  <UserDashboard />
-                </ResidentPortalGate>
-              </PortGuard>
-            }
-          />
-        </Route>
+          {/* Admin Routes (Strictly locked to Port 5173 / Admin domain) */}
+          <Route element={<ProtectedRoute requiredRole="admin" />}>
+            <Route element={<PortGuard target="admin"><MainLayout /></PortGuard>}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/analytics" element={<Analytics />} />
+              <Route path="/residents" element={<ResidentsManagement />} />
+              <Route path="/residents-management" element={<ResidentsManagement />} />
+              <Route path="/resident-activations" element={<ResidentActivationRequests />} />
+              <Route path="/resident-profile-updates" element={<ResidentProfileUpdateRequests />} />
+              <Route path="/archive" element={<Archive />} />
+              <Route path="/documents" element={<DocumentManagement />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/livelihood" element={<Livelihood />} />
+              <Route path="/announcements" element={<Announcements />} />
+              <Route path="/ai-knowledge" element={<AIKnowledge />} />
+              <Route path="/organization" element={<OrganizationChart />} />
+              <Route path="/users" element={<Users />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/system-settings" element={<Settings />} />
+              <Route path="/profile-settings" element={<ProfileSettings />} />
+              <Route path="/my-account" element={<ProfileSettings />} />
+              <Route path="/account-security" element={<AccountSecurity />} />
+              <Route path="/audit" element={<AuditLogs />} />
+              <Route path="/recycle-bin" element={<RecycleBin />} />
+            </Route>
+          </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
-  </ConfirmProvider>
+          {/* Resident/User Routes (Strictly locked to Port 5174 / Resident domain) */}
+          <Route element={<ProtectedRoute requiredRole={["resident", "user"]} />}>
+            <Route
+              path="/resident-dashboard"
+              element={
+                <PortGuard target="resident">
+                  <ResidentPortalGate>
+                    <UserDashboard />
+                  </ResidentPortalGate>
+                </PortGuard>
+              }
+            />
+            <Route
+              path="/user-dashboard"
+              element={
+                <PortGuard target="resident">
+                  <ResidentPortalGate>
+                    <UserDashboard />
+                  </ResidentPortalGate>
+                </PortGuard>
+              }
+            />
+          </Route>
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </ConfirmProvider>
   );
 }
 

@@ -1,6 +1,6 @@
-export const BARANGAY_SEAL_SRC = "/files/document-templates/media/barangay-seal.png";
+export const BARANGAY_SEAL_SRC = "/logo.png";
 export const PUNONG_BARANGAY = "MAMERTO C. CLARITO";
-export const DEFAULT_PREPARED_BY = "PATMAH S. SUMPAO";
+export const DEFAULT_PREPARED_BY = "FATMAH S. SUMPAO";
 
 export const normalizeDocumentTemplateText = (value) =>
   String(value || "")
@@ -189,48 +189,57 @@ const fieldFilled = (value, fallbackBlankLength = 20) => {
   if (!text) {
     return `<u>&nbsp;${"&nbsp;".repeat(fallbackBlankLength)}&nbsp;</u>`;
   }
-  return `<u><strong>${escapeHtml(text)}</strong></u>`;
+  return escapeHtml(text.toUpperCase());
 };
 
-const getPurokName = (fields = {}) => {
+const getPurokName = (fields = {}, plain = false) => {
   const safeFields = fields || {};
   const text = String(safeFields.purok || safeFields.address || "").trim();
-  if (!text) return "<u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u>";
+  if (!text) return "________________";
   const cleaned = text.replace(/^purok\s+/i, "");
-  return `<u><strong>${escapeHtml(cleaned)}</strong></u>`;
+  return escapeHtml(cleaned);
 };
 
 const getPurposePhrase = (fields = {}) => {
   const safeFields = fields || {};
   const purpose = String(safeFields.purpose || "").trim();
-  if (!purpose) return "whatever legal purpose it may serve best";
+  if (!purpose) return "";
   return purpose.replace(/^for\s+/i, "");
 };
 
-const getCivilStatusFormatted = (status, allowSeparated = false) => {
+const getCivilStatusFormatted = (status, allowSeparated = false, capitalizeWidow = false, simpleTwo = false) => {
   const s = String(status || "").toLowerCase().trim();
+  const widowText = capitalizeWidow ? "Widow" : "widow";
+  if (simpleTwo) {
+    if (s.includes("married")) return `single/ <u>married</u>`;
+    if (s.includes("widow") || s.includes("widower")) return `single/ married/ <u>${widowText}</u>`;
+    return `<u>single</u>/ married`;
+  }
   if (s.includes("married")) {
-    return allowSeparated ? "single/<u><strong>married</strong></u>/widow/separated" : "single/<u><strong>married</strong></u>/widow";
+    return allowSeparated ? `single/ <u>married</u>/ ${widowText}/ separated` : `single/ <u>married</u>/ ${widowText}`;
   }
   if (s.includes("widow") || s.includes("widower")) {
-    return allowSeparated ? "single/married/<u><strong>widow</strong></u>/separated" : "single/married/<u><strong>widow</strong></u>";
+    return allowSeparated ? `single/ married/ <u>${widowText}</u>/ separated` : `single/ married/ <u>${widowText}</u>`;
   }
   if (allowSeparated && s.includes("separated")) {
-    return "single/married/widow/<u><strong>separated</strong></u>";
+    return `single/ married/ ${widowText}/ <u>separated</u>`;
   }
-  return allowSeparated ? "<u><strong>single</strong></u>/married/widow/separated" : "<u><strong>single</strong></u>/married/widow";
+  return allowSeparated ? `<u>single</u>/ married/ ${widowText}/ separated` : `<u>single</u>/ married/ ${widowText}`;
 };
 
 const getGenderFormatted = (gender) => {
   const g = String(gender || "").toLowerCase().trim();
   const isFemale = g === "female" || g === "f";
   return {
-    maleFemale: isFemale ? "male/<u><strong>female</strong></u>" : "<u><strong>male</strong></u>/female",
-    hisHer: isFemale ? "his/<u><strong>her</strong></u>" : "<u><strong>his</strong></u>/her",
-    herHis: isFemale ? "<u><strong>her</strong></u> /his" : "her /<u><strong>his</strong></u>",
-    himHer: isFemale ? "him/<u><strong>her</strong></u>" : "<u><strong>him</strong></u>/her",
-    heShe: isFemale ? "he/<u><strong>she</strong></u>" : "<u><strong>he</strong></u>/she",
-    hisHerCap: isFemale ? "His/<u><strong>Her</strong></u>" : "<u><strong>His</strong></u>/Her",
+    isFemale,
+    maleFemale: isFemale ? "male/ <u>female</u>" : "<u>male</u>/ female",
+    hisHer: isFemale ? "his/ <u>her</u>" : "<u>his</u>/ her",
+    herHis: isFemale ? "<u>her</u> /his" : "her /<u>his</u>",
+    herHisThird: isFemale ? "<u>her</u>/ his" : "her/ <u>his</u>",
+    himHer: isFemale ? "her" : "him",
+    himHerSlash: isFemale ? "him/ <u>her</u>" : "<u>him</u>/ her",
+    heShe: isFemale ? "she" : "he",
+    hisHerCap: isFemale ? "His/ <u>Her</u>" : "<u>His</u>/ Her",
   };
 };
 
@@ -238,9 +247,9 @@ const getPrefixFormatted = (gender, civilStatus) => {
   const g = String(gender || "").toLowerCase().trim();
   const s = String(civilStatus || "").toLowerCase().trim();
   const isFemale = g === "female" || g === "f";
-  if (!isFemale) return "<u><strong>Mr.</strong></u> / Ms / Mrs .";
-  if (s.includes("married") || s.includes("widow")) return "Mr. / Ms / <u><strong>Mrs .</strong></u>";
-  return "Mr. / <u><strong>Ms</strong></u> / Mrs .";
+  if (!isFemale) return "Ms./<u>Mr</u>/Mrs.";
+  if (s.includes("married") || s.includes("widow")) return "Ms./Mr/<u>Mrs.</u>";
+  return "<u>Ms.</u>/Mr/Mrs.";
 };
 
 const getApprovingOfficer = (fields = {}) => {
@@ -275,7 +284,7 @@ const getYearNumber = (value) => {
 
 const getOrdinalDay = (value) => {
   const date = value ? new Date(`${value}T00:00:00`) : new Date();
-  if (Number.isNaN(date.getTime())) return "10th";
+  if (Number.isNaN(date.getTime())) return "19th";
   const day = date.getDate();
   const suffix =
     day % 10 === 1 && day !== 11
@@ -289,165 +298,325 @@ const getOrdinalDay = (value) => {
   return `${day}${suffix}`;
 };
 
-const formatBirthdate = (value) => {
+export const formatBirthdate = (value) => {
   if (!value) return "";
-  const date = new Date(`${value}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  const str = String(value).trim();
+  if (!str) return "";
+  if (/^[A-Za-z]+\s+\d{1,2},\s*\d{4}$/.test(str)) {
+    return str;
+  }
+  const date = new Date(str.includes("T") ? str : `${str}T00:00:00`);
+  if (!Number.isNaN(date.getTime())) {
+    return date.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
+  const date2 = new Date(str);
+  if (!Number.isNaN(date2.getTime())) {
+    return date2.toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
+  return str;
 };
 
+const getSoloParentReason = (fields = {}, genderMap = {}) => {
+  const safeFields = fields || {};
+  const customReason = String(safeFields.soloParentReason || "").trim();
+  if (customReason) {
+    return customReason.replace(/^due to\s+/i, "");
+  }
+
+  const purpose = String(safeFields.purpose || "").trim();
+  if (purpose && !purpose.toLowerCase().includes("solo parent")) {
+    return purpose.replace(/^due to\s+/i, "");
+  }
+
+  const s = String(safeFields.civilStatus || "").toLowerCase().trim();
+  const isFemale = genderMap.isFemale;
+
+  if (s.includes("widow") || s.includes("widower")) {
+    return isFemale ? "death of her husband" : "death of his wife";
+  }
+
+  if (s.includes("separated")) {
+    return isFemale ? "separation from her husband" : "separation from his wife";
+  }
+
+  if (s.includes("single")) {
+    return isFemale ? "being an unmarried mother" : "being a single father";
+  }
+
+  return isFemale ? "death of her husband" : "death of his wife";
+};
 const buildBodyParagraphs = (fields = {}, template = null) => {
   const safeFields = fields || {};
   const key = getRealDocumentTemplateKey(template);
-  const name = fieldFilled(safeFields.residentName, 24);
-  const age = fieldFilled(safeFields.age, 4);
+  const rawResidentName = String(safeFields.residentName || "").trim();
+  const name = rawResidentName ? escapeHtml(rawResidentName.toUpperCase()) : fieldFilled(safeFields.residentName, 24);
+  const rawAge = String(safeFields.age ?? "").trim();
+  const age = rawAge ? escapeHtml(rawAge) : fieldFilled(safeFields.age, 4);
   const purok = getPurokName(safeFields);
-  const purpose = fieldFilled(getPurposePhrase(safeFields), 20);
+  const rawPurpose = getPurposePhrase(safeFields);
+  const purpose = rawPurpose
+    ? `<u>${escapeHtml(rawPurpose.toUpperCase())}</u>`
+    : `<u>whatever legal purpose it may serve best</u>`;
 
-  const day = fieldFilled(getOrdinalDay(safeFields.issueDate), 4);
-  const month = fieldFilled(getMonthName(safeFields.issueDate), 10);
+  const ordinalDay = getOrdinalDay(safeFields.issueDate);
+  const monthName = getMonthName(safeFields.issueDate);
   const year = getYearNumber(safeFields.issueDate);
-  const monthYear = fieldFilled(`${getMonthName(safeFields.issueDate)} ${year}`, 14);
 
   const civilStatus = getCivilStatusFormatted(safeFields.civilStatus);
   const civilStatusSolo = getCivilStatusFormatted(safeFields.civilStatus, true);
   const genderMap = getGenderFormatted(safeFields.gender);
   const prefixStr = getPrefixFormatted(safeFields.gender, safeFields.civilStatus);
 
-  const birthdateStr = safeFields.birthDate ? formatBirthdate(safeFields.birthDate) : "";
+  const rawBirthDate = safeFields.birthDate || safeFields.birthday || safeFields.date_of_birth || safeFields.birthdate || safeFields.dob || "";
+  const birthdateStr = rawBirthDate ? formatBirthdate(rawBirthDate) : "";
   const remarks = String(safeFields.remarks || "").trim();
 
   if (key === "clearance") {
+    const purokName = getPurokName(safeFields, true) || "Kamonsil";
+    const purposeVal = rawPurpose ? escapeHtml(rawPurpose.toUpperCase()) : "OWWA";
+
     return [
-      `This is to certify according to our existing records that ${prefixStr} ${name}, ${age} yrs. Old, Filipino ${civilStatus}, whose signature and thumbmark appear below is presently a resident of Purok ${purok}, Upper <u><strong>Mingading, Aleosan</strong></u>, Cotabato and no current position in the Barangay.`,
-      `This is to certify further, that ${genderMap.herHis} character, reputation and moral standing in the community are beyond reproach and that as of the date of this issued there is no pending case whatsoever filed against the above - named person for whatever any legal purpose which may serve his/<u><strong>her</strong></u> best.`,
-      `This is to certify furthermore that in view of the foregoing circumstances, this Barangay Clearance is issued upon request of <u><strong>theabove</strong></u> - named person for ${purpose} and whatever any legal purpose which may serve her/<u><strong>his</strong></u> best.`,
-      `Issued this <u><strong>${day}</strong></u> day of <u><strong>${month}</strong></u> at Barangay Upper <u><strong>Mingading, Aleosan</strong></u>, Cotabato.`,
+      `This is to certify according to our existing records that ${prefixStr} ${name}, ${age} yrs. Old, Filipino ${civilStatus}, whose signature and thumbmark appear below is presently a resident of Purok ${escapeHtml(purokName)}, Upper Mingading, Aleosan, Cotabato and no current position in the Barangay.`,
+      `This is to certify further, that ${genderMap.herHis} character, reputation and moral standing in the community are beyond reproach and that as of the date of this issued there is no pending case whatsoever filed against the above – named person for whatever any legal purpose which may serve ${genderMap.hisHer} best.`,
+      `This is to certify further more that in view of the foregoing circumstances, this Barangay Clearance is issued upon request of the above – named person for <strong>${purposeVal}</strong> and whatever any legal purpose which may serve ${genderMap.herHisThird} best.`,
+      `Issued this <u>${ordinalDay}</u> day of <u>${monthName} ${year}</u> at Barangay Upper Mingading, Aleosan, Cotabato.`,
     ];
   }
 
   if (key === "business") {
+    const businessName = safeFields.businessName || rawPurpose || "BANANA BUY AND SALE";
+    const formattedBusinessName = `<strong>${escapeHtml(businessName.toUpperCase())}</strong>`;
+    const purokClean = getPurokName(safeFields, true) || "Azucena";
+
     return [
-      `This is to certify that ${name}, ${age} yrs. old, Filipino, ${civilStatus}, a bona fide resident of Purok ${purok}, Barangay Upper <u><strong>Mingading, Aleosan</strong></u>, Cotabato, and ${genderMap.heShe} has a Purpose at the said place.`,
-      `This certification is being issued upon the request of the above-mentioned name person for <u><strong>Business Permit Application</strong></u> and for whatever any legal purposes may serve ${genderMap.himHer} best.`,
-      `Issued this <u><strong>${day}</strong></u> day of <u><strong>${monthYear}</strong></u> at Barangay Upper <u><strong>Mingading, Aleosan</strong></u>, Cotabato.`,
+      `This is to certify that ${name}, ${age} yrs. old, Filipino, ${civilStatus}, a bona fide resident of Purok ${escapeHtml(purokClean)}, Barangay Upper Mingading, Aleosan, Cotabato, and ${genderMap.heShe} has a ${formattedBusinessName} at the said place.`,
+      `This certification is being issued upon the request of the above-mentioned name person for Business Permit Application and for whatever any legal purposes may serve ${genderMap.himHerSlash} best.`,
+      `Issued this <u>${ordinalDay}</u> day of <u>${monthName} ${year}</u> at Barangay Upper Mingading, Aleosan, Cotabato.`,
     ];
   }
 
   if (key === "indigency") {
+    const civilStatusIndigency = getCivilStatusFormatted(safeFields.civilStatus, false, true);
+    const rawPurpose = getPurposePhrase(safeFields);
+    const purokClean = getPurokName(safeFields, true) || "Buklod";
+    let purposeSuffix = "and for whatever legal purpose it may serve best.";
+    if (rawPurpose) {
+      const cleanP = rawPurpose.replace(/^for\s+/i, "");
+      purposeSuffix = `for <strong>${escapeHtml(cleanP.toUpperCase())}</strong> and for whatever legal purpose it may serve best.`;
+    }
+
     return [
-      `THIS IS TO CERTIFY that ${name}, ${age} yrs. old ${civilStatus} and a bonafide resident of Purok ${purok}, Upper <u><strong>Mingading, Aleosan</strong></u>, Cotabato a low income earner family and considered as indigent.`,
-      `This certification is issued upon the request of above-named person and for whatever legal purpose it may serve best.`,
-      `Issued this <u><strong>${day}</strong></u> day of <u><strong>${monthYear}</strong></u> at Barangay Upper <u><strong>Mingading, Aleosan</strong></u>, Cotabato.`,
+      `THIS IS TO CERTIFY that ${name}, ${age} yrs. old ${civilStatusIndigency} and a bonafide resident of Purok ${escapeHtml(purokClean)}, Upper Mingading, Aleosan, Cotabato a low income earner family and considered as indigent.`,
+      `This certification is issued upon the request of above-named person ${purposeSuffix}`,
+      `Issued this <u>${ordinalDay}</u> day of <u>${monthName} ${year}</u> at Barangay Upper Mingading, Aleosan, Cotabato.`,
     ];
   }
 
   if (key === "residency") {
-    const birthphrase = birthdateStr ? `was born on <u><strong>${birthdateStr}</strong></u>` : "";
+    const civilStatusResidency = getCivilStatusFormatted(safeFields.civilStatus, false, false, true);
+    const birthphrase = birthdateStr
+      ? `Filipino, was born on ${escapeHtml(birthdateStr)}`
+      : `Filipino`;
+
+    const recField = String(safeFields.residencyRecommendation || rawPurpose || "").trim();
+    let recommendationMarkup = "<u>job and application.</u>";
+    if (recField) {
+      const cleanRec = recField.replace(/^for\s+(a\s+)?/i, "").trim();
+      if (cleanRec) {
+        recommendationMarkup = `<u>${escapeHtml(cleanRec)}.</u>`;
+      }
+    }
+
+    const purokClean = getPurokName(safeFields, true) || "Buklod";
+    const pronounHim = genderMap.isFemale ? "her" : "him";
+
     return [
-      `THIS IS TO CERTIFY that ${name}, ${genderMap.maleFemale}, ${civilStatus}, Filipino, ${birthphrase} a bona fide resident of <u><strong>Purok ${purok}, Upper Mingading, Aleosan, Cotabato</strong></u>. ${genderMap.hisHerCap} reputation and moral standing in the community is beyond reproach and that is no pending case filed on said person whatsoever. From our barangay peace and order committee we are recommending ${genderMap.himHer} for a ${purpose}.`,
+      `THIS IS TO CERTIFY that ${name}, ${genderMap.maleFemale}, ${civilStatusResidency}, ${birthphrase} a bona fide citizen of Purok ${escapeHtml(purokClean)}, Upper Mingading, Aleosan, Cotabato. ${genderMap.hisHerCap}, reputation and moral standing in the community is beyond reproach and that is no pending case filed on said person whatsoever. From our barangay peace and order committee we are recommending ${pronounHim} ${recommendationMarkup}`,
       `This certification is issued upon the request of above-named person for whatever legal purpose it may serve best.`,
-      `Issued this <u><strong>${day}</strong></u> day of <u><strong>${monthYear}</strong></u> at Barangay Upper <u><strong>Mingading, Aleosan</strong></u>, Cotabato.`,
+      `Issued this <u>${ordinalDay}</u> day of <u>${monthName} ${year}</u> at Barangay Upper Mingading, Aleosan, Cotabato.`,
     ];
   }
 
   if (key === "rsbsa") {
+    const cropsText = safeFields.cropsText || safeFields.remarks || "Rice Field ½ hectare, and Fruits Crops 1 hectare";
+    const farmSize = safeFields.farmSize || "One ( 1 ) hectare";
+    const tenure = safeFields.tenure || "Owner";
+    const purokClean = getPurokName(safeFields, true) || "Buklod";
+    const addressStr = safeFields.address || `Purok ${purokClean}`;
+
     return [
-      `THIS IS TO CERTIFY THAT ${name}, ${age} y/o, residing at <u><strong>Purok ${purok}, Upper Mingading, Aleosan, Cotabato</strong></u>, is tilling crop(s), farm area, or agricultural livelihood declared to this office${remarks ? `: <u><strong>${escapeHtml(remarks)}</strong></u>` : "."}`,
-      `This CERTIFICATION is being issued by the Barangay solely for the purpose of the farmers and fisherfolk registration to the REGISTRY SYSTEM FOR BASIC SECTORS IN AGRICULTURE (RSBSA) of the Department of Agriculture and may not be used for other purposes not mentioned above.`,
+      `THIS IS TO CERTIFY THAT ${name} ${age} y/o, residing at ${escapeHtml(addressStr)}, Upper Mingading Aleosan, Cotabato, is tilling the following crop(s) <strong>${escapeHtml(cropsText)}</strong> as <u>${escapeHtml(tenure)}</u>/Farmer at Purok ${escapeHtml(purokClean)}, Upper Mingading, Cotabato with size ${escapeHtml(farmSize)}.`,
+      `This <strong>CERTIFICATION</strong> is being issued by the Barangay solely for the purpose of the farmers and fisher folk registration to the <strong>REGISTRY SYSTEM FOR BASIC SECTORS IN AGRICULTURE (RSBSA)</strong> of the Department of Agriculture and may not be used for other purposes not mention above.`,
     ];
   }
 
   if (key === "solo") {
+    const soloReason = getSoloParentReason(safeFields, genderMap);
+    const purokSolo = getPurokName(safeFields, true) || "Kamonsil";
+
     return [
-      `This is to certify that ${name}, ${age} yrs. old, Filipino, ${civilStatusSolo}, a bona fide resident of Purok ${purok}, Barangay Upper <u><strong>Mingading, Aleosan</strong></u>, Cotabato.`,
-      `This certification is being issued upon the request of the above-mentioned person in support of Solo Parent application for ${purpose} and for whatever legal purpose it may serve best.`,
-      `Issued this <u><strong>${day}</strong></u> day of <u><strong>${monthYear}</strong></u> at Barangay Upper <u><strong>Mingading, Aleosan</strong></u>, Cotabato.`,
+      `This is to certify that ${name} legal age, Filipino, ${civilStatusSolo}, a bona fide resident of Purok ${escapeHtml(purokSolo)}, Barangay Upper Mingading, Aleosan, Cotabato.`,
+      `This certification is being issued upon the request of the above-mentioned name person on application for solo parent due to <strong>${escapeHtml(soloReason)}</strong> and whatever any legal intent may serve best.`,
+      `Issued this <u>${ordinalDay}</u> day of <u>${monthName} ${year}</u> at Barangay Upper Mingading, Aleosan, Cotabato.`,
     ];
   }
 
   if (key === "4ps") {
+    const purokText = getPurokName(safeFields, true) || "Muslim";
+    const fourPsPurpose = (safeFields.fourPsPurpose || safeFields.purpose || "").trim();
+    let purposeText = "";
+
+    if (fourPsPurpose) {
+      purposeText = escapeHtml(fourPsPurpose.replace(/^for\s+/i, ""));
+    } else if (safeFields.fourPsSpouse) {
+      purposeText = `Change Grantee of ${genderMap.herHis} wife ${escapeHtml(safeFields.fourPsSpouse)} working Abroad`;
+    } else {
+      purposeText = `Change Grantee of ${genderMap.herHis} wife working Abroad`;
+    }
+
+    if (!/legal purpose/i.test(purposeText)) {
+      purposeText = `${purposeText.replace(/[.,\s]+$/, "")} and for whatever any legal purposes.`;
+    } else if (!purposeText.endsWith(".")) {
+      purposeText += ".";
+    }
+
     return [
-      `This is to certify that ${name} ${age} yrs. old, Filipino, ${civilStatus}, a bona fide resident of Purok ${purok}, Barangay Upper <u><strong>Mingading, Aleosan</strong></u>, Cotabato.`,
-      `This certification is being issued upon the request of the above-mentioned same person for ${purpose} and for whatever any legal purposes.`,
-      `Issued this <u><strong>${day}</strong></u> day of <u><strong>${monthYear}</strong></u> at Barangay Upper <u><strong>Mingading, Aleosan</strong></u>, Cotabato.`,
+      `This is to certify that ${name}, ${age} yrs. old, Filipino, ${civilStatus}, a bona fide resident of Purok ${escapeHtml(purokText)}, Barangay Upper Mingading, Aleosan, Cotabato.`,
+      `This certification is being issued upon the request of the above-mentioned name person for ${purposeText}`,
+      `Issued this <u>${ordinalDay}</u> day <u>of ${monthName}</u> <strong>${year}</strong> at Barangay Upper Mingading, Aleosan, Cotabato.`,
     ];
   }
 
   return [
-    `This is to certify that ${name}, ${age} yrs. old, is a bona fide resident of Purok ${purok}, Barangay Upper Mingading, Aleosan, Cotabato.`,
-    `This certification is issued upon request for ${purpose}.`,
+    `This is to certify that ${name}, ${age} yrs. old, Filipino, ${civilStatus}, a bona fide resident of Purok ${escapeHtml(purok)}, Barangay Upper Mingading, Aleosan, Cotabato.`,
+    `This certification is issued upon request for ${purpose} and for whatever legal purpose it may serve best.`,
+    `Issued this <u>${ordinalDay}</u> day of <u>${monthName} ${year}</u> at Barangay Upper Mingading, Aleosan, Cotabato.`,
   ];
 };
 
 const htmlParagraphToText = (paragraph) =>
-  unescapeHtml(
-    String(paragraph || "")
-      .replace(/<br\s*\/?>/gi, "\n")
-      .replace(/<\/?strong>/gi, "")
-      .replace(/<\/?u>/gi, "")
-      .replace(/<[^>]+>/g, "")
-  );
+  String(paragraph || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
 
-export const getEditableDocumentText = (fields = {}, template = null) =>
-  buildBodyParagraphs(fields, template).map(htmlParagraphToText).join("\n\n");
-
-const getDocumentBodyHtml = (fields = {}, template = null) => {
+export const getDocumentBodyHtml = (fields = {}, template = null) => {
   const safeFields = fields || {};
-  const customText = String(safeFields.documentText || "").trim();
+  const stored = String(safeFields.documentText || "").trim();
 
-  if (customText) {
-    return customText
+  if (stored) {
+    const rawParagraphs = stored
       .split(/\n\s*\n/)
-      .map((paragraph) => paragraph.trim())
-      .filter(Boolean)
-      .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br />")}</p>`)
-      .join("");
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (rawParagraphs.length > 0) {
+      return rawParagraphs
+        .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br />")}</p>`)
+        .join("\n");
+    }
   }
 
-  return buildBodyParagraphs(safeFields, template)
-    .map((paragraph) => `<p>${paragraph}</p>`)
-    .join("");
+  const list = buildBodyParagraphs(safeFields, template);
+  return list.map((p) => `<p>${p}</p>`).join("\n");
 };
+
+export const getDocumentBodyPlainText = (fields = {}, template = null) => {
+  const list = buildBodyParagraphs(fields || {}, template);
+  return list.map((item) => htmlParagraphToText(item)).join("\n\n");
+};
+
+export const getEditableDocumentText = (fields = {}, template = null) =>
+  getDocumentBodyPlainText(fields, template);
 
 const clampNumber = (value, min, max, fallback) => {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.min(max, Math.max(min, number));
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
 };
 
-const getPrintSettings = (fields = {}) => {
+export const formatDateShort = (value) => {
+  if (!value) return "";
+  const date = new Date(String(value).includes("T") ? value : `${value}T00:00:00`);
+  if (!Number.isNaN(date.getTime())) {
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    const y = String(date.getFullYear()).slice(-2);
+    return `${m}-${d}-${y}`;
+  }
+  const date2 = new Date(value);
+  if (!Number.isNaN(date2.getTime())) {
+    const m = String(date2.getMonth() + 1).padStart(2, "0");
+    const d = String(date2.getDate()).padStart(2, "0");
+    const y = String(date2.getFullYear()).slice(-2);
+    return `${m}-${d}-${y}`;
+  }
+  return String(value);
+};
+
+export const formatShortDate = formatDateShort;
+
+const getPrintSettings = (fields = {}, template = null) => {
   const safeFields = fields || {};
+  const key = getRealDocumentTemplateKey(template);
+  const isRockwellDoc = key === "residency" || key === "indigency" || key === "business" || key === "rsbsa" || key === "4ps";
+  const defaultFont = isRockwellDoc ? "rockwell" : "times";
+  const defaultFontSize = isRockwellDoc ? 14 : 12;
+  const defaultLineHeight = 1.25;
+  const defaultParagraphGap = 0.16;
+  const defaultPadding = "1.0in 1.0in 1.0in 1.0in";
+
   const marginMap = {
-    narrow: "0.5in 0.5in 0.5in",
-    wide: "1.2in 1.2in 1.2in",
-    normal: "0.85in 0.95in 0.8in",
+    narrow: "0.5in 0.5in 0.5in 0.5in",
+    wide: "1.2in 1.2in 1.2in 1.2in",
+    normal: defaultPadding,
   };
   const fontMap = {
-    "times": '"Times New Roman", Times, serif',
-    "rockwell": '"Rockwell Condensed", "Arial Narrow", serif',
+    "times": '"Times New Roman", Times, "Liberation Serif", serif',
+    "felix": '"Felix Titling", "Felix-Titling", "Times New Roman", serif',
+    "charlemagne": '"Charlemagne Std", "Charlemagne", "Times New Roman", serif',
+    "cooper": '"Cooper Std Black", "Cooper Black", serif, sans-serif',
+    "rockwell": '"Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Tw Cen MT", "Arial Narrow", Impact, serif, sans-serif',
     "arial": 'Arial, Helvetica, sans-serif',
     "arial-narrow": '"Arial Narrow", Arial, sans-serif',
     "georgia": 'Georgia, serif',
     "calibri": 'Calibri, sans-serif',
   };
+
+  const chosenFont = safeFields.printFontFamily || defaultFont;
+  const chosenSizePt = clampNumber(safeFields.printFontSize, 8, 24, defaultFontSize);
+  const chosenLineHeight = clampNumber(safeFields.printLineHeight, 1.1, 2.2, defaultLineHeight);
+  const chosenGap = clampNumber(safeFields.printParagraphGap, 0.02, 0.5, defaultParagraphGap);
+
   return {
-    fontFamily: fontMap[safeFields.printFontFamily] || fontMap["times"],
-    bodyFontSize: clampNumber(safeFields.printFontSize, 10, 20, 13),
-    lineHeight: clampNumber(safeFields.printLineHeight, 1.1, 2.0, 1.45),
-    paragraphGap: clampNumber(safeFields.printParagraphGap, 0.02, 0.3, 0.12),
-    padding: marginMap[safeFields.printMargin] || "0.85in 0.95in 0.8in",
+    fontFamily: fontMap[chosenFont] || fontMap[defaultFont],
+    bodyFontSizePt: chosenSizePt,
+    bodyFontSizePx: Math.round((chosenSizePt * 96) / 72),
+    lineHeight: chosenLineHeight,
+    paragraphGap: chosenGap,
+    padding: marginMap[safeFields.printMargin] || defaultPadding,
   };
 };
 
 const getDocumentTitle = (template) => {
   const key = getRealDocumentTemplateKey(template);
   if (key === "clearance") return "BARANGAY CLEARANCE";
-  return "C E R T I F I C A T I O N";
+  return "CERTIFICATION";
 };
 
 const getEditableBodyAttributes = (editable) =>
@@ -455,45 +624,73 @@ const getEditableBodyAttributes = (editable) =>
     ? 'contenteditable="true" spellcheck="true" role="textbox" aria-multiline="true" data-editable-document-body="true" aria-label="Certificate text"'
     : "";
 
-const getEditableFieldAttributes = (editable, field, label) =>
+const getEditableFieldAttributes = (editable, fieldKey, fieldLabel) =>
   editable
-    ? `contenteditable="true" spellcheck="false" role="textbox" data-editable-field="${field}" aria-label="${escapeHtml(label)}"`
+    ? `contenteditable="true" spellcheck="false" data-editable-field="${fieldKey}" aria-label="${escapeHtml(fieldLabel)}"`
     : "";
 
 const getDocumentFooter = (fields = {}, template = null, editable = false) => {
   const safeFields = fields || {};
   const key = getRealDocumentTemplateKey(template);
-  const officer = fieldValue(getApprovingOfficer(safeFields));
-  const issueDate = fieldValue(formatIssueDate(safeFields.issueDate));
-  const officerEditAttrs = getEditableFieldAttributes(editable, "approvingOfficer", "Approving officer");
+  const officer = escapeHtml(getApprovingOfficer(safeFields));
+  const officerEditAttrs = getEditableFieldAttributes(editable, "approvingOfficer", "Punong Barangay");
+
+  const actingOfficer = String(safeFields.actingOfficer || "").trim();
+  const actingPosition = String(safeFields.actingPosition || "Barangay Kagawad / Officer of the Day").trim();
+
+  const actingMarkup = actingOfficer
+    ? `
+      <div style="margin-top: 14px; padding-top: 6px; font-size: 11px; line-height: 1.25;">
+        <p style="margin: 0; font-size: 10px; font-style: italic; text-transform: none;">By Authority of the Punong Barangay:</p>
+        <p style="margin: 4px 0 0; font-family: 'Times New Roman', serif; font-size: 12pt; font-weight: 700; text-transform: uppercase;">${escapeHtml(actingOfficer)}</p>
+        <p style="margin: 1px 0 0; font-family: 'Times New Roman', serif; font-size: 11pt;">${escapeHtml(actingPosition)}</p>
+      </div>
+    `
+    : "";
 
   if (key === "rsbsa") {
+    const issueDateStr = formatIssueDate(safeFields.issueDate);
+
     return `
       <section class="real-doc-rsbsa-signatures">
-        <div>
-          <p class="real-doc-line" ${officerEditAttrs}>${officer}</p>
-          <p>Name and Signature of Punong Barangay</p>
+        <div class="real-doc-rsbsa-cell">
+          <p class="real-doc-line" ${officerEditAttrs}><u><strong>${officer}</strong></u></p>
+          <p class="real-doc-subtext" style="font-size: 10.5pt; font-style: italic;">Name and Signature of Punong Barangay</p>
         </div>
-        <div>
-          <p class="real-doc-line">${issueDate}</p>
-          <p>Date</p>
+        <div class="real-doc-rsbsa-cell">
+          <p class="real-doc-line"><u><strong>${issueDateStr}</strong></u></p>
+          <p class="real-doc-subtext" style="font-size: 10.5pt; font-style: italic;">Date</p>
         </div>
-        <div>
-          <p class="real-doc-line">&nbsp;</p>
-          <p>Name and Signature of Farmer/Fisherfolk</p>
+        <div class="real-doc-rsbsa-cell" style="margin-top: 0.32in;">
+          <p class="real-doc-line" style="border-bottom: 1.5px solid #000; width: 85%; margin: 0 auto;">&nbsp;</p>
+          <p class="real-doc-subtext" style="font-size: 10.5pt; font-style: italic;">Name and Signature of Farmers/Fisher</p>
         </div>
-        <div>
-          <p class="real-doc-line">${issueDate}</p>
-          <p>Date</p>
+        <div class="real-doc-rsbsa-cell" style="margin-top: 0.32in;">
+          <p class="real-doc-line" style="border-bottom: 1.5px solid #000; width: 85%; margin: 0 auto;">&nbsp;</p>
+          <p class="real-doc-subtext" style="font-size: 10.5pt; font-style: italic;">Name and Signature of Neutral Third- Party Witness</p>
+        </div>
+        <div class="real-doc-rsbsa-cell" style="margin-top: 0.22in;">
+          <p class="real-doc-line"><u><strong>${issueDateStr}</strong></u></p>
+          <p class="real-doc-subtext" style="font-size: 10.5pt; font-style: italic;">Date</p>
+        </div>
+        <div class="real-doc-rsbsa-cell" style="margin-top: 0.22in;">
+          <p class="real-doc-line"><u><strong>${issueDateStr}</strong></u></p>
+          <p class="real-doc-subtext" style="font-size: 10.5pt; font-style: italic;">Date</p>
         </div>
       </section>
+      <p class="real-doc-rsbsa-note" style="margin-top: 0.35in; font-size: 11pt; font-style: italic;">Note: Not Valid without the Punong Barangay and Barangay Seal.</p>
     `;
   }
 
+  const captainNameMarkup = (key === "clearance" || key === "indigency")
+    ? `<u><strong>${officer}</strong></u>`
+    : `<strong>${officer}</strong>`;
+
   return `
     <section class="real-doc-signature ${key === "clearance" ? "real-doc-clearance-signature" : ""}">
-      <p class="real-doc-line" ${officerEditAttrs}>${officer}</p>
+      <p class="real-doc-captain-name" ${officerEditAttrs}>${captainNameMarkup}</p>
       <p class="real-doc-subtext">Punong Barangay</p>
+      ${actingMarkup}
     </section>
   `;
 };
@@ -502,43 +699,87 @@ const getDocumentExtras = (fields = {}, template = null, editable = false) => {
   const safeFields = fields || {};
   const key = getRealDocumentTemplateKey(template);
 
+  const blankLine = `<u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u>`;
+  const orVal = safeFields.orNumber
+    ? `<u>${escapeHtml(safeFields.orNumber)}</u>`
+    : (key === "residency" ? "" : blankLine);
+  const dateVal = safeFields.dateIssued
+    ? `<u>${escapeHtml(formatDateShort(safeFields.dateIssued))}</u>`
+    : (key === "residency" ? "" : blankLine);
+  const ctcVal = safeFields.ctcNumber
+    ? `<u>${escapeHtml(safeFields.ctcNumber)}</u>`
+    : (key === "residency" ? "" : blankLine);
+  const ctcDateVal = safeFields.ctcDateIssued
+    ? `<u>${escapeHtml(formatDateShort(safeFields.ctcDateIssued))}</u>`
+    : (key === "residency" ? "" : blankLine);
+
   if (key === "clearance") {
     const preparedByEditAttrs = getEditableFieldAttributes(editable, "preparedBy", "Prepared by");
 
     return `
       <section class="real-doc-clearance-staff">
-        <p class="real-doc-staff-name" ${preparedByEditAttrs}>${escapeHtml(safeFields.preparedBy || DEFAULT_PREPARED_BY)}</p>
-        <p>(Signature Over Printed Name)</p>
+        <p class="real-doc-staff-name" ${preparedByEditAttrs}><strong>${escapeHtml(safeFields.preparedBy || DEFAULT_PREPARED_BY)}</strong></p>
+        <p class="real-doc-staff-subtext">(Signature Over Printed Name)</p>
       </section>
       <section class="real-doc-thumbmark" aria-hidden="true">
         <span></span>
       </section>
-      <section class="real-doc-or">
-        <p>O. R. No. ${safeFields.orNumber ? `<strong>${escapeHtml(safeFields.orNumber)}</strong>` : "__________"}</p>
-        <p>Date Issued: ${safeFields.dateIssued ? `<strong>${escapeHtml(safeFields.dateIssued)}</strong>` : "__________"}</p>
-        <p>CTC. No. ${safeFields.ctcNumber ? `<strong>${escapeHtml(safeFields.ctcNumber)}</strong>` : "__________"}</p>
-        <p>Date Issued: ${safeFields.ctcDateIssued ? `<strong>${escapeHtml(safeFields.ctcDateIssued)}</strong>` : "__________"}</p>
+      <section class="real-doc-or real-doc-clearance-or">
+        <div class="real-doc-or-table">
+          <div class="real-doc-or-row"><span class="real-doc-or-label">O. R.  No.</span><span class="real-doc-or-val">${orVal}</span></div>
+          <div class="real-doc-or-row"><span class="real-doc-or-label">Date Issued:</span><span class="real-doc-or-val">${dateVal}</span></div>
+          <div class="real-doc-or-row"><span class="real-doc-or-label">CTC. No.</span><span class="real-doc-or-val">${ctcVal}</span></div>
+          <div class="real-doc-or-row"><span class="real-doc-or-label">Date Issued:</span><span class="real-doc-or-val">${ctcDateVal}</span></div>
+        </div>
       </section>
     `;
   }
 
-  if (key === "indigency" || key === "residency") {
+  if (key === "indigency") {
     return `
-      <section class="real-doc-or">
-        <p>Brgy. Seal/25</p>
-        <p>O. R. No. ${safeFields.orNumber ? `<strong>${escapeHtml(safeFields.orNumber)}</strong>` : "__________"}</p>
-        <p>Date Issued: ${safeFields.dateIssued ? `<strong>${escapeHtml(safeFields.dateIssued)}</strong>` : "__________"}</p>
-        <p>CTC No. ${safeFields.ctcNumber ? `<strong>${escapeHtml(safeFields.ctcNumber)}</strong>` : "__________"}</p>
-        <p>Date Issued: ${safeFields.ctcDateIssued ? `<strong>${escapeHtml(safeFields.ctcDateIssued)}</strong>` : "__________"}</p>
+      <section class="real-doc-or real-doc-indigency-or">
+        <p style="margin-bottom: 2px;">Brgy. Seal/25</p>
+        <div class="real-doc-or-table">
+          <div class="real-doc-or-row"><span class="real-doc-or-label">O. R. No.</span><span class="real-doc-or-val">${orVal}</span></div>
+          <div class="real-doc-or-row"><span class="real-doc-or-label">Date Issued:</span><span class="real-doc-or-val">${dateVal}</span></div>
+          <div class="real-doc-or-row"><span class="real-doc-or-label">CTC No.</span><span class="real-doc-or-val">${ctcVal}</span></div>
+          <div class="real-doc-or-row"><span class="real-doc-or-label">Date Issued:</span><span class="real-doc-or-val">${ctcDateVal}</span></div>
+        </div>
       </section>
     `;
   }
 
-  if (key === "business" || key === "4ps" || key === "solo") {
+  if (key === "residency") {
     return `
-      <section class="real-doc-or">
-        <p>OR No. ${safeFields.orNumber ? `<strong>${escapeHtml(safeFields.orNumber)}</strong>` : "__________"}</p>
-        <p>Date Issued: ${safeFields.dateIssued ? `<strong>${escapeHtml(safeFields.dateIssued)}</strong>` : "__________"}</p>
+      <section class="real-doc-or real-doc-residency-or">
+        <p style="margin-bottom: 2px;">Brgy. Seal/25</p>
+        <div class="real-doc-or-table">
+          <div class="real-doc-or-row"><span class="real-doc-or-label">O. R. No</span><span class="real-doc-or-val">${orVal}</span></div>
+          <div class="real-doc-or-row"><span class="real-doc-or-label">Date Issued:</span><span class="real-doc-or-val">${dateVal}</span></div>
+          <div class="real-doc-or-row"><span class="real-doc-or-label">CTC No.</span><span class="real-doc-or-val">${ctcVal}</span></div>
+        </div>
+      </section>
+    `;
+  }
+
+  if (key === "business" || key === "4ps") {
+    return `
+      <section class="real-doc-or real-doc-4ps-or">
+        <div class="real-doc-or-table">
+          <div class="real-doc-or-row"><span class="real-doc-or-label">OR No.</span><span class="real-doc-or-val">${orVal}</span></div>
+          <div class="real-doc-or-row"><span class="real-doc-or-label">Date Issued:</span><span class="real-doc-or-val">${dateVal}</span></div>
+        </div>
+      </section>
+    `;
+  }
+
+  if (key === "solo" && (safeFields.orNumber || safeFields.dateIssued)) {
+    return `
+      <section class="real-doc-or real-doc-solo-or">
+        <div class="real-doc-or-table">
+          <div class="real-doc-or-row"><span class="real-doc-or-label">OR No.</span><span class="real-doc-or-val">${orVal}</span></div>
+          <div class="real-doc-or-row"><span class="real-doc-or-label">Date Issued:</span><span class="real-doc-or-val">${dateVal}</span></div>
+        </div>
       </section>
     `;
   }
@@ -547,40 +788,474 @@ const getDocumentExtras = (fields = {}, template = null, editable = false) => {
 };
 
 const REAL_DOCUMENT_CSS = `
+  @font-face {
+    font-family: 'Felix Titling';
+    src: local('Felix Titling'), local('Felix-Titling'), local('FelixTitling'), local('Times New Roman');
+  }
+  @font-face {
+    font-family: 'Rockwell Condensed';
+    font-style: normal;
+    font-weight: 400;
+    src: local('Rockwell Condensed'), local('Rockwell-Condensed'), local('Arial Narrow');
+  }
+  @font-face {
+    font-family: 'Rockwell Condensed';
+    font-style: normal;
+    font-weight: 700;
+    src: local('Rockwell Condensed Bold'), local('Rockwell-Condensed-Bold'), local('Arial Narrow Bold');
+  }
+  @font-face {
+    font-family: 'Charlemagne Std';
+    src: local('Charlemagne Std'), local('CharlemagneStd-Bold'), local('Charlemagne Std Bold'), local('Charlemagne'), local('Times New Roman');
+  }
+  @font-face {
+    font-family: 'Cooper Std Black';
+    src: local('Cooper Std Black'), local('CooperStdBlack'), local('Cooper Black'), local('CooperBlack'), local('Impact'), serif;
+  }
+  @font-face {
+    font-family: 'Algerian';
+    src: local('Algerian'), local('Algerian Regular');
+  }
+  @font-face {
+    font-family: 'Agency FB';
+    src: local('Agency FB'), local('AgencyFB-Reg'), local('Arial Narrow');
+  }
+
   html, body { margin: 0; padding: 0; background: #fff; }
   .real-doc-shell, .real-doc-shell * { box-sizing: border-box; }
-  .real-doc-shell { font-family: var(--doc-font-family, "Times New Roman", Times, "Rockwell Condensed", "Arial Narrow", serif); color: #000; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .real-doc-page { position: relative; width: 8.5in; min-height: 11in; margin: 0 auto; padding: var(--doc-padding, 0.85in 0.95in 0.8in); background: #fff; box-shadow: 0 0 0 1px #d7d7d7; }
+  .real-doc-shell { font-family: var(--doc-font-family, "Times New Roman", Times, serif); color: #000; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .real-doc-page { position: relative; width: 8.5in; min-height: 11in; margin: 0 auto; padding: var(--doc-padding, 1.0in 1.0in 1.0in 1.0in); background: #fff; box-shadow: 0 0 0 1px #d7d7d7; }
   
-  .real-doc-header { position: relative; min-height: 1.1in; border-bottom: 1.5px solid #000; padding-bottom: 0.08in; font-size: 11.5px; line-height: 1.3; font-family: inherit; }
-  .real-doc-seal { position: absolute; left: 0; top: 0in; width: 1.05in; height: 1.05in; object-fit: contain; }
-  .real-doc-header-text { width: 100%; text-align: center; margin: 0 auto; }
-  .real-doc-office { margin: 0.12in 0 0.02in; font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; text-align: center; font-family: inherit; }
+  /* Strictly Centered Header with Perfectly Circular Floating Left Logo */
+  .real-doc-header { position: relative; min-height: 1.22in; padding-bottom: 0.08in; margin-bottom: 0.22in; font-family: inherit; font-size: 12pt; line-height: 1.2; background: transparent !important; color: #000000 !important; text-align: center; }
+  .real-doc-clearance .real-doc-header, .real-doc-indigency .real-doc-header, .real-doc-residency .real-doc-header, .real-doc-rsbsa .real-doc-header { border-bottom: 1.5px solid #000 !important; }
+  .real-doc-4ps .real-doc-header, .real-doc-solo .real-doc-header, .real-doc-business .real-doc-header { border-bottom: none !important; }
+  .real-doc-seal { position: absolute; left: 0.1in; top: -0.05in; width: 1.18in; height: 1.18in; aspect-ratio: 1 / 1; border-radius: 50%; object-fit: contain; background: transparent !important; display: block; }
+  .real-doc-header-text { width: 100%; text-align: center; margin: 0 auto; background: transparent !important; color: #000000 !important; font-size: 12pt; line-height: 1.2; font-family: inherit; font-weight: 400; }
+  .real-doc-header-text div { background: transparent !important; color: #000000 !important; }
+  .real-doc-office { margin: 0.14in 0 0.02in; font-family: inherit; font-size: 12pt; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; text-align: center; background: transparent !important; color: #000000 !important; }
   
-  .real-doc-title { margin: 0.22in 0 0.18in; text-align: center; font-size: 18px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
-  .real-doc-to { margin: 0 0 0.16in; font-size: 12px; font-weight: 700; font-family: inherit; text-transform: uppercase; }
+  /* BARANGAY CLEARANCE title in Cooper Std Black, Bold, 16pt */
+  .real-doc-title { margin: 0.22in 0 0.18in; text-align: center; font-family: inherit; font-size: 14pt; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #000000 !important; }
+  .real-doc-clearance .real-doc-title { font-family: "Cooper Std Black", "Cooper Black", "CooperBlack", serif, sans-serif; font-size: 16pt; font-weight: 900; letter-spacing: 0.04em; text-decoration: none; }
+  .real-doc-4ps .real-doc-title, .real-doc-business .real-doc-title { font-family: inherit; font-size: 14pt; font-weight: 700; letter-spacing: 0.08em; text-decoration: none; }
+  .real-doc-solo .real-doc-title { font-family: inherit; font-size: 14pt; font-weight: 700; letter-spacing: 0.08em; text-decoration: none; }
+  .real-doc-indigency .real-doc-title { font-family: "Times New Roman", "Felix Titling", serif; text-decoration: underline; text-underline-offset: 3px; font-size: 14pt; font-weight: 700; letter-spacing: 0.18em; }
+  .real-doc-rsbsa .real-doc-title { font-family: inherit; font-size: 14pt; font-weight: 700; letter-spacing: 0.08em; text-decoration: none; }
   
-  .real-doc-body { font-size: var(--doc-body-font-size, 13px); line-height: var(--doc-line-height, 1.45); text-align: justify; font-family: inherit; }
-  .real-doc-body p { margin: 0 0 var(--doc-paragraph-gap, 0.12in); text-indent: 0.4in; }
-  .real-doc-body strong { font-weight: 700; }
-  .real-doc-body u { text-decoration: underline; text-underline-offset: 2px; }
-  .real-doc-body u strong { font-weight: 700; }
+  /* CERTIFICATION Title for Residency in Felix Titling, 18pt, Bold, Underline */
+  .real-doc-residency .real-doc-title {
+    font-family: "Felix Titling", "Felix-Titling", "Times New Roman", serif !important;
+    font-size: 18pt !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.03em !important;
+    text-transform: uppercase !important;
+    text-decoration: underline !important;
+    text-underline-offset: 3px !important;
+    color: #000000 !important;
+  }
   
-  .real-doc-signature { width: 2.6in; margin: 0.35in 0 0 auto; text-align: center; font-size: 12px; line-height: 1.2; font-family: inherit; }
-  .real-doc-clearance-signature { margin-top: 0.3in; margin-right: 0.4in; }
-  .real-doc-line { margin: 0; font-weight: 700; text-transform: uppercase; }
-  .real-doc-subtext { margin: 2px 0 0; font-size: 11px; font-weight: 400; }
+  .real-doc-to { margin: 0 0 0.18in; font-family: inherit; font-size: 12pt; font-weight: 700; text-transform: uppercase; color: #000000 !important; text-align: left; }
   
-  .real-doc-clearance-staff { margin-top: 0.25in; width: 2.4in; text-align: left; font-size: 11px; font-weight: 700; line-height: 1.15; font-family: inherit; }
-  .real-doc-clearance-staff p { margin: 0; }
-  .real-doc-staff-name { text-transform: uppercase; }
+  .real-doc-body { font-family: inherit; font-size: var(--doc-body-font-size, 12pt); line-height: var(--doc-line-height, 1.25); text-align: justify; color: #000000 !important; font-weight: 400; }
+  .real-doc-body p { margin: 0 0 var(--doc-paragraph-gap, 0.16in); text-indent: 0.5in; color: #000000 !important; font-weight: 400; }
+  .real-doc-body strong { font-weight: 700 !important; color: #000000 !important; }
+  .real-doc-body u { text-decoration: underline; text-underline-offset: 2px; color: #000000 !important; }
   
-  .real-doc-thumbmark { margin-top: 0.15in; margin-left: 0.1in; width: 0.85in; height: 0.75in; border: 1px solid #000; display: block; }
+  /* Captain MAMERTO C. CLARITO in Charlemagne Std, 16pt, Bold (for Clearance/Default) */
+  .real-doc-signature { width: 3.4in; margin: 0.55in 0 0 auto; text-align: center; font-family: "Times New Roman", Times, serif; line-height: 1.2; color: #000000 !important; }
+  .real-doc-clearance-signature { margin-top: 0.65in; margin-right: 0.15in; }
+  .real-doc-clearance-signature .real-doc-captain-name { text-decoration: underline; text-underline-offset: 2px; }
+  .real-doc-captain-name { margin: 0; font-family: "Charlemagne Std", "CharlemagneStd-Bold", "Charlemagne", "Times New Roman", serif; font-size: 16pt; font-weight: 700; text-transform: uppercase; color: #000000 !important; letter-spacing: 0.02em; }
+  .real-doc-subtext { margin: 2px 0 0; font-family: "Times New Roman", Times, serif; font-size: 12pt; font-weight: 400; color: #000000 !important; }
   
-  .real-doc-or { position: absolute; left: 0.95in; bottom: 0.75in; font-size: 11px; font-weight: 700; line-height: 1.25; font-family: inherit; }
-  .real-doc-or p { margin: 0; }
+  /* Indigency Document: Rockwell Condensed 14pt */
+  .real-doc-indigency {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+  }
+  .real-doc-indigency .real-doc-header,
+  .real-doc-indigency .real-doc-header-text,
+  .real-doc-indigency .real-doc-office,
+  .real-doc-indigency .real-doc-to,
+  .real-doc-indigency .real-doc-body,
+  .real-doc-indigency .real-doc-signature,
+  .real-doc-indigency .real-doc-subtext,
+  .real-doc-indigency .real-doc-or {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+  }
+  .real-doc-indigency .real-doc-header-text {
+    font-size: 14pt !important;
+    font-weight: 400 !important;
+  }
+  .real-doc-indigency .real-doc-office {
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+  }
+  .real-doc-indigency .real-doc-to {
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+  }
+  .real-doc-indigency .real-doc-body {
+    font-size: var(--doc-body-font-size, 14pt) !important;
+    font-weight: 400 !important;
+    line-height: var(--doc-line-height, 1.25);
+  }
+  .real-doc-indigency .real-doc-title {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 16pt !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.04em !important;
+    text-transform: uppercase !important;
+    text-decoration: underline !important;
+    text-underline-offset: 3px !important;
+    color: #000000 !important;
+  }
+  .real-doc-indigency .real-doc-captain-name {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    color: #000000 !important;
+    letter-spacing: 0.02em;
+    text-decoration: underline !important;
+    text-underline-offset: 2px !important;
+  }
+  .real-doc-indigency .real-doc-subtext {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 14pt !important;
+    font-weight: 400 !important;
+    color: #000000 !important;
+  }
+  .real-doc-indigency .real-doc-or {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 12pt !important;
+    font-weight: 700 !important;
+  }
+  .real-doc-indigency .real-doc-or-table,
+  .real-doc-indigency .real-doc-or-label,
+  .real-doc-indigency .real-doc-or-val {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 12pt !important;
+  }
+
+  /* Residency Document: Rockwell Condensed 14pt with Felix Titling 18pt Title */
+  .real-doc-residency {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+  }
+  .real-doc-residency .real-doc-header,
+  .real-doc-residency .real-doc-header-text,
+  .real-doc-residency .real-doc-office,
+  .real-doc-residency .real-doc-to,
+  .real-doc-residency .real-doc-body,
+  .real-doc-residency .real-doc-signature,
+  .real-doc-residency .real-doc-subtext,
+  .real-doc-residency .real-doc-or {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+  }
+  .real-doc-residency .real-doc-header-text {
+    font-size: 14pt !important;
+    font-weight: 400 !important;
+  }
+  .real-doc-residency .real-doc-office {
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+  }
+  .real-doc-residency .real-doc-to {
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+  }
+  .real-doc-residency .real-doc-body {
+    font-size: var(--doc-body-font-size, 14pt) !important;
+    font-weight: 400 !important;
+    line-height: var(--doc-line-height, 1.25);
+  }
+  .real-doc-residency .real-doc-signature {
+    width: 3.4in;
+    margin: 0.55in 0 0 auto;
+    text-align: center;
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    line-height: 1.2;
+    color: #000000 !important;
+  }
+  .real-doc-residency .real-doc-captain-name {
+    margin: 0;
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    color: #000000 !important;
+    letter-spacing: 0.02em;
+    text-decoration: none !important;
+  }
+  .real-doc-residency .real-doc-subtext {
+    margin: 2px 0 0;
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 14pt !important;
+    font-weight: 400 !important;
+    color: #000000 !important;
+  }
+  .real-doc-residency .real-doc-or {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 12pt !important;
+    font-weight: 700 !important;
+  }
+  .real-doc-residency .real-doc-or-table,
+  .real-doc-residency .real-doc-or-label,
+  .real-doc-residency .real-doc-or-val {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 12pt !important;
+  }
+
+  /* Business Document: Rockwell Condensed 14pt with Cooper Std Black Title */
+  .real-doc-business {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+  }
+  .real-doc-business .real-doc-header,
+  .real-doc-business .real-doc-header-text,
+  .real-doc-business .real-doc-office,
+  .real-doc-business .real-doc-to,
+  .real-doc-business .real-doc-body,
+  .real-doc-business .real-doc-signature,
+  .real-doc-business .real-doc-subtext,
+  .real-doc-business .real-doc-or {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+  }
+  .real-doc-business .real-doc-header-text {
+    font-size: 14pt !important;
+    font-weight: 400 !important;
+  }
+  .real-doc-business .real-doc-office {
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+  }
+  .real-doc-business .real-doc-to {
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+  }
+  .real-doc-business .real-doc-body {
+    font-size: var(--doc-body-font-size, 14pt) !important;
+    font-weight: 400 !important;
+    line-height: var(--doc-line-height, 1.25);
+  }
+  .real-doc-business .real-doc-title {
+    font-family: "Cooper Std Black", "Cooper Black", "CooperBlack", serif, sans-serif !important;
+    font-size: 16pt !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.12em !important;
+    text-transform: uppercase !important;
+    text-decoration: none !important;
+    color: #000000 !important;
+  }
+  .real-doc-business .real-doc-signature {
+    width: 3.4in;
+    margin: 0.55in 0 0 auto;
+    text-align: center;
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    line-height: 1.2;
+    color: #000000 !important;
+  }
+  .real-doc-business .real-doc-captain-name {
+    margin: 0;
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+    color: #000000 !important;
+    letter-spacing: 0.02em;
+    text-decoration: none !important;
+  }
+  .real-doc-business .real-doc-subtext {
+    margin: 2px 0 0;
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 14pt !important;
+    font-weight: 400 !important;
+    color: #000000 !important;
+  }
+  .real-doc-business .real-doc-or {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 12pt !important;
+    font-weight: 700 !important;
+  }
+  .real-doc-business .real-doc-or-table,
+  .real-doc-business .real-doc-or-label,
+  .real-doc-business .real-doc-or-val {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 12pt !important;
+  }
+
+  /* RSBSA Document: Rockwell Condensed 14pt */
+  .real-doc-rsbsa {
+    font-family: "Rockwell Condensed", "Agency FB", "Arial Narrow", serif !important;
+  }
+  .real-doc-rsbsa .real-doc-header,
+  .real-doc-rsbsa .real-doc-header-text,
+  .real-doc-rsbsa .real-doc-office,
+  .real-doc-rsbsa .real-doc-to,
+  .real-doc-rsbsa .real-doc-body,
+  .real-doc-rsbsa .real-doc-rsbsa-signatures,
+  .real-doc-rsbsa-note {
+    font-family: "Rockwell Condensed", "Agency FB", "Arial Narrow", serif !important;
+  }
+  .real-doc-rsbsa .real-doc-header-text {
+    font-size: 14pt !important;
+    font-style: italic !important;
+    font-weight: 400 !important;
+  }
+  .real-doc-rsbsa .real-doc-office {
+    font-size: 14pt !important;
+    font-style: normal !important;
+    font-weight: 700 !important;
+  }
+  .real-doc-rsbsa .real-doc-to {
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+  }
+  .real-doc-rsbsa .real-doc-body {
+    font-size: var(--doc-body-font-size, 14pt) !important;
+    font-weight: 400 !important;
+    line-height: var(--doc-line-height, 1.25);
+  }
+  .real-doc-rsbsa .real-doc-title {
+    font-family: "Rockwell Condensed", "Agency FB", "Arial Narrow", serif !important;
+    font-size: 16pt !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.15em !important;
+    text-transform: uppercase !important;
+    text-decoration: none !important;
+    color: #000000 !important;
+  }
+  .real-doc-rsbsa-signatures {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 0.25in 0.5in;
+    margin-top: 0.45in;
+    text-align: center;
+    font-size: 11pt;
+    line-height: 1.2;
+    color: #000000 !important;
+  }
+  .real-doc-rsbsa-cell {
+    text-align: center;
+  }
+  .real-doc-rsbsa-cell .real-doc-line {
+    margin: 0;
+    font-size: 12pt;
+  }
+  .real-doc-rsbsa-cell .real-doc-subtext {
+    margin: 2px 0 0;
+    font-size: 10.5pt;
+    font-style: italic;
+  }
+
+  /* 4Ps Document: Rockwell Condensed 14pt with Cooper Std Black Title */
+  .real-doc-4ps,
+  .real-doc-4ps * {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+  }
+  .real-doc-4ps .real-doc-header-text {
+    font-size: 14pt !important;
+    font-weight: 400 !important;
+    line-height: 1.15 !important;
+  }
+  .real-doc-4ps .real-doc-office {
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+    margin-top: 0.18in !important;
+  }
+  .real-doc-4ps .real-doc-title {
+    font-family: "Cooper Std Black", "Cooper Black", "CooperBlack", serif, sans-serif !important;
+    font-size: 16pt !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.14em !important;
+    text-transform: uppercase !important;
+    text-decoration: none !important;
+    color: #000000 !important;
+    margin-top: 0.35in !important;
+    margin-bottom: 0.35in !important;
+  }
+  .real-doc-4ps .real-doc-to {
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+    margin-top: 0.25in !important;
+    margin-bottom: 0.22in !important;
+  }
+  .real-doc-4ps .real-doc-body {
+    font-size: var(--doc-body-font-size, 14pt) !important;
+    font-weight: 400 !important;
+    line-height: var(--doc-line-height, 1.25);
+  }
+  .real-doc-4ps .real-doc-body p {
+    margin-bottom: 0.22in !important;
+    text-indent: 0.5in !important;
+  }
+  .real-doc-4ps .real-doc-signature {
+    width: 3.4in !important;
+    margin: 0.55in 0 0 auto !important;
+    text-align: center !important;
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    line-height: 1.2 !important;
+    color: #000000 !important;
+  }
+  .real-doc-4ps .real-doc-captain-name {
+    margin: 0 !important;
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 14pt !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    color: #000000 !important;
+    letter-spacing: 0.02em !important;
+    text-decoration: none !important;
+  }
+  .real-doc-4ps .real-doc-subtext {
+    margin: 2px 0 0 !important;
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 14pt !important;
+    font-weight: 400 !important;
+    color: #000000 !important;
+  }
+  .real-doc-4ps .real-doc-or {
+    position: static !important;
+    margin-top: 0.35in !important;
+    width: 3.2in !important;
+    text-align: left !important;
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 12pt !important;
+    font-weight: 700 !important;
+    line-height: 1.3 !important;
+  }
+  .real-doc-4ps .real-doc-or-table,
+  .real-doc-4ps .real-doc-or-row,
+  .real-doc-4ps .real-doc-or-label {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 12pt !important;
+    font-weight: 700 !important;
+  }
+  .real-doc-4ps .real-doc-or-val {
+    font-family: "Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif !important;
+    font-size: 12pt !important;
+    font-weight: 400 !important;
+  }
   
-  .real-doc-rsbsa-signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 0.32in 0.6in; margin-top: 0.48in; text-align: center; font-size: 11px; line-height: 1.2; }
+  /* FATMAH S. SUMPAO in Times New Roman, 12pt, Bold */
+  .real-doc-clearance-staff { margin-top: 0.18in; width: 2.8in; text-align: left; font-family: "Times New Roman", Times, serif; font-size: 12pt; line-height: 1.15; color: #000000 !important; }
+  .real-doc-clearance-staff p { margin: 0; color: #000000 !important; }
+  .real-doc-staff-name { font-family: "Times New Roman", Times, serif; font-size: 12pt; font-weight: 700; text-transform: uppercase; color: #000000 !important; }
+  .real-doc-staff-subtext { margin: 2px 0 0; font-family: "Times New Roman", Times, serif; font-size: 11pt; font-weight: 400; color: #000000 !important; }
+  
+  .real-doc-thumbmark { margin-top: 0.10in; margin-left: 0.02in; width: 0.95in; height: 0.95in; border: 1.5px solid #000; display: block; background: transparent !important; }
+  
+  /* O. R. No. / CTC box in Times New Roman, 11pt, Bold labels */
+  .real-doc-or { position: absolute; left: 1.0in; bottom: 0.85in; font-family: "Times New Roman", Times, serif; font-size: 11pt; font-weight: 700; line-height: 1.3; color: #000000 !important; }
+  .real-doc-4ps .real-doc-or, .real-doc-business .real-doc-or, .real-doc-clearance-or, .real-doc-indigency-or, .real-doc-residency-or { position: static; margin-top: 0.25in; width: 3.2in; text-align: left; font-family: "Times New Roman", Times, serif; font-size: 11pt; font-weight: 700; line-height: 1.3; }
+  .real-doc-or p { margin: 0; color: #000000 !important; }
+  .real-doc-or-table { display: table; border-collapse: collapse; margin-top: 2px; font-family: "Times New Roman", Times, serif; font-size: 11pt; }
+  .real-doc-or-row { display: table-row; }
+  .real-doc-or-label { display: table-cell; padding-right: 0.22in; white-space: nowrap; font-family: "Times New Roman", Times, serif; font-size: 11pt; font-weight: 700; color: #000000 !important; }
+  .real-doc-or-val { display: table-cell; min-width: 1.2in; text-align: left; font-family: "Times New Roman", Times, serif; font-size: 11pt; font-weight: 400; color: #000000 !important; }
+  .real-doc-or-val u { text-decoration: underline; text-underline-offset: 2px; }
+  
+  .real-doc-rsbsa-signatures { display: grid; grid-template-columns: 1.2fr 1fr; gap: 0.2in 0.5in; margin-top: 0.45in; text-align: center; font-size: 11pt; line-height: 1.2; color: #000000 !important; }
+  .real-doc-rsbsa-cell { text-align: center; }
   
   .real-doc-shell[data-editable="true"] [contenteditable="true"] { border-radius: 2px; cursor: text; outline: 1px dashed transparent; outline-offset: 2px; transition: background-color 0.15s ease, outline-color 0.15s ease; }
   .real-doc-shell[data-editable="true"] [contenteditable="true"]:hover { background: rgba(37, 99, 235, 0.05); outline-color: rgba(37, 99, 235, 0.32); }
@@ -588,9 +1263,9 @@ const REAL_DOCUMENT_CSS = `
   
   @page { size: letter; margin: 0; }
   @media print {
-    html, body { margin: 0; padding: 0; background: #fff; }
-    .real-doc-page { width: 8.5in; min-height: 11in; box-shadow: none; }
-    .real-doc-shell [contenteditable="true"] { background: transparent; outline: none; }
+    html, body { margin: 0; padding: 0; background: #fff !important; }
+    .real-doc-page { width: 8.5in; min-height: 11in; box-shadow: none; background: #fff !important; }
+    .real-doc-shell [contenteditable="true"] { background: transparent !important; outline: none; }
   }
 `;
 
@@ -598,16 +1273,16 @@ export const getRealDocumentMarkup = ({ fields = {}, template = null, editable =
   const safeFields = fields || {};
   const title = getDocumentTitle(template);
   const paragraphs = getDocumentBodyHtml(safeFields, template);
-  const printSettings = getPrintSettings(safeFields);
+  const printSettings = getPrintSettings(safeFields, template);
 
   return `
     <style>${REAL_DOCUMENT_CSS}</style>
     <main class="real-doc-shell" ${editable ? 'data-editable="true"' : ""}>
       <article
         class="real-doc-page real-doc-${getRealDocumentTemplateKey(template)}"
-        style="--doc-font-family: ${printSettings.fontFamily}; --doc-body-font-size: ${printSettings.bodyFontSize}px; --doc-line-height: ${printSettings.lineHeight}; --doc-paragraph-gap: ${printSettings.paragraphGap}in; --doc-padding: ${printSettings.padding};"
+        style="--doc-font-family: ${printSettings.fontFamily}; --doc-body-font-size: ${printSettings.bodyFontSizePt}pt; --doc-line-height: ${printSettings.lineHeight}; --doc-paragraph-gap: ${printSettings.paragraphGap}in; --doc-padding: ${printSettings.padding};"
       >
-        <header class="real-doc-header">
+        <div class="real-doc-header">
           <img class="real-doc-seal" src="${BARANGAY_SEAL_SRC}" alt="" />
           <div class="real-doc-header-text">
             <div>Republic of the Philippines</div>
@@ -616,7 +1291,7 @@ export const getRealDocumentMarkup = ({ fields = {}, template = null, editable =
             <div>Barangay of Upper Mingading</div>
             <div class="real-doc-office">OFFICE OF THE PUNONG BARANGAY</div>
           </div>
-        </header>
+        </div>
         <h1 class="real-doc-title">${title}</h1>
         <p class="real-doc-to">TO WHOM IT MAY CONCERN:</p>
         <section class="real-doc-body" ${getEditableBodyAttributes(editable)}>${paragraphs}</section>
@@ -634,86 +1309,36 @@ export const getRealDocumentPrintMarkup = ({ fields = {}, template = null } = {}
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Document Print Preview</title>
+  <title>Official Barangay Document - Print</title>
   <style>
+    @page {
+      size: letter;
+      margin: 0 !important;
+    }
     html, body {
-      min-height: 100%;
-      background: #eef1f5 !important;
-    }
-    body {
-      padding: 0 0 32px !important;
-    }
-    .print-preview-toolbar {
-      position: sticky;
-      top: 0;
-      z-index: 1000;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 20px;
-      padding: 12px 18px;
-      border-bottom: 1px solid #d9dee7;
-      background: #ffffff;
-      box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
-      color: #1d2129;
-      font-family: "Segoe UI", Arial, sans-serif;
-      font-size: 13px;
-      line-height: 1.4;
-    }
-    .print-preview-toolbar strong {
-      display: block;
-      font-size: 14px;
-    }
-    .print-preview-toolbar span {
-      color: #667085;
-      font-size: 12px;
-    }
-    .print-preview-actions {
-      display: flex;
-      gap: 8px;
-    }
-    .print-preview-actions button {
-      min-height: 38px;
-      cursor: pointer;
-      border: 1px solid #d9dee7;
-      border-radius: 8px;
-      background: #ffffff;
-      padding: 8px 14px;
-      color: #344054;
-      font: 600 13px/1.2 "Segoe UI", Arial, sans-serif;
-    }
-    .print-preview-actions .primary {
-      border-color: #00552e;
-      background: #006633;
-      color: #ffffff;
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff !important;
     }
     @media print {
       html, body {
         background: #ffffff !important;
-      }
-      body {
+        margin: 0 !important;
         padding: 0 !important;
-      }
-      .print-preview-toolbar {
-        display: none !important;
       }
     }
   </style>
 </head>
 <body>
-  <div class="print-preview-toolbar">
-    <div>
-      <strong>Document Print Preview</strong>
-      <span>Review the document, then select Print when ready.</span>
-    </div>
-    <div class="print-preview-actions">
-      <button type="button" onclick="window.close()">Close Preview</button>
-      <button type="button" class="primary" onclick="window.print()">Print Document</button>
-    </div>
-  </div>
   ${getRealDocumentMarkup({ fields: safeFields, template })}
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.focus();
+        window.print();
+      }, 250);
+    };
+  </script>
 </body>
 </html>`;
 };
-

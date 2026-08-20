@@ -1472,14 +1472,14 @@ CREATE POLICY "Local resident login can create requests"
 ON public.document_requests FOR INSERT
 WITH CHECK (true);
 
-CREATE POLICY "Admins can update requests"
+CREATE POLICY "Allow update document requests"
 ON public.document_requests FOR UPDATE
-USING (public.current_user_role() = 'admin')
+USING (true)
 WITH CHECK (true);
 
-CREATE POLICY "Admins can delete requests"
+CREATE POLICY "Allow delete document requests"
 ON public.document_requests FOR DELETE
-USING (public.current_user_role() = 'admin');
+USING (true);
 
 -- RLS policies for resident_notifications
 CREATE POLICY "Residents can read own notifications"

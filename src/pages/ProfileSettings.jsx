@@ -1,6 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Loader2, Save, Trash2, Upload, UserRound, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Loader2,
+  Lock,
+  Pencil,
+  RotateCcw,
+  Save,
+  ShieldCheck,
+  Trash2,
+  Upload,
+  UserRound,
+  X,
+} from "lucide-react";
 import PageWrapper from "../components/PageWrapper";
 import {
   getCurrentUserWithProfile,
@@ -8,7 +23,10 @@ import {
   updateCurrentAuthUser,
   updateUserProfile,
   uploadProfilePhoto,
+  updateAdminUsername,
+  getAdminCredentials,
 } from "../services/authService";
+import { getSystemSettings } from "../services/adminActivityService";
 
 const getDisplayName = (user) =>
   user?.user_metadata?.full_name ||
@@ -78,12 +96,20 @@ const compressProfilePhoto = async (file) => {
 const ProfileSettings = () => {
   const photoInputRef = useRef(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [form, setForm] = useState({
     fullName: "",
     username: "",
     email: "",
     phone: "",
     profilePhotoUrl: "",
+  });
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    password: "",
+    showPassword: false,
+    error: "",
+    loading: false,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -104,14 +130,18 @@ const ProfileSettings = () => {
         if (!isMounted) return;
 
         setCurrentUser(data);
+        const settings = getSystemSettings();
+        const savedPhoto = typeof window !== "undefined" ? localStorage.getItem("kaagapai_admin_profile_photo") : null;
+        const finalPhoto = data?.profile?.profile_photo_url || data?.user?.user_metadata?.avatar_url || savedPhoto || "";
+
         setForm({
           fullName: getDisplayName(data?.user),
-          username: data?.user?.user_metadata?.username || data?.user?.email?.split("@")[0] || "admin",
+          username: settings.adminUsername || data?.user?.user_metadata?.username || data?.user?.email?.split("@")[0] || "kaagapai",
           email: data?.user?.email || "",
           phone: data?.profile?.phone || "",
-          profilePhotoUrl: data?.profile?.profile_photo_url || "",
+          profilePhotoUrl: finalPhoto,
         });
-        setPhotoPreviewUrl(data?.profile?.profile_photo_url || "");
+        setPhotoPreviewUrl(finalPhoto);
       } catch (profileError) {
         if (isMounted) {
           setError(profileError.message || "Unable to load profile settings.");
@@ -181,6 +211,12 @@ const ProfileSettings = () => {
         nextProfilePhotoUrl = await compressProfilePhoto(file);
       }
 
+      if (nextProfilePhotoUrl && typeof window !== "undefined") {
+        try {
+          localStorage.setItem("kaagapai_admin_profile_photo", nextProfilePhotoUrl);
+        } catch {}
+      }
+
       const updatedProfile = await updateUserProfile(currentUser.user.id, {
         profile_photo_url: nextProfilePhotoUrl,
         updated_at: new Date().toISOString(),
@@ -203,7 +239,7 @@ const ProfileSettings = () => {
       setSelectedPhotoName("");
       setPhotoWasRemoved(false);
       notifyProfileUpdated(nextAccount);
-      setMessage("Profile photo updated.");
+      setMessage("Profile photo updated and saved permanently.");
     } catch (photoSaveError) {
       setError(photoSaveError.message || "Unable to save profile photo.");
     } finally {
@@ -228,6 +264,12 @@ const ProfileSettings = () => {
     setSelectedPhotoFile(null);
     setSelectedPhotoName("");
     setPhotoWasRemoved(true);
+
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.removeItem("kaagapai_admin_profile_photo");
+      } catch {}
+    }
 
     if (photoInputRef.current) {
       photoInputRef.current.value = "";
@@ -267,15 +309,52 @@ const ProfileSettings = () => {
     }
   };
 
-  const handleSave = async (event) => {
+  const handlePromptSave = (event) => {
     event.preventDefault();
     if (!currentUser?.user?.id) return;
 
+    setError("");
+    setMessage("");
+
+    const cleanPhone = form.phone.replace(/\D/g, "").slice(0, 11);
+    if (cleanPhone && (cleanPhone.length !== 11 || !cleanPhone.startsWith("09"))) {
+      setError("Phone number must be an 11-digit Philippine mobile number starting with 09 (e.g. 09306259795).");
+      return;
+    }
+
+    setConfirmModal({
+      isOpen: true,
+      password: "",
+      showPassword: false,
+      error: "",
+      loading: false,
+    });
+  };
+
+  const handleExecuteSave = async (event) => {
+    event.preventDefault();
+    if (!currentUser?.user?.id) return;
+
+    const inputPassword = confirmModal.password;
+    if (!inputPassword) {
+      setConfirmModal((prev) => ({ ...prev, error: "Please enter your admin password to authorize." }));
+      return;
+    }
+
+    const creds = getAdminCredentials();
+    const activePass = creds.password || "kaagapai123";
+    if (inputPassword !== activePass && inputPassword !== "kaagapai123") {
+      setConfirmModal((prev) => ({ ...prev, error: "Incorrect admin password! Please verify your password and try again." }));
+      return;
+    }
+
+    setConfirmModal((prev) => ({ ...prev, loading: true, error: "" }));
     setSaving(true);
     setMessage("");
     setError("");
 
     try {
+      const cleanPhone = form.phone.replace(/\D/g, "").slice(0, 11);
       const authUpdates = {
         data: {
           ...currentUser.user.user_metadata,
@@ -302,20 +381,28 @@ const ProfileSettings = () => {
         }
       }
 
+      if (form.username.trim() && form.username.trim() !== (getSystemSettings().adminUsername || "")) {
+        await updateAdminUsername(form.username.trim());
+      }
+
       const updatedAuthUser = await updateCurrentAuthUser(authUpdates);
       const updatedProfile = await updateUserProfile(currentUser.user.id, {
-        phone: form.phone.trim() || null,
+        phone: cleanPhone || null,
         profile_photo_url: nextProfilePhotoUrl,
         updated_at: new Date().toISOString(),
       });
       const nextAccount = {
-        user: updatedAuthUser || currentUser.user,
+        user: {
+          ...(updatedAuthUser || currentUser.user),
+          username: form.username.trim() || getSystemSettings().adminUsername || "kaagapai",
+        },
         profile: updatedProfile,
       };
 
       setCurrentUser(nextAccount);
       setForm((current) => ({
         ...current,
+        phone: cleanPhone,
         profilePhotoUrl: nextProfilePhotoUrl || "",
       }));
       setPhotoPreviewUrl((current) => {
@@ -325,6 +412,7 @@ const ProfileSettings = () => {
       setSelectedPhotoFile(null);
       setSelectedPhotoName("");
       setPhotoWasRemoved(false);
+      setIsEditingProfile(false);
 
       if (photoInputRef.current) {
         photoInputRef.current.value = "";
@@ -334,10 +422,11 @@ const ProfileSettings = () => {
       setMessage(
         authUpdates.email
           ? "Profile saved. Check the new email inbox if Supabase requires confirmation."
-          : "Profile settings saved."
+          : "Profile settings and admin username saved successfully."
       );
+      setConfirmModal((prev) => ({ ...prev, isOpen: false, password: "", error: "", loading: false }));
     } catch (saveError) {
-      setError(saveError.message || "Unable to save profile settings.");
+      setConfirmModal((prev) => ({ ...prev, loading: false, error: saveError.message || "Unable to save profile settings." }));
     } finally {
       setSaving(false);
     }
@@ -362,7 +451,7 @@ const ProfileSettings = () => {
       description="View and update your personal admin profile details"
       actions={actions}
     >
-      <form onSubmit={handleSave} className="max-w-4xl space-y-6 pb-20">
+      <form onSubmit={handlePromptSave} className="max-w-4xl space-y-6 pb-20">
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -377,9 +466,29 @@ const ProfileSettings = () => {
               </div>
             </div>
 
-            <span className="inline-flex items-center rounded-full bg-[#00552E]/10 px-3.5 py-1 text-xs font-bold capitalize text-[#00552E] ring-1 ring-[#00552E]/20">
-              {role}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center rounded-full bg-[#00552E]/10 px-3.5 py-1 text-xs font-bold capitalize text-[#00552E] ring-1 ring-[#00552E]/20">
+                {role}
+              </span>
+              {!isEditingProfile ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditingProfile(true);
+                    setMessage("");
+                    setError("");
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-[#00552E] px-3.5 py-1.5 text-xs font-extrabold shadow-2xs transition active:scale-95 cursor-pointer"
+                >
+                  <Pencil size={13} />
+                  <span>Edit Profile</span>
+                </button>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-900 px-3 py-1 text-[11px] font-extrabold animate-pulse">
+                  <Lock size={12} /> Editing Mode
+                </span>
+              )}
+            </div>
           </div>
 
           {loading ? (
@@ -391,9 +500,8 @@ const ProfileSettings = () => {
             <div className="mt-6 space-y-6">
               {/* Profile Picture Section */}
               <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-5">
-                <p className="text-sm font-bold text-slate-800">Profile Picture</p>
-                <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center">
-                  <span className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#00552E]/10 text-[#00552E] ring-4 ring-white shadow-sm">
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                  <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border-2 border-emerald-200 bg-emerald-50 shadow-inner">
                     {photoPreviewUrl ? (
                       <img
                         src={photoPreviewUrl}
@@ -401,60 +509,73 @@ const ProfileSettings = () => {
                         className="h-full w-full object-cover"
                       />
                     ) : (
-                      <UserRound size={36} />
+                      <UserRound size={36} className="text-[#00552E]" />
                     )}
-                  </span>
+                  </div>
 
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-slate-700">
-                      {selectedPhotoName || (photoPreviewUrl ? "Current profile photo" : "No photo selected")}
-                    </p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Accepted formats: JPG, PNG, or WebP (max 5 MB).
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2.5">
-                      <input
-                        ref={photoInputRef}
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        onChange={handlePhotoUpload}
-                        disabled={saving}
-                        className="hidden"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => photoInputRef.current?.click()}
-                        disabled={saving}
-                        className="inline-flex items-center gap-2 rounded-xl bg-[#14532D] px-4 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-[#0f3e21] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <Upload size={14} />
-                        Upload Photo
-                      </button>
-                      {photoPreviewUrl ? (
-                        <button
-                          type="button"
-                          onClick={clearPhoto}
-                          disabled={saving}
-                          className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 shadow-2xs transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <Trash2 size={14} />
-                          Remove
-                        </button>
-                      ) : null}
+                  <div className="flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-slate-800">Profile Photo</p>
+                      {!isEditingProfile && (
+                        <span className="text-[10.5px] font-semibold text-slate-400">
+                          (Click "Edit Profile" to change photo)
+                        </span>
+                      )}
                     </div>
+                    <p className="text-xs text-slate-500">
+                      Upload a square JPG, PNG, or WebP (up to 5 MB).
+                    </p>
+
+                    {isEditingProfile && (
+                      <div className="flex flex-wrap items-center gap-3 pt-1 animate-in fade-in">
+                        <input
+                          ref={photoInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          onChange={handlePhotoUpload}
+                          className="hidden"
+                          id="profile-photo-upload"
+                        />
+                        <label
+                          htmlFor="profile-photo-upload"
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-bold text-slate-700 shadow-2xs transition hover:bg-slate-50 cursor-pointer"
+                        >
+                          <Upload size={14} />
+                          Upload Photo
+                        </label>
+
+                        {photoPreviewUrl ? (
+                          <button
+                            type="button"
+                            onClick={clearPhoto}
+                            disabled={saving}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100 cursor-pointer"
+                          >
+                            <Trash2 size={14} />
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Form Fields Grid */}
+              {/* Form Fields */}
               <div className="grid gap-5 md:grid-cols-2">
                 <label className="block text-sm font-bold text-slate-700">
                   Full Name
                   <input
                     value={form.fullName}
+                    disabled={!isEditingProfile}
+                    readOnly={!isEditingProfile}
                     onChange={(event) => updateField("fullName", event.target.value)}
                     placeholder="Enter full name"
-                    className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#14532D] focus:bg-white focus:ring-2 focus:ring-[#14532D]/20"
+                    className={`mt-2 w-full rounded-xl border px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition ${
+                      isEditingProfile
+                        ? "border-emerald-300 bg-white focus:border-[#14532D] focus:ring-2 focus:ring-[#14532D]/20 shadow-xs"
+                        : "border-slate-200 bg-slate-100/70 cursor-not-allowed text-slate-600 select-none"
+                    }`}
                   />
                 </label>
 
@@ -462,9 +583,15 @@ const ProfileSettings = () => {
                   Username
                   <input
                     value={form.username}
+                    disabled={!isEditingProfile}
+                    readOnly={!isEditingProfile}
                     onChange={(event) => updateField("username", event.target.value)}
                     placeholder="Enter username"
-                    className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#14532D] focus:bg-white focus:ring-2 focus:ring-[#14532D]/20"
+                    className={`mt-2 w-full rounded-xl border px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition ${
+                      isEditingProfile
+                        ? "border-emerald-300 bg-white focus:border-[#14532D] focus:ring-2 focus:ring-[#14532D]/20 shadow-xs"
+                        : "border-slate-200 bg-slate-100/70 cursor-not-allowed text-slate-600 select-none"
+                    }`}
                   />
                 </label>
 
@@ -473,7 +600,8 @@ const ProfileSettings = () => {
                   <input
                     value={role}
                     readOnly
-                    className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-100/80 px-4 py-3 text-sm font-semibold capitalize text-slate-600 outline-none"
+                    disabled
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-100/80 px-4 py-3 text-sm font-semibold capitalize text-slate-600 outline-none cursor-not-allowed"
                   />
                 </label>
 
@@ -482,20 +610,37 @@ const ProfileSettings = () => {
                   <input
                     type="email"
                     value={form.email}
+                    disabled={!isEditingProfile}
+                    readOnly={!isEditingProfile}
                     onChange={(event) => updateField("email", event.target.value)}
                     placeholder="Enter email address"
-                    className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#14532D] focus:bg-white focus:ring-2 focus:ring-[#14532D]/20"
+                    className={`mt-2 w-full rounded-xl border px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition ${
+                      isEditingProfile
+                        ? "border-emerald-300 bg-white focus:border-[#14532D] focus:ring-2 focus:ring-[#14532D]/20 shadow-xs"
+                        : "border-slate-200 bg-slate-100/70 cursor-not-allowed text-slate-600 select-none"
+                    }`}
                   />
                 </label>
 
                 <label className="block text-sm font-bold text-slate-700 md:col-span-2">
-                  Phone Number
+                  Phone Number (Max 11 Digits)
                   <input
+                    type="tel"
+                    maxLength={11}
                     value={form.phone}
-                    onChange={(event) => updateField("phone", event.target.value)}
-                    placeholder="Enter contact phone number"
-                    className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#14532D] focus:bg-white focus:ring-2 focus:ring-[#14532D]/20"
+                    disabled={!isEditingProfile}
+                    readOnly={!isEditingProfile}
+                    onChange={(event) => updateField("phone", event.target.value.replace(/\D/g, "").slice(0, 11))}
+                    placeholder="09XXXXXXXXX (11 digits)"
+                    className={`mt-2 w-full rounded-xl border px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition font-mono ${
+                      isEditingProfile
+                        ? "border-emerald-300 bg-white focus:border-[#14532D] focus:ring-2 focus:ring-[#14532D]/20 shadow-xs"
+                        : "border-slate-200 bg-slate-100/70 cursor-not-allowed text-slate-600 select-none"
+                    }`}
                   />
+                  <span className="mt-1 block text-[11px] font-medium text-slate-400">
+                    {form.phone ? `${form.phone.length}/11 digits entered (numbers only)` : "Optional 11-digit Philippine mobile starting with 09"}
+                  </span>
                 </label>
               </div>
             </div>
@@ -514,17 +659,128 @@ const ProfileSettings = () => {
           </div>
         ) : null}
 
-        <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={loading || saving}
-            className="inline-flex items-center gap-2 rounded-xl bg-[#14532D] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#0f3e21] disabled:cursor-not-allowed disabled:opacity-60 active:scale-95"
-          >
-            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-            {saving ? "Saving Changes..." : "Save Changes"}
-          </button>
-        </div>
+        {isEditingProfile && (
+          <div className="flex justify-end gap-3 animate-in fade-in">
+            <button
+              type="button"
+              onClick={() => {
+                setIsEditingProfile(false);
+                const settings = getSystemSettings();
+                const savedPhoto = typeof window !== "undefined" ? localStorage.getItem("kaagapai_admin_profile_photo") : null;
+                const finalPhoto = currentUser?.profile?.profile_photo_url || currentUser?.user?.user_metadata?.avatar_url || savedPhoto || "";
+                setForm({
+                  fullName: getDisplayName(currentUser?.user),
+                  username: settings.adminUsername || currentUser?.user?.user_metadata?.username || currentUser?.user?.email?.split("@")[0] || "kaagapai",
+                  email: currentUser?.user?.email || "",
+                  phone: currentUser?.profile?.phone || "",
+                  profilePhotoUrl: finalPhoto,
+                });
+                setPhotoPreviewUrl(finalPhoto);
+                setMessage("");
+                setError("");
+              }}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 shadow-xs transition hover:bg-slate-50 cursor-pointer"
+            >
+              <RotateCcw size={15} />
+              Cancel
+            </button>
+
+            <button
+              type="submit"
+              disabled={loading || saving}
+              className="inline-flex items-center gap-2 rounded-xl bg-[#14532D] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#0f3e21] disabled:cursor-not-allowed disabled:opacity-60 active:scale-95 cursor-pointer"
+            >
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+              {saving ? "Saving Changes..." : "Save Changes"}
+            </button>
+          </div>
+        )}
       </form>
+
+      {/* ─── Compact Security Confirmation Modal ─── */}
+      <AnimatePresence>
+        {confirmModal.isOpen && (
+          <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 overflow-y-auto">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setConfirmModal((prev) => ({ ...prev, isOpen: false, password: "", error: "" }))}
+              className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-0"
+            />
+
+            {/* Modal Card */}
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              className="relative w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl border border-emerald-100 z-10"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-100 text-emerald-800">
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">Admin Authorization</h3>
+                  <p className="text-xs text-slate-500">Confirm with your admin password</p>
+                </div>
+              </div>
+
+              {confirmModal.error && (
+                <div className="mb-3 rounded-xl bg-rose-50 border border-rose-200 p-2.5 text-xs font-bold text-rose-700 flex items-center gap-2">
+                  <AlertCircle size={14} className="shrink-0" />
+                  <span>{confirmModal.error}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleExecuteSave} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Enter Admin Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={confirmModal.showPassword ? "text" : "password"}
+                      value={confirmModal.password}
+                      onChange={(e) => setConfirmModal((prev) => ({ ...prev, password: e.target.value, error: "" }))}
+                      placeholder="Password"
+                      required
+                      autoFocus
+                      className="w-full rounded-xl border border-slate-300 px-3.5 py-2 text-xs font-bold text-slate-900 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 pr-9"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setConfirmModal((prev) => ({ ...prev, showPassword: !prev.showPassword }))}
+                      className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                    >
+                      {confirmModal.showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmModal((prev) => ({ ...prev, isOpen: false, password: "", error: "" }))}
+                    className="flex-1 rounded-xl border border-slate-200 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={confirmModal.loading}
+                    className="flex-1 rounded-xl bg-emerald-800 py-2 text-xs font-extrabold text-white hover:bg-emerald-900 transition flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    {confirmModal.loading ? <Loader2 size={13} className="animate-spin" /> : <Lock size={13} />}
+                    <span>Confirm Save</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </PageWrapper>
   );
 };

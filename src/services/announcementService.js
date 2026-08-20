@@ -98,7 +98,8 @@ export async function createAnnouncement(announcementData) {
     .from(TABLE)
     .insert([payload])
     .select()
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) throw normalizeSupabaseError(error);
   syncKnowledgeFromAnnouncement(data).catch((syncError) => {
@@ -117,7 +118,8 @@ export async function updateAnnouncement(id, updates) {
     .update(payload)
     .eq("id", id)
     .select()
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) throw normalizeSupabaseError(error);
   syncKnowledgeFromAnnouncement(data).catch((syncError) => {
@@ -134,7 +136,8 @@ export async function deleteAnnouncement(id) {
     .from(TABLE)
     .select("*")
     .eq("id", id)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (record) {
     moveToRecycleBin("announcements", id, record);

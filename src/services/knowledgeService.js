@@ -133,7 +133,8 @@ export async function createKnowledgeItem(item) {
     .from(TABLE)
     .insert([payload])
     .select()
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) throw normalizeKnowledgeError(error);
   return data;
@@ -149,7 +150,8 @@ export async function updateKnowledgeItem(id, updates) {
     .update(payload)
     .eq("id", id)
     .select()
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) throw normalizeKnowledgeError(error);
   return data;
@@ -187,7 +189,8 @@ export async function upsertKnowledgeItem(item) {
     .from(TABLE)
     .upsert(payload, { onConflict: "source_type,source_id" })
     .select()
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) throw normalizeKnowledgeError(error);
   return data;

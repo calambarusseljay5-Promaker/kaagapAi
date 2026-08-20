@@ -8,7 +8,7 @@ const RESIDENTS_TABLE = "residents";
 const DOCUMENT_TEMPLATES_TABLE = "document_templates";
 const RESIDENT_NOTIFICATIONS_TABLE = "resident_notifications";
 const DOCUMENT_REQUEST_COLUMNS = "id,resident_id,document_type,status,created_at,updated_at";
-const DOCUMENT_REQUEST_WITH_RESIDENT_COLUMNS = `${DOCUMENT_REQUEST_COLUMNS},${RESIDENTS_TABLE}(id,full_name,email,house_no,age,gender,is_pwd,pwd_type,purok,address,status,created_at,updated_at)`;
+const DOCUMENT_REQUEST_WITH_RESIDENT_COLUMNS = `${DOCUMENT_REQUEST_COLUMNS},${RESIDENTS_TABLE}(id,full_name,email,phone,house_no,age,gender,is_pwd,pwd_type,purok,address,status,created_at,updated_at)`;
 const PREPARED_DOCUMENTS_KEY = "kaagapai_prepared_documents";
 const DOCUMENT_TEMPLATE_BUCKET = "document-templates";
 const DOCUMENT_TEMPLATE_FILE_TYPES = new Set(["doc", "docx", "dot", "dotx", "pdf"]);
@@ -227,7 +227,8 @@ export async function uploadDocumentTemplateFile(template, file) {
         .update(payload)
         .eq("id", existingTemplate.id)
         .select()
-        .single();
+        .limit(1)
+        .maybeSingle();
 
       if (error) throw error;
       return data;
@@ -237,7 +238,8 @@ export async function uploadDocumentTemplateFile(template, file) {
       .from(DOCUMENT_TEMPLATES_TABLE)
       .insert([payload])
       .select()
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (error) throw error;
     return data;
@@ -275,8 +277,8 @@ export async function updateDocumentRequestStatus(id, status) {
       message: `Your ${updatedRow.document_type || "document"} request is completed and ready for pickup at the barangay office.`,
     },
     Released: {
-      title: "Document ready for pickup",
-      message: `Your ${updatedRow.document_type || "document"} request is released and ready for pickup at the barangay office.`,
+      title: "Document officially released",
+      message: `Your ${updatedRow.document_type || "document"} request has been officially released. Salamat po sa inyong pakikipagtulungan!`,
     },
     Rejected: {
       title: "Document request update",
@@ -373,29 +375,69 @@ export async function updateDocumentRequestType(id, document_type) {
   return item;
 }
 
-/**
- * Delete a document request record
- */
-export async function deleteDocumentRequest(id) {
-  // Fetch the record snapshot first for the Recycle Bin
-  const { data: record } = await supabase
-    .from(DOCUMENT_REQUESTS_TABLE)
-    .select("*, residents(full_name)")
-    .eq("id", id)
-    .single();
+export function deletePreparedDocument(requestId) {
+  if (!requestId) return;
+  const storage = getStorage();
+  if (!storage) return;
+  const documents = getPreparedDocuments();
+  if (documents[requestId]) {
+    delete documents[requestId];
+    try {
+      storage.setItem(PREPARED_DOCUMENTS_KEY, JSON.stringify(documents));
+    } catch (e) {
+      console.warn("Failed to update prepared documents in storage:", e);
+    }
+  }
+}
 
-  if (record) {
-    moveToRecycleBin("document_requests", id, record);
+/**
+ * Delete multiple document request records (Batch delete)
+ */
+export async function deleteDocumentRequests(ids = []) {
+  const safeIds = (Array.isArray(ids) ? ids : [ids]).filter(Boolean);
+  if (safeIds.length === 0) return [];
+
+  // 1. Fetch the records snapshot first for the Recycle Bin
+  try {
+    const { data: records } = await supabase
+      .from(DOCUMENT_REQUESTS_TABLE)
+      .select("*, residents(full_name)")
+      .in("id", safeIds);
+
+    if (Array.isArray(records)) {
+      for (const record of records) {
+        if (record?.id) {
+          moveToRecycleBin("document_requests", record.id, record);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Recycle bin snapshot warning:", err);
   }
 
+  // 2. Clean up any prepared document drafts in localStorage
+  for (const id of safeIds) {
+    deletePreparedDocument(id);
+  }
+
+  // 3. Delete from Supabase table
   const { data, error } = await supabase
     .from(DOCUMENT_REQUESTS_TABLE)
     .delete()
-    .eq("id", id)
+    .in("id", safeIds)
     .select();
 
   if (error) throw error;
-  return data;
+  return data || [];
+}
+
+/**
+ * Delete a single document request record
+ */
+export async function deleteDocumentRequest(id) {
+  if (!id) return null;
+  const result = await deleteDocumentRequests([id]);
+  return result?.[0] || null;
 }
 
 /**
@@ -426,7 +468,8 @@ export async function createResidentNotification({
     .from(RESIDENT_NOTIFICATIONS_TABLE)
     .insert([{ resident_id, document_request_id, title, message }])
     .select()
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) throw error;
   return data;
@@ -441,7 +484,8 @@ export async function markResidentNotificationRead(id) {
     .update({ is_read: true })
     .eq("id", id)
     .select()
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) throw error;
   return data;
@@ -455,7 +499,8 @@ export async function fetchDocumentRequestById(id) {
     .from(DOCUMENT_REQUESTS_TABLE)
     .select(DOCUMENT_REQUEST_WITH_RESIDENT_COLUMNS)
     .eq("id", id)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) throw error;
   return data;

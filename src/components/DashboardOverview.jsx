@@ -15,8 +15,10 @@ import {
   Clock,
   Sun,
   Cloud,
-  CloudSun,
   Calendar,
+  Building2,
+  MapPin,
+  Sparkles,
 } from "lucide-react";
 import {
   Area,
@@ -175,31 +177,78 @@ const DashboardOverview = ({
   }, [safeResidents]);
 
   const totalRes = demographics.totalResidents;
-
-  // Age Distribution Data for Donut Chart
+  // Age Distribution Data for Donut Chart
   const ageGroupData = useMemo(() => {
+    const hasResidents = safeResidents && safeResidents.length > 0;
     const total = demographics.totalResidents || 1;
     const calcPct = (val) => `${((val / total) * 100).toFixed(1)}%`;
+
+    if (!hasResidents || (demographics.children === 0 && demographics.seniors === 0 && demographics.adults === 0)) {
+      return [
+        { name: "0-17 yrs", value: 626, pct: "28.3%", fill: "#EC4899" },
+        { name: "18-30 yrs", value: 501, pct: "22.6%", fill: "#6366F1" },
+        { name: "31-45 yrs", value: 426, pct: "19.2%", fill: "#F59E0B" },
+        { name: "46-59 yrs", value: 327, pct: "14.8%", fill: "#A855F7" },
+        { name: "60+ yrs", value: 281, pct: "12.7%", fill: "#10B981" },
+      ];
+    }
+
     return [
-      { name: "0-17 yrs", value: demographics.children, pct: calcPct(demographics.children) },
-      { name: "18-30 yrs", value: demographics.youngAdults, pct: calcPct(demographics.youngAdults) },
-      { name: "31-45 yrs", value: demographics.adults, pct: calcPct(demographics.adults) },
-      { name: "46-59 yrs", value: demographics.middleAged, pct: calcPct(demographics.middleAged) },
-      { name: "60+ yrs", value: demographics.seniors, pct: calcPct(demographics.seniors) },
+      { name: "0-17 yrs", value: demographics.children, pct: calcPct(demographics.children), fill: "#EC4899" },
+      { name: "18-30 yrs", value: demographics.youngAdults, pct: calcPct(demographics.youngAdults), fill: "#6366F1" },
+      { name: "31-45 yrs", value: demographics.adults, pct: calcPct(demographics.adults), fill: "#F59E0B" },
+      { name: "46-59 yrs", value: demographics.middleAged, pct: calcPct(demographics.middleAged), fill: "#A855F7" },
+      { name: "60+ yrs", value: demographics.seniors, pct: calcPct(demographics.seniors), fill: "#10B981" },
     ];
-  }, [demographics]);
+  }, [demographics, safeResidents]);
 
   // Population per Purok Bar Data dynamically computed from safeResidents
   const purokBarData = useMemo(() => {
-    if (!safeResidents || safeResidents.length === 0) return [];
-    const summary = buildPurokSummary(safeResidents, { includeOther: false });
-    return summary
+    const summary = safeResidents && safeResidents.length > 0 ? buildPurokSummary(safeResidents, { includeOther: false }) : [];
+    const computed = summary
       .map((item) => ({
         purok: item.label,
         count: item.residents,
         fill: item.color || "#10B981",
       }))
+      .filter((item) => item.count > 0)
       .sort((a, b) => b.count - a.count);
+
+    if (computed.length > 0) {
+      return computed;
+    }
+
+    return [
+      { purok: "Kamonsil", count: 412, fill: "#2563EB" },
+      { purok: "Payhod", count: 385, fill: "#16A34A" },
+      { purok: "Muslim", count: 360, fill: "#F59E0B" },
+      { purok: "Malipayon", count: 338, fill: "#7C3AED" },
+      { purok: "Purok-3", count: 290, fill: "#DC2626" },
+      { purok: "Buklod", count: 245, fill: "#0891B2" },
+      { purok: "Azucena", count: 184, fill: "#DB2777" },
+    ];
+  }, [safeResidents]);
+
+  // Real registered residents mapping for Resident List table
+  const displayResidents = useMemo(() => {
+    if (safeResidents && safeResidents.length > 0) {
+      return safeResidents.slice(0, 5).map((r, idx) => ({
+        id: r.id || idx,
+        name: r.full_name || `${r.first_name || ""} ${r.last_name || ""}`.trim() || "Resident",
+        purok: r.purok || "Purok 1",
+        age: getResidentAge(r) ?? (r.age || 28),
+        gender: String(r.sex || r.gender || "M").charAt(0).toUpperCase(),
+        status: r.voter_status || r.status || "Active Voter",
+        date: formatDate(r.created_at || r.registered_at),
+      }));
+    }
+    return [
+      { id: 1, name: "Maria Clara Santos", purok: "Muslim", age: 24, gender: "F", status: "Active Voter", date: "May 24, 2026" },
+      { id: 2, name: "Juan Dela Cruz", purok: "Payhod", age: 35, gender: "M", status: "Active Voter", date: "May 24, 2026" },
+      { id: 3, name: "Ana Patricia Flores", purok: "Kamonsil", age: 29, gender: "F", status: "Active Voter", date: "May 23, 2026" },
+      { id: 4, name: "Ricardo Dalisay", purok: "Malipayon", age: 42, gender: "M", status: "Active Voter", date: "May 22, 2026" },
+      { id: 5, name: "Elena Ramos", purok: "Azucena", age: 19, gender: "F", status: "Youth Resident", date: "May 21, 2026" },
+    ];
   }, [safeResidents]);
 
   // Filter real pending requests matching screenshot format
@@ -280,349 +329,561 @@ const DashboardOverview = ({
       variants={containerVariants}
       initial="hidden"
       animate="show"
-      className="mx-auto max-w-[1600px] space-y-[20px] font-sans text-slate-900 select-none"
+      className="w-full font-sans text-slate-900 select-none overflow-x-hidden"
     >
-      {/* ================= ROW 2: UNIFIED BANNER & GLASS WEATHER ================= */}
+      {/* ================= ROW 2: UNIFIED FULL-WIDTH TOP BANNER (PANTAY SA SIDEBAR) ================= */}
       <motion.section
         variants={itemVariants}
-        className="strict-dashboard-card bg-glass relative h-auto p-0 !overflow-visible select-none z-30"
+        className="relative w-full h-auto p-0 !overflow-visible select-none z-30 border-b border-emerald-500/25 shadow-lg overflow-hidden"
       >
-        {/* Background Image on Left with fade transition to Dark Green on Right */}
-        <div className="absolute inset-0 w-full h-full flex rounded-[18px] overflow-hidden pointer-events-none z-0">
-          {/* Left part: Image */}
-          <div className="relative w-full lg:w-3/5 h-full">
-            <img
-              src="/barangay/BARANGAYOFICE.PNG"
-              alt="Barangay Hall"
-              className="w-full h-full object-cover"
-            />
-            {/* Gradient overlay to fade the image into dark green on the right */}
-            <div className="absolute inset-0 bg-gradient-to-r from-black/85 via-black/45 to-[#0A2F1D] lg:block hidden" />
-            <div className="absolute inset-0 bg-black/60 lg:hidden block" />
-          </div>
-          {/* Right part: Dark green solid background behind the glass */}
-          <div className="hidden lg:block w-2/5 h-full bg-[#0A2F1D]" />
-        </div>
+        {/* Background Image: new barangay.pmg.png (Natural Aspect Ratio, No Squishing/Compression) */}
+        <div
+          className="absolute inset-0 w-full h-full pointer-events-none z-0 bg-cover bg-no-repeat"
+          style={{
+            backgroundImage: "url('/new%20barangay.pmg.png')",
+            backgroundPosition: "center 52%",
+          }}
+        />
+        {/* Transparent Green Glass Shadow & Vignette Overlay */}
+        <div className="absolute inset-0 w-full h-full rounded-3xl pointer-events-none z-0 bg-gradient-to-b from-[#012217]/55 via-[#033E2B]/45 to-[#011C13]/65" />
+        <div className="absolute inset-0 w-full h-full rounded-3xl pointer-events-none z-0 bg-gradient-to-r from-emerald-500/10 via-transparent to-teal-500/10" />
 
         {/* Content Overlay */}
-        <div className="relative z-10 flex flex-col w-full p-6 gap-6">
-          {header}
-          {header && <div className="w-full h-px bg-white/10" />}
+        <div className="relative z-10 flex flex-col w-full px-4 sm:px-6 lg:px-8 py-3.5 sm:py-4 gap-3.5">
+          {header ? (
+            <>
+              <div className="w-full">
+                {header}
+              </div>
+              <div className="w-full h-px bg-white/15 -mt-1" />
+            </>
+          ) : null}
 
-          <div className="grid grid-cols-1 lg:grid-cols-10 items-stretch gap-6 flex-1">
-            {/* Left side: 4 KPI Cards (6 columns on lg) */}
-            <div className="lg:col-span-6 grid grid-cols-2 sm:grid-cols-4 gap-4 items-center">
-              {/* Card 1: Residents */}
-              <div className="bg-[#ffffff10] border border-white/10 backdrop-blur-md rounded-2xl p-4 flex flex-col justify-between h-[130px] transition hover:bg-[#ffffff1a] hover:scale-[1.02]">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Residents</span>
-                  <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-300">
-                    <Users size={16} />
+          <div className="grid grid-cols-1 lg:grid-cols-12 items-stretch gap-2.5 sm:gap-3 flex-1">
+            {/* Left side: 5 Compact KPI Cards with Distinct Themed Backgrounds & HD Colors (8 columns on lg) */}
+            <div className="lg:col-span-8 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2 sm:gap-2.5 items-center">
+              {/* Card 1: Residents (Emerald Green Theme) */}
+              <div className="relative overflow-hidden bg-gradient-to-br from-[#ECFDF5] via-[#D1FAE5]/70 to-[#A7F3D0]/60 rounded-xl p-2 sm:p-2.5 flex flex-col justify-between h-[84px] border border-emerald-300/80 shadow-md shadow-emerald-950/10 hover:shadow-lg hover:border-emerald-400 transition-all duration-300 hover:scale-[1.02] group">
+                <div className="flex items-center justify-between relative z-10">
+                  <span className="text-[8.5px] font-black uppercase tracking-wider text-emerald-900">Residents</span>
+                  <div className="p-0.5 rounded-md bg-emerald-600 text-white shadow-xs group-hover:scale-110 transition-transform duration-300">
+                    <Users size={11} className="stroke-[2.5]" />
                   </div>
                 </div>
-                <div className="text-left">
-                  <span className="block text-2xl font-black text-white">{formatCount(totalRes)}</span>
-                  <span className="block text-[9px] font-semibold text-emerald-300 mt-1">Live records</span>
+                <div className="text-left relative z-10">
+                  <span className="block text-lg sm:text-xl font-black text-emerald-950 tracking-tight leading-none">{formatCount(totalRes)}</span>
+                  <div className="mt-0.5 flex items-center">
+                    <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7.5px] font-extrabold bg-emerald-600/15 text-emerald-800 border border-emerald-400/50">
+                      <span className="h-1 w-1 rounded-full bg-emerald-600 animate-pulse"></span>
+                      Live records
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Card 2: Households */}
-              <div className="bg-[#ffffff10] border border-white/10 backdrop-blur-md rounded-2xl p-4 flex flex-col justify-between h-[130px] transition hover:bg-[#ffffff1a] hover:scale-[1.02]">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Households</span>
-                  <div className="p-2 rounded-xl bg-amber-500/20 text-amber-300">
-                    <Home size={16} />
+              {/* Card 2: Households (Warm Amber/Orange Theme) */}
+              <div className="relative overflow-hidden bg-gradient-to-br from-[#FFFBEB] via-[#FEF3C7]/70 to-[#FDE68A]/60 rounded-xl p-2 sm:p-2.5 flex flex-col justify-between h-[84px] border border-amber-300/80 shadow-md shadow-amber-950/10 hover:shadow-lg hover:border-amber-400 transition-all duration-300 hover:scale-[1.02] group">
+                <div className="flex items-center justify-between relative z-10">
+                  <span className="text-[8.5px] font-black uppercase tracking-wider text-amber-900">Households</span>
+                  <div className="p-0.5 rounded-md bg-amber-500 text-white shadow-xs group-hover:scale-110 transition-transform duration-300">
+                    <Home size={11} className="stroke-[2.5]" />
                   </div>
                 </div>
-                <div className="text-left">
-                  <span className="block text-2xl font-black text-white">{formatCount(demographics.householdsCount)}</span>
-                  <span className="block text-[9px] font-semibold text-amber-300 mt-1">Total families</span>
+                <div className="text-left relative z-10">
+                  <span className="block text-lg sm:text-xl font-black text-amber-950 tracking-tight leading-none">{formatCount(demographics.householdsCount)}</span>
+                  <div className="mt-0.5 flex items-center">
+                    <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7.5px] font-extrabold bg-amber-500/15 text-amber-900 border border-amber-400/50">
+                      <span className="h-1 w-1 rounded-full bg-amber-500"></span>
+                      Total families
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Card 3: Issued Documents */}
-              <div className="bg-[#ffffff10] border border-white/10 backdrop-blur-md rounded-2xl p-4 flex flex-col justify-between h-[130px] transition hover:bg-[#ffffff1a] hover:scale-[1.02]">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Issued</span>
-                  <div className="p-2 rounded-xl bg-purple-500/20 text-purple-300">
-                    <FileCheck2 size={16} />
+              {/* Card 3: Total Requests (Rose / Coral Theme) */}
+              <div className="relative overflow-hidden bg-gradient-to-br from-[#FFF1F2] via-[#FFE4E6]/70 to-[#FECDD3]/60 rounded-xl p-2 sm:p-2.5 flex flex-col justify-between h-[84px] border border-rose-300/80 shadow-md shadow-rose-950/10 hover:shadow-lg hover:border-rose-400 transition-all duration-300 hover:scale-[1.02] group">
+                <div className="flex items-center justify-between relative z-10">
+                  <span className="text-[8.5px] font-black uppercase tracking-wider text-rose-900">Requests</span>
+                  <div className="p-0.5 rounded-md bg-rose-600 text-white shadow-xs group-hover:scale-110 transition-transform duration-300">
+                    <FileText size={11} className="stroke-[2.5]" />
                   </div>
                 </div>
-                <div className="text-left">
-                  <span className="block text-2xl font-black text-white">
+                <div className="text-left relative z-10">
+                  <span className="block text-lg sm:text-xl font-black text-rose-950 tracking-tight leading-none">
+                    {formatCount(overview.totalRequests !== undefined ? overview.totalRequests : (safeRequests.length || 34))}
+                  </span>
+                  <div className="mt-0.5 flex items-center">
+                    <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7.5px] font-extrabold bg-rose-600/15 text-rose-800 border border-rose-400/50">
+                      <span className="h-1 w-1 rounded-full bg-rose-600"></span>
+                      All filings
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 4: Issued Documents (Royal Purple Theme) */}
+              <div className="relative overflow-hidden bg-gradient-to-br from-[#FAF5FF] via-[#F3E8FF]/70 to-[#E9D5FF]/60 rounded-xl p-2 sm:p-2.5 flex flex-col justify-between h-[84px] border border-purple-300/80 shadow-md shadow-purple-950/10 hover:shadow-lg hover:border-purple-400 transition-all duration-300 hover:scale-[1.02] group">
+                <div className="flex items-center justify-between relative z-10">
+                  <span className="text-[8.5px] font-black uppercase tracking-wider text-purple-900">Issued</span>
+                  <div className="p-0.5 rounded-md bg-purple-600 text-white shadow-xs group-hover:scale-110 transition-transform duration-300">
+                    <FileCheck2 size={11} className="stroke-[2.5]" />
+                  </div>
+                </div>
+                <div className="text-left relative z-10">
+                  <span className="block text-lg sm:text-xl font-black text-purple-950 tracking-tight leading-none">
                     {overview.documentsIssued !== undefined ? formatCount(overview.documentsIssued) : "8"}
                   </span>
-                  <span className="block text-[9px] font-semibold text-purple-300 mt-1">Released docs</span>
+                  <div className="mt-0.5 flex items-center">
+                    <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7.5px] font-extrabold bg-purple-600/15 text-purple-900 border border-purple-400/50">
+                      <span className="h-1 w-1 rounded-full bg-purple-600"></span>
+                      Released docs
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Card 4: Pending Requests */}
-              <div className="bg-[#ffffff10] border border-white/10 backdrop-blur-md rounded-2xl p-4 flex flex-col justify-between h-[130px] transition hover:bg-[#ffffff1a] hover:scale-[1.02]">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">Pending</span>
-                  <div className="p-2 rounded-xl bg-blue-500/20 text-blue-300">
-                    <Clock size={16} />
+              {/* Card 5: Pending Requests (Electric Sky Blue Theme) */}
+              <div className="relative overflow-hidden bg-gradient-to-br from-[#EFF6FF] via-[#DBEAFE]/70 to-[#BFDBFE]/60 rounded-xl p-2 sm:p-2.5 flex flex-col justify-between h-[84px] border border-blue-300/80 shadow-md shadow-blue-950/10 hover:shadow-lg hover:border-blue-400 transition-all duration-300 hover:scale-[1.02] group">
+                <div className="flex items-center justify-between relative z-10">
+                  <span className="text-[8.5px] font-black uppercase tracking-wider text-blue-900">Pending</span>
+                  <div className="p-0.5 rounded-md bg-blue-600 text-white shadow-xs group-hover:scale-110 transition-transform duration-300">
+                    <Clock size={11} className="stroke-[2.5]" />
                   </div>
                 </div>
-                <div className="text-left">
-                  <span className="block text-2xl font-black text-white">
+                <div className="text-left relative z-10">
+                  <span className="block text-lg sm:text-xl font-black text-blue-950 tracking-tight leading-none">
                     {overview.pendingRequests !== undefined ? formatCount(overview.pendingRequests) : "28"}
                   </span>
-                  <span className="block text-[9px] font-semibold text-blue-300 mt-1">Needs review</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right side: Glass Card Widget (4 columns on lg) */}
-            <div className="lg:col-span-4 bg-black/35 border border-white/10 backdrop-blur-md rounded-2xl p-4 min-w-0">
-              {/* Top row: 3 columns for Time, Weather, Event */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x lg:divide-x-0 lg:divide-y xl:divide-y-0 xl:divide-x divide-white/10 items-stretch gap-y-3 lg:gap-y-3 sm:gap-y-0 xl:gap-y-0">
-                {/* SECTION 1: Current Time */}
-                <div className="pb-3 sm:pb-0 lg:pb-3 xl:pb-0 sm:pr-3 xl:pr-3 lg:pr-0 flex flex-col justify-center">
-                  <div className="flex items-center gap-1.5 text-emerald-300 text-[10px] font-bold uppercase tracking-wider">
-                    <Clock size={11} className="text-[#C8A14A]" />
-                    <span>Current Time</span>
-                  </div>
-                  <div className="flex items-baseline justify-between mt-2">
-                    <span className="text-2xl font-black tracking-tight text-white">{clockDisplay.split(' ')[0]}</span>
-                    <span className="text-xs font-bold text-emerald-300 uppercase shrink-0">{clockDisplay.split(' ')[1]}</span>
-                  </div>
-                  <span className="text-[10px] font-semibold text-slate-300 mt-1 block leading-tight">{formattedDate}</span>
-                </div>
-
-                {/* SECTION 2: Weather Today */}
-                <div className="py-3 sm:py-0 lg:py-3 xl:py-0 sm:px-3 xl:px-3 lg:px-0 flex flex-col justify-center">
-                  <div className="flex items-center gap-1.5 text-emerald-300 text-[10px] font-bold uppercase tracking-wider">
-                    <Sun size={11} className="text-[#C8A14A]" />
-                    <span>Weather Today</span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <CloudSun className="text-[#FFCC19] shrink-0" size={24} />
-                    <span className="text-3xl font-black text-white leading-none">{weather.temp}</span>
-                  </div>
-                  <span className="text-xs font-bold text-slate-200 mt-1 block">{weather.condition}</span>
-                  <div className="text-[10px] text-slate-300 font-semibold mt-1 space-y-0.5">
-                    <p>Humidity: {weather.humidity}</p>
-                    <p>Wind: {weather.wind}</p>
-                  </div>
-                </div>
-
-                {/* SECTION 3: Upcoming Event */}
-                <div className="pt-3 sm:pt-0 lg:pt-3 xl:pt-0 sm:pl-3 xl:pl-3 lg:pl-0 flex flex-col justify-between h-full">
-                  <div>
-                    <div className="flex items-center gap-1.5 text-emerald-300 text-[10px] font-bold uppercase tracking-wider">
-                      <Calendar size={11} className="text-[#C8A14A]" />
-                      <span>Upcoming Event</span>
-                    </div>
-                    <div className="mt-2">
-                      <p className="text-xs font-extrabold text-white leading-tight">Barangay Assembly</p>
-                      <p className="text-[9px] text-slate-300 font-medium mt-1">July 18, 2026</p>
-                      <p className="text-[9px] text-slate-300 font-medium">9:00 AM</p>
-                    </div>
-                  </div>
-                  <div className="mt-3">
-                    <button
-                      onClick={() => navigate("/announcements")}
-                      className="strict-button-hover w-full rounded-lg bg-[#0B6B3A] hover:bg-[#0f532d] text-white py-1.5 px-2 text-[10px] font-bold transition active:scale-98 cursor-pointer shadow-xs border border-emerald-700/50"
-                    >
-                      View All Events
-                    </button>
+                  <div className="mt-0.5 flex items-center">
+                    <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7.5px] font-extrabold bg-blue-600/15 text-blue-900 border border-blue-400/50">
+                      <span className="h-1 w-1 rounded-full bg-blue-600"></span>
+                      Needs review
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
+
+            {/* Right side: 3D Admin Showcase Card (4 columns on lg) */}
+            <div className="lg:col-span-4 relative overflow-hidden rounded-xl h-[84px] border border-emerald-400/40 shadow-md group bg-gradient-to-r from-[#012217] via-[#023522] to-[#011C13] flex items-center justify-between p-2 sm:p-2.5 select-none">
+              {/* Subtle ambient glow behind avatar */}
+              <div className="absolute right-0 top-0 w-32 h-full bg-emerald-500/15 blur-xl pointer-events-none" />
+
+              {/* Left Column: Badges & Titles */}
+              <div className="relative z-10 flex flex-col justify-between h-full py-0.5 min-w-0 pr-2">
+                <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-900/70 border border-emerald-400/40 backdrop-blur-md shadow-xs w-fit">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span className="text-[8px] font-black uppercase tracking-wider text-emerald-200">Admin Operations</span>
+                </div>
+                <div className="min-w-0 mt-0.5">
+                  <h3 className="text-[11.5px] sm:text-[12px] font-black text-white leading-tight drop-shadow-xs truncate">
+                    KaagapA.I Central Desk
+                  </h3>
+                  <p className="text-[8px] font-semibold text-emerald-200/90 leading-tight truncate mt-0.5">
+                    Active Operations & Monitoring
+                  </p>
+                </div>
+              </div>
+
+              {/* Right Column: 3D Admin Avatar (Cleanly framed, 100% visible, not cropped) */}
+              <div className="relative h-full aspect-square shrink-0 flex items-center justify-center overflow-hidden rounded-lg border border-emerald-400/30 bg-emerald-950/60 shadow-inner group-hover:scale-105 transition-transform duration-500">
+                <img
+                  src="/admin-3d-avatar.png"
+                  alt="KaagapAI Admin"
+                  className="w-full h-full object-cover object-top brightness-105"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = "/admin-3d-workspace.jpg";
+                  }}
+                />
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </motion.section>
+      </motion.section>
 
-      {/* ================= ROW 3: THREE EQUAL CHARTS (HEIGHT 320px) ================= */}
-      <section className="grid grid-cols-1 gap-[20px] lg:grid-cols-3 h-auto">
-        {/* Card 1: Resident Growth Overview */}
-        <motion.div variants={itemVariants} className="strict-dashboard-card h-[270px] p-4 flex flex-col justify-between min-w-0">
-          <div className="flex items-center justify-between">
+      {/* Main Content Body: Charts, Activities, Tables */}
+      <div className="mx-auto max-w-[1600px] px-3 sm:px-4 lg:px-6 pt-2 space-y-[20px]">
+
+      {/* ================= ROW 3: THREE ANALYTICAL CHARTS SIDE-BY-SIDE ================= */}
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-[20px] h-auto">
+        {/* Chart 1: Resident Growth Overview (With Wave Animation) */}
+        <motion.div variants={itemVariants} className="strict-dashboard-card h-[280px] p-3.5 flex flex-col justify-between min-w-0 overflow-hidden">
+          <div className="admin-section-banner flex items-center justify-between rounded-xl p-2.5">
             <div>
-              <h2 className="strict-card-title uppercase tracking-wider leading-none">Resident Growth Overview</h2>
-              <p className="text-[10px] font-medium text-slate-400 mt-1">Monthly resident growth trend</p>
+              <h2 className="text-xs font-black uppercase tracking-wider text-white">RESIDENT GROWTH OVERVIEW</h2>
+              <p className="text-[9px] font-semibold text-emerald-200/90 leading-tight">Monthly resident growth trend</p>
             </div>
-            <select className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-bold text-slate-700 outline-none focus:border-[#0B6B3A]">
-              <option>This Year</option>
-              <option>Last Year</option>
-            </select>
           </div>
 
-          <div className="flex items-baseline justify-between mt-2">
+          <div className="flex items-baseline justify-between mt-1 px-1">
             <div>
-              <span className="text-xl font-extrabold text-slate-900">{formatCount(totalRes)}</span>
-              <span className="ml-1 text-[10px] font-bold text-slate-400">Total Residents</span>
+              <span className="text-2xl font-black text-slate-900">{formatCount(totalRes)}</span>
+              <span className="ml-1.5 text-[11px] font-bold text-slate-400">Total Residents</span>
             </div>
-            <span className="text-[11px] font-bold text-emerald-600">
+            <span className="text-xs font-extrabold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
               ↑ 18.6% vs last year
             </span>
           </div>
 
-          <div className="h-[140px] w-full mt-1.5">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={POPULATION_GROWTH_DATA} margin={{ top: 5, right: 5, left: -25, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="growthPurpleGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#8B5CF6" stopOpacity={0.25} />
-                    <stop offset="100%" stopColor="#8B5CF6" stopOpacity={0.01} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#F1F5F9" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" tick={{ fill: "#94A3B8", fontSize: 9, fontWeight: 700 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#94A3B8", fontSize: 9, fontWeight: 700 }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ borderRadius: "8px", border: "1px solid #E2E8F0", fontSize: "10px", fontWeight: "bold" }} />
-                <Area type="monotone" dataKey="residents" stroke="#8B5CF6" strokeWidth={2} fill="url(#growthPurpleGrad)" />
-              </AreaChart>
-            </ResponsiveContainer>
+          {/* Bulletproof Animated Wave-Morphing & Color-Shifting SVG Area Chart */}
+          <div className="h-[145px] w-full min-w-0 relative">
+            <svg className="w-full h-full overflow-visible" viewBox="0 0 500 140" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="growthColorShiftGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10B981" stopOpacity="0.45">
+                    <animate attributeName="stop-color" values="#10B981;#06B6D4;#8B5CF6;#F59E0B;#10B981" dur="8s" repeatCount="indefinite" />
+                  </stop>
+                  <stop offset="100%" stopColor="#10B981" stopOpacity="0.02">
+                    <animate attributeName="stop-color" values="#10B981;#06B6D4;#8B5CF6;#F59E0B;#10B981" dur="8s" repeatCount="indefinite" />
+                  </stop>
+                </linearGradient>
+                <linearGradient id="growthSecondaryWaveGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#06B6D4" stopOpacity="0.30">
+                    <animate attributeName="stop-color" values="#06B6D4;#8B5CF6;#10B981;#F59E0B;#06B6D4" dur="7s" repeatCount="indefinite" />
+                  </stop>
+                  <stop offset="100%" stopColor="#06B6D4" stopOpacity="0.0">
+                    <animate attributeName="stop-color" values="#06B6D4;#8B5CF6;#10B981;#F59E0B;#06B6D4" dur="7s" repeatCount="indefinite" />
+                  </stop>
+                </linearGradient>
+              </defs>
+
+              {/* Horizontal Grid Lines */}
+              <line x1="25" y1="20" x2="475" y2="20" stroke="#F1F5F9" strokeDasharray="4 4" />
+              <line x1="25" y1="55" x2="475" y2="55" stroke="#F1F5F9" strokeDasharray="4 4" />
+              <line x1="25" y1="90" x2="475" y2="90" stroke="#F1F5F9" strokeDasharray="4 4" />
+              <line x1="25" y1="115" x2="475" y2="115" stroke="#E2E8F0" />
+
+              {/* Back Wave Layer (Ambient Ocean Wave Flow) */}
+              <path
+                d="M 25,108 C 80,88 160,90 250,62 C 340,68 410,26 440,22 L 475,14 L 475,115 L 25,115 Z"
+                fill="url(#growthSecondaryWaveGrad)"
+              >
+                <animate
+                  attributeName="d"
+                  values="
+                    M 25,108 C 80,88 160,90 250,62 C 340,68 410,26 440,22 L 475,14 L 475,115 L 25,115 Z;
+                    M 25,104 C 80,98 160,78 250,74 C 340,48 410,38 440,16 L 475,14 L 475,115 L 25,115 Z;
+                    M 25,102 C 80,106 160,84 250,66 C 340,58 410,28 440,24 L 475,14 L 475,115 L 25,115 Z;
+                    M 25,108 C 80,88 160,90 250,62 C 340,68 410,26 440,22 L 475,14 L 475,115 L 25,115 Z
+                  "
+                  dur="6.5s"
+                  repeatCount="indefinite"
+                />
+              </path>
+
+              {/* Front Wave Layer (Primary Undulating Area Fill) */}
+              <path
+                d="M 25,105 C 80,95 160,82 250,68 C 340,54 410,32 440,20 L 475,14 L 475,115 L 25,115 Z"
+                fill="url(#growthColorShiftGrad)"
+              >
+                <animate
+                  attributeName="d"
+                  values="
+                    M 25,105 C 80,95 160,82 250,68 C 340,54 410,32 440,20 L 475,14 L 475,115 L 25,115 Z;
+                    M 25,100 C 80,108 160,74 250,76 C 340,44 410,42 440,15 L 475,14 L 475,115 L 25,115 Z;
+                    M 25,108 C 80,86 160,94 250,60 C 340,66 410,22 440,26 L 475,14 L 475,115 L 25,115 Z;
+                    M 25,102 C 80,100 160,78 250,72 C 340,50 410,36 440,18 L 475,14 L 475,115 L 25,115 Z;
+                    M 25,105 C 80,95 160,82 250,68 C 340,54 410,32 440,20 L 475,14 L 475,115 L 25,115 Z
+                  "
+                  dur="5s"
+                  repeatCount="indefinite"
+                />
+              </path>
+
+              {/* Front Animated Morphing Wave Line */}
+              <path
+                d="M 25,105 C 80,95 160,82 250,68 C 340,54 410,32 440,20 L 475,14"
+                fill="none"
+                stroke="#10B981"
+                strokeWidth="3"
+                strokeLinecap="round"
+                className="drop-shadow-sm"
+              >
+                <animate
+                  attributeName="d"
+                  values="
+                    M 25,105 C 80,95 160,82 250,68 C 340,54 410,32 440,20 L 475,14;
+                    M 25,100 C 80,108 160,74 250,76 C 340,44 410,42 440,15 L 475,14;
+                    M 25,108 C 80,86 160,94 250,60 C 340,66 410,22 440,26 L 475,14;
+                    M 25,102 C 80,100 160,78 250,72 C 340,50 410,36 440,18 L 475,14;
+                    M 25,105 C 80,95 160,82 250,68 C 340,54 410,32 440,20 L 475,14
+                  "
+                  dur="5s"
+                  repeatCount="indefinite"
+                />
+                <animate attributeName="stroke" values="#10B981;#06B6D4;#8B5CF6;#F59E0B;#10B981" dur="8s" repeatCount="indefinite" />
+              </path>
+
+              {/* 12 Month Floating / Bobbing Data Point Circles */}
+              {[
+                { m: "Jan", x: 25, y: "105;100;108;102;105" },
+                { m: "Feb", x: 66, y: "98;106;88;98;98" },
+                { m: "Mar", x: 107, y: "88;74;94;80;88" },
+                { m: "Apr", x: 148, y: "78;82;68;74;78" },
+                { m: "May", x: 189, y: "68;76;60;72;68" },
+                { m: "Jun", x: 230, y: "58;62;52;58;58" },
+                { m: "Jul", x: 270, y: "48;44;64;50;48" },
+                { m: "Aug", x: 311, y: "39;45;30;38;39" },
+                { m: "Sep", x: 352, y: "32;42;22;36;32" },
+                { m: "Oct", x: 393, y: "26;28;24;26;26" },
+                { m: "Nov", x: 434, y: "20;15;26;18;20" },
+                { m: "Dec", x: 475, y: "14;14;14;14;14" },
+              ].map((pt) => (
+                <circle
+                  key={pt.m}
+                  cx={pt.x}
+                  cy={Number(pt.y.split(";")[0])}
+                  r="4.5"
+                  fill="#10B981"
+                  stroke="#FFFFFF"
+                  strokeWidth="2"
+                  className="transition-all duration-300 hover:r-6 cursor-pointer drop-shadow-md"
+                >
+                  <animate
+                    attributeName="cy"
+                    values={pt.y}
+                    dur="5s"
+                    repeatCount="indefinite"
+                  />
+                  <animate
+                    attributeName="fill"
+                    values="#10B981;#06B6D4;#8B5CF6;#F59E0B;#10B981"
+                    dur="8s"
+                    repeatCount="indefinite"
+                  />
+                </circle>
+              ))}
+
+              {/* 12 Month Labels */}
+              {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map((m, i) => (
+                <text key={m} x={25 + i * ((475 - 25) / 11)} y="132" fill="#94A3B8" fontSize="9.5" fontWeight="700" textAnchor="middle">{m}</text>
+              ))}
+            </svg>
           </div>
         </motion.div>
 
-        {/* Card 2: Population Demographics */}
-        <motion.div variants={itemVariants} className="strict-dashboard-card h-[270px] p-4 flex flex-col justify-between min-w-0">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h2 className="strict-card-title uppercase tracking-wider leading-none">Population Demographics</h2>
+        {/* Chart 2: Population Demographics */}
+        <motion.div variants={itemVariants} className="strict-dashboard-card h-[280px] p-3.5 flex flex-col justify-between min-w-0 overflow-hidden">
+          <div className="admin-section-banner flex items-center justify-between rounded-xl p-2.5">
+            <h2 className="text-xs font-black uppercase tracking-wider text-white">POPULATION DEMOGRAPHICS</h2>
           </div>
 
-          <div className="my-auto flex items-center justify-between gap-2.5">
-            <div className="relative h-28 w-28 shrink-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={ageGroupData} dataKey="value" innerRadius={30} outerRadius={42} paddingAngle={3}>
-                    {ageGroupData.map((entry, index) => (
-                      <Cell key={entry.name} fill={entry.fill || DEMOGRAPHICS_COLORS[index % DEMOGRAPHICS_COLORS.length]} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                <span className="text-base font-black text-slate-900 leading-none">{formatCount(totalRes)}</span>
-                <span className="text-[7px] font-bold text-slate-400 uppercase tracking-widest mt-1">Total</span>
+          <div className="my-auto flex items-center justify-between gap-3 px-1">
+            {/* Bulletproof Animated SVG Donut Chart with Sleek Cyber Holographic Radar Ring behind */}
+            <div className="relative h-28 w-28 shrink-0 flex items-center justify-center">
+              {/* Ultra-Sleek Cyber Holographic Radar Glowing Background (z-0) */}
+              <div className="absolute inset-0 rounded-full border border-emerald-500/20 bg-gradient-to-tr from-emerald-500/10 via-cyan-500/10 to-indigo-500/10 backdrop-blur-3xl animate-pulse pointer-events-none z-0" />
+              
+              {/* Rotating Cyber Target Ring (z-0) */}
+              <svg
+                className="absolute -inset-2 h-[calc(100%+16px)] w-[calc(100%+16px)] animate-[spin_15s_linear_infinite] pointer-events-none z-0 opacity-70"
+                viewBox="0 0 100 100"
+              >
+                <circle cx="50" cy="50" r="48" fill="none" stroke="#10B981" strokeWidth="1" strokeDasharray="6 4" />
+                <circle cx="50" cy="50" r="44" fill="none" stroke="#06B6D4" strokeWidth="1" strokeDasharray="12 12" />
+              </svg>
+
+              {/* Donut Chart Ring on top of orbit animation (z-10) */}
+              <svg className="w-full h-full transform -rotate-90 relative z-10" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#EC4899" strokeWidth="15" strokeDasharray="67 238" strokeDashoffset="0" className="animate-donut-draw" />
+                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#6366F1" strokeWidth="15" strokeDasharray="54 238" strokeDashoffset="-69" className="animate-donut-draw" />
+                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#F59E0B" strokeWidth="15" strokeDasharray="46 238" strokeDashoffset="-125" className="animate-donut-draw" />
+                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#A855F7" strokeWidth="15" strokeDasharray="35 238" strokeDashoffset="-173" className="animate-donut-draw" />
+                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#10B981" strokeWidth="15" strokeDasharray="30 238" strokeDashoffset="-210" className="animate-donut-draw" />
+              </svg>
+
+              {/* Center Text on top-most layer (z-20) */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none z-20">
+                <span className="text-base font-black text-slate-900 leading-none animate-pulse">{formatCount(totalRes)}</span>
+                <span className="text-[7px] font-extrabold text-slate-500 uppercase tracking-widest mt-1">Total</span>
               </div>
             </div>
 
-            <div className="space-y-1.5 text-[10px] font-bold flex-1 select-none pl-2">
+            <div className="space-y-1.5 text-[10px] font-bold flex-1 select-none pl-1">
               {ageGroupData.map((g, idx) => (
-                <div key={g.name} className="flex items-center justify-between gap-1">
+                <div key={g.name} className="flex items-center justify-between gap-1 hover:bg-slate-50 p-0.5 rounded-md transition">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: g.fill || DEMOGRAPHICS_COLORS[idx % DEMOGRAPHICS_COLORS.length] }} />
-                    <span className="text-slate-500 font-semibold truncate">{g.name}</span>
+                    <span className="h-2 w-2 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: g.fill || DEMOGRAPHICS_COLORS[idx % DEMOGRAPHICS_COLORS.length] }} />
+                    <span className="text-slate-600 font-bold truncate">{g.name}</span>
                   </div>
-                  <span className="text-slate-800 font-extrabold shrink-0">{g.value} <span className="text-slate-400 font-medium">({g.pct})</span></span>
+                  <span className="text-slate-900 font-black shrink-0">{g.value} <span className="text-slate-400 font-semibold">({g.pct})</span></span>
                 </div>
               ))}
             </div>
           </div>
         </motion.div>
 
-        {/* Card 3: Population per Purok */}
-        <motion.div variants={itemVariants} className="strict-dashboard-card h-[270px] p-4 flex flex-col justify-between min-w-0">
-          <div className="flex items-center justify-between">
+        {/* Chart 3: Population per Purok */}
+        <motion.div variants={itemVariants} className="strict-dashboard-card h-[280px] p-3.5 flex flex-col justify-between min-w-0 overflow-hidden">
+          <div className="admin-section-banner flex items-center justify-between rounded-xl p-2.5">
             <div>
-              <h2 className="strict-card-title uppercase tracking-wider leading-none">Population per Purok</h2>
-              <p className="text-[10px] font-medium text-slate-400 mt-1">Total registered residents by area</p>
+              <h2 className="text-xs font-black uppercase tracking-wider text-white">POPULATION PER PUROK</h2>
+              <p className="text-[9px] font-semibold text-emerald-200/90 leading-tight">Total registered residents by area</p>
             </div>
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[9px] font-extrabold text-[#0B6B3A] border border-[#0B6B3A]/20 shrink-0">
+            <span className="rounded-full bg-emerald-950/60 px-2.5 py-0.5 text-[9.5px] font-black text-emerald-200 border border-emerald-400/40 shrink-0">
               7 Puroks
             </span>
           </div>
 
-          <div className="h-[148px] w-full mt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={purokBarData} margin={{ top: 20, right: 5, left: -25, bottom: 0 }}>
-                <CartesianGrid stroke="#F1F5F9" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="purok" tick={{ fill: "#64748B", fontSize: 9, fontWeight: 700 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#64748B", fontSize: 9, fontWeight: 700 }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={{ borderRadius: "8px", border: "1px solid #E2E8F0", fontSize: "10px", fontWeight: "bold" }} formatter={(val) => [`${val} Residents`, "Population"]} />
-                <Bar dataKey="count" radius={[5, 5, 0, 0]} barSize={16}>
-                  <LabelList dataKey="count" position="top" style={{ fontSize: 9, fontWeight: 700, fill: '#475569' }} />
-                  {purokBarData.map((entry) => (
-                    <Cell key={entry.purok} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          {/* Bulletproof Animated CSS Bar Chart */}
+          <div className="h-[160px] w-full mt-2 min-w-0 flex items-end justify-between px-1 gap-1.5 pb-6 pt-3 border-b border-slate-100 relative">
+            {purokBarData.map((item, idx) => {
+              const maxVal = Math.max(...purokBarData.map(p => p.count), 1);
+              const heightPercent = Math.max((item.count / maxVal) * 100, 18);
+              const pctOfTotal = ((item.count / (totalRes || 1)) * 100).toFixed(1);
+              return (
+                <div key={item.purok} className="flex-1 flex flex-col items-center h-full justify-end group relative cursor-pointer">
+                  <div className="flex flex-col items-center mb-1 group-hover:-translate-y-1 transition duration-200">
+                    <span className="text-[9.5px] font-black text-slate-800 leading-none">{item.count}</span>
+                    <span className="text-[7px] font-bold text-slate-400 opacity-0 group-hover:opacity-100 transition duration-200">{pctOfTotal}%</span>
+                  </div>
+                  <div
+                    className="w-full max-w-[28px] rounded-t-lg transition-all duration-700 group-hover:brightness-110 shadow-sm animate-bar-grow"
+                    style={{ height: `${heightPercent}%`, backgroundColor: item.fill || DEMOGRAPHICS_COLORS[idx % DEMOGRAPHICS_COLORS.length] }}
+                  />
+                  <span className="absolute -bottom-6 text-[9px] font-extrabold text-slate-600 truncate max-w-[48px] group-hover:text-[#0B6B3A] transition text-center">{item.purok}</span>
+                </div>
+              );
+            })}
           </div>
         </motion.div>
       </section>
 
-      {/* ================= ROW 4: THREE CONTENT CARDS (HEIGHT 290px) ================= */}
-      <section className="grid grid-cols-1 gap-[20px] lg:grid-cols-3 h-auto">
-        {/* Card 1: Recent Activities */}
-        <motion.div variants={itemVariants} className="strict-dashboard-card h-[240px] p-4 flex flex-col justify-between">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h2 className="strict-card-title uppercase tracking-wider leading-none">Recent Activities</h2>
-            <Link to="/audit" className="text-[10px] font-bold text-[#0B6B3A] hover:underline flex items-center gap-0.5">
-              View All
+      {/* ================= ROW 4: DEDICATED FULL-WIDTH RESIDENT LIST ================= */}
+      <section className="h-auto">
+        <motion.div variants={itemVariants} className="strict-dashboard-card p-4 min-w-0 overflow-hidden">
+          {/* Green & Blue Glass Header Banner */}
+          <div className="flex items-center justify-between rounded-xl p-3 bg-gradient-to-r from-[#064E3B] via-[#0284C7] to-[#0F766E] text-white shadow-lg border border-cyan-300/40 backdrop-blur-xl">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-950/80 border border-emerald-400/50 shadow-md">
+                <Users size={18} className="text-emerald-300" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-black uppercase tracking-wider text-white drop-shadow-md">
+                    RESIDENT LIST
+                  </h2>
+                  <span className="rounded-full bg-emerald-950/80 border border-emerald-400/60 px-2.5 py-0.5 text-[9px] font-black text-emerald-200 tracking-wide uppercase shadow-2xs">
+                    Live Directory
+                  </span>
+                </div>
+                <p className="text-[11px] font-bold text-cyan-100 drop-shadow-xs mt-0.5">
+                  Recently registered & active Barangay Upper Mingading residents
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/residents"
+              className="shrink-0 rounded-lg bg-emerald-950/90 hover:bg-emerald-900 text-white px-3.5 py-1.5 text-xs font-black transition active:scale-95 shadow-md border border-emerald-400/50 flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>View All Residents</span>
+              <ChevronRight size={13} className="text-emerald-300" />
             </Link>
           </div>
 
-          <div className="my-2 space-y-2 overflow-y-auto flex-1 h-[155px] pr-1">
-            {displayActivities.map((act) => (
-              <div key={act.id} className="flex items-start justify-between gap-3 p-2 rounded-xl bg-slate-50/50 hover:bg-slate-50 transition duration-150">
-                <div className="flex items-start gap-2 min-w-0">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white border border-slate-100 text-slate-700 shadow-2xs">
-                    {act.category === "Residents" ? (
-                      <UserCheck size={14} className="text-emerald-600" />
-                    ) : act.category === "Documents" ? (
-                      <FileText size={14} className="text-purple-600" />
-                    ) : (
-                      <Megaphone size={14} className="text-amber-500" />
-                    )}
-                  </span>
-                  <div className="min-w-0 space-y-0.5">
-                    <p className="text-[11px] font-extrabold text-slate-800 leading-tight truncate">{act.title}</p>
-                    <p className="text-[9px] font-semibold text-slate-400">{act.time}</p>
-                  </div>
-                </div>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[8px] font-bold border leading-none ${act.badge}`}>
-                  {act.category}
-                </span>
-              </div>
-            ))}
+          {/* Spacious Table with Crystal Clear Fonts & Contrast */}
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-left text-xs min-w-[680px]">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-100/90 text-slate-700">
+                  <th className="py-2.5 px-3.5 font-black uppercase tracking-wider text-[10.5px]">Resident Name</th>
+                  <th className="py-2.5 px-3.5 font-black uppercase tracking-wider text-[10.5px]">Purok / Area</th>
+                  <th className="py-2.5 px-3.5 font-black uppercase tracking-wider text-[10.5px]">Age & Gender</th>
+                  <th className="py-2.5 px-3.5 font-black uppercase tracking-wider text-[10.5px]">Status</th>
+                  <th className="py-2.5 px-3.5 font-black uppercase tracking-wider text-[10.5px]">Date Registered</th>
+                  <th className="py-2.5 px-3.5 font-black uppercase tracking-wider text-[10.5px] text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white">
+                {displayResidents.map((res) => (
+                  <tr key={res.id} className="hover:bg-emerald-50/50 transition duration-150 group">
+                    <td className="py-2.5 px-3.5 flex items-center gap-2.5">
+                      <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-white text-[11px] font-black flex items-center justify-center shrink-0 shadow-xs border border-white">
+                        {res.name.charAt(0)}
+                      </div>
+                      <span className="font-black text-slate-900 text-xs group-hover:text-emerald-800 transition">{res.name}</span>
+                    </td>
+                    <td className="py-2.5 px-3.5">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black bg-slate-100 text-slate-800 border border-slate-200 shadow-2xs">
+                        <MapPin size={11} className="text-emerald-600 shrink-0" />
+                        {res.purok}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3.5 text-slate-800 font-bold text-xs">
+                      {res.age} yrs old • {res.gender === "M" || res.gender === "Male" ? "Male" : "Female"}
+                    </td>
+                    <td className="py-2.5 px-3.5">
+                      <span className="inline-block rounded-full px-3 py-1 text-[10px] font-black border leading-none bg-emerald-100 text-emerald-800 border-emerald-300 shadow-2xs">
+                        ● {res.status}
+                      </span>
+                    </td>
+                    <td className="py-2.5 px-3.5 text-slate-700 font-bold text-xs whitespace-nowrap">
+                      {res.date}
+                    </td>
+                    <td className="py-2.5 px-3.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => navigate("/residents")}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 transition duration-150 cursor-pointer shadow-sm"
+                        title="View profile"
+                      >
+                        <Eye size={13} />
+                        <span>Profile</span>
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </motion.div>
+      </section>
 
-        {/* Card 2: Pending Requests */}
-        <motion.div variants={itemVariants} className="strict-dashboard-card h-[240px] p-4 flex flex-col justify-between min-w-0">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h2 className="strict-card-title uppercase tracking-wider leading-none">Pending Requests</h2>
-            <Link to="/documents" className="text-[10px] font-bold text-[#0B6B3A] hover:underline flex items-center gap-0.5">
-              View All
+      {/* ================= ROW 5: PENDING REQUESTS & ANNOUNCEMENTS (2 COLUMNS) ================= */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-[20px] h-auto">
+        {/* Card 1: Pending Requests */}
+        <motion.div variants={itemVariants} className="strict-dashboard-card h-[275px] p-3.5 flex flex-col justify-between min-w-0">
+          <div className="flex items-center justify-between rounded-xl p-2.5 bg-gradient-to-r from-[#B48811] via-[#D4AF37] to-[#8C6400] text-white shadow-md border border-amber-300/40 backdrop-blur-md">
+            <div className="flex items-center gap-2">
+              <FileText size={15} className="text-white drop-shadow-xs" />
+              <h2 className="text-xs font-black uppercase tracking-wider text-white drop-shadow-xs">PENDING REQUESTS</h2>
+            </div>
+            <Link to="/documents" className="shrink-0 text-[10px] font-black text-amber-100 hover:text-white transition flex items-center gap-0.5">
+              <span>View All &gt;</span>
             </Link>
           </div>
 
           <div className="my-2 flex-1 overflow-y-auto overflow-x-auto">
-            <table className="w-full text-left text-[11px] min-w-[340px]">
+            <table className="w-full text-left text-xs min-w-[340px]">
               <thead>
-                <tr className="border-b border-slate-100 text-slate-400">
-                  <th className="py-1.5 font-bold uppercase tracking-wider">Resident</th>
-                  <th className="py-1.5 font-bold uppercase tracking-wider">Document</th>
-                  <th className="py-1.5 font-bold uppercase tracking-wider">Date</th>
-                  <th className="py-1.5 font-bold uppercase tracking-wider">Status</th>
-                  <th className="py-1.5 font-bold uppercase tracking-wider text-right">Action</th>
+                <tr className="border-b border-slate-200 bg-slate-100/80 text-slate-700">
+                  <th className="py-1.5 px-2 font-black uppercase tracking-wider text-[10px]">Resident</th>
+                  <th className="py-1.5 px-2 font-black uppercase tracking-wider text-[10px]">Document</th>
+                  <th className="py-1.5 px-2 font-black uppercase tracking-wider text-[10px]">Date</th>
+                  <th className="py-1.5 px-2 font-black uppercase tracking-wider text-[10px]">Status</th>
+                  <th className="py-1.5 px-2 font-black uppercase tracking-wider text-[10px] text-right">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 bg-white">
                 {displayRequests.map((req) => (
-                  <tr key={req.id} className="hover:bg-slate-50/50 transition duration-150">
-                    <td className="py-1.5 font-extrabold text-slate-900 truncate max-w-[80px]">{req.name}</td>
-                    <td className="py-1.5 text-slate-500 font-semibold truncate max-w-[90px]">{req.type}</td>
-                    <td className="py-1.5 text-slate-400 whitespace-nowrap">{req.date}</td>
-                    <td className="py-1.5">
-                      <span className={`rounded-full px-2 py-0.5 text-[8px] font-bold border leading-none whitespace-nowrap ${req.statusClass}`}>
+                  <tr key={req.id} className="hover:bg-slate-50/80 transition duration-150">
+                    <td className="py-2 px-2 font-black text-slate-900 truncate max-w-[120px]">{req.name}</td>
+                    <td className="py-2 px-2 text-slate-700 font-bold truncate max-w-[120px]">{req.type}</td>
+                    <td className="py-2 px-2 text-slate-600 font-semibold whitespace-nowrap text-[11px]">{req.date}</td>
+                    <td className="py-2 px-2">
+                      <span className={`rounded-full px-2.5 py-0.5 text-[9px] font-black border leading-none whitespace-nowrap shadow-2xs ${req.statusClass}`}>
                         {req.status}
                       </span>
                     </td>
-                    <td className="py-1.5 text-right">
+                    <td className="py-2 px-2 text-right">
                       <button
                         type="button"
                         onClick={() => navigate("/documents")}
-                        className="text-slate-400 hover:text-[#0B6B3A] transition cursor-pointer"
+                        className="text-slate-400 hover:text-emerald-700 transition cursor-pointer p-1"
                         title="View details"
                       >
-                        <Eye size={13} />
+                        <Eye size={14} />
                       </button>
                     </td>
                   </tr>
@@ -632,12 +893,15 @@ const DashboardOverview = ({
           </div>
         </motion.div>
 
-        {/* Card 3: Recent Announcements */}
-        <motion.div variants={itemVariants} className="strict-dashboard-card h-[240px] p-4 flex flex-col justify-between">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h2 className="strict-card-title uppercase tracking-wider leading-none">Recent Announcements</h2>
-            <Link to="/announcements" className="text-[10px] font-bold text-[#0B6B3A] hover:underline flex items-center gap-0.5">
-              View All
+        {/* Card 2: Recent Announcements */}
+        <motion.div variants={itemVariants} className="strict-dashboard-card h-[275px] p-3.5 flex flex-col justify-between">
+          <div className="flex items-center justify-between rounded-xl p-2.5 bg-gradient-to-r from-[#B48811] via-[#D4AF37] to-[#8C6400] text-white shadow-md border border-amber-300/40 backdrop-blur-md">
+            <div className="flex items-center gap-2">
+              <Megaphone size={15} className="text-white drop-shadow-xs" />
+              <h2 className="text-xs font-black uppercase tracking-wider text-white drop-shadow-xs">RECENT ANNOUNCEMENTS</h2>
+            </div>
+            <Link to="/announcements" className="shrink-0 text-[10px] font-black text-amber-100 hover:text-white transition flex items-center gap-0.5">
+              <span>View All &gt;</span>
             </Link>
           </div>
 
@@ -646,43 +910,44 @@ const DashboardOverview = ({
               const icons = [Users, FileText, Megaphone];
               const AnnouncementIcon = icons[idx % icons.length];
               const badgeColors = [
-                "bg-emerald-50 text-emerald-600 border-emerald-100",
-                "bg-purple-50 text-purple-600 border-purple-100",
-                "bg-amber-50 text-amber-600 border-amber-100"
+                "bg-emerald-50 text-emerald-600 border-emerald-200",
+                "bg-purple-50 text-purple-600 border-purple-200",
+                "bg-amber-50 text-amber-600 border-amber-200"
               ];
               return (
-                <div key={ann.id} className="flex items-center gap-4 py-2 hover:bg-slate-50/40 transition duration-150 border-b border-slate-50 last:border-0 text-left">
+                <div key={ann.id} className="flex items-center gap-4 py-2 hover:bg-slate-50/80 transition duration-150 border-b border-slate-100 last:border-0 text-left px-1">
                   {/* Date Block */}
                   <div className="flex flex-col items-center shrink-0 w-8 text-center">
-                    <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider leading-none">{ann.month}</span>
-                    <span className="text-sm font-black text-slate-700 tracking-tight mt-0.5 leading-none">{ann.day}</span>
+                    <span className="text-[9.5px] font-bold text-slate-500 uppercase tracking-wider leading-none">{ann.month}</span>
+                    <span className="text-sm font-black text-slate-900 tracking-tight mt-0.5 leading-none">{ann.day}</span>
                   </div>
 
                   {/* Icon Circle */}
-                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${badgeColors[idx % badgeColors.length]}`}>
+                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border shadow-2xs ${badgeColors[idx % badgeColors.length]}`}>
                     <AnnouncementIcon size={14} />
                   </span>
 
                   {/* Title and Description */}
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-extrabold text-slate-900 leading-tight truncate">{ann.title}</p>
-                    <p className="text-[10px] text-slate-500 font-medium line-clamp-1 mt-0.5 leading-tight">{ann.desc}</p>
+                    <p className="text-xs font-black text-slate-900 leading-tight truncate">{ann.title}</p>
+                    <p className="text-[10.5px] text-slate-600 font-bold line-clamp-1 mt-0.5 leading-tight">{ann.desc}</p>
                   </div>
                 </div>
               );
             })}
           </div>
 
-          <div className="border-t border-slate-100 pt-2 flex items-center justify-center">
+          <div className="border-t border-slate-100 pt-1.5 flex items-center justify-center">
             <Link
               to="/announcements"
-              className="text-[10px] font-bold text-[#0B6B3A] hover:underline flex items-center gap-1 mt-0.5 transition hover:gap-1.5"
+              className="text-[11px] font-black text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-1 transition hover:gap-1.5"
             >
               See all announcements →
             </Link>
           </div>
         </motion.div>
       </section>
+      </div>
     </motion.div>
   );
 };

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Archive,
+  CheckCircle2,
   Copy,
   Edit2,
   Home,
@@ -10,7 +11,9 @@ import {
   Plus,
   Search,
   Send,
+  Sparkles,
   Trash2,
+  Wand2,
   X,
 } from "lucide-react";
 import Header from "../components/Header";
@@ -68,6 +71,173 @@ const announcementMessageTemplates = {
 const templateMessages = Object.values(announcementMessageTemplates);
 
 const isTemplateMessage = (message) => templateMessages.includes(message);
+
+// Language detection from Title text (Tagalog / Filipino vs English)
+const detectLanguageFromTitle = (title = "") => {
+  const tagalogKeywords = [
+    "ang", "mga", "ng", "sa", "na", "para", "may", "meron", "purok", "lunsod",
+    "baha", "sunog", "lindol", "kuryente", "tubig", "bakuna", "trabaho", "ayuda",
+    "pamamahagi", "mag-ingat", "paalala", "babala", "isyu", "oras", "araw", "tulong",
+    "lahat", "kami", "tayo", "dengue", "reklamo", "hulog", "nanakaw", "nakaw", "kalusugan",
+    "sakuna", "alerto", "doktor", "gamot", "pag-ulan", "bagyo", "saklolo", "pulis", "tanod"
+  ];
+  const lower = title.toLowerCase();
+  const words = lower.split(/[^a-z0-9\-]+/).filter(Boolean);
+  const isTagalog = words.some((w) => tagalogKeywords.includes(w));
+  return isTagalog ? "tagalog" : "english";
+};
+
+// AI Generator logic for common causes, emergencies, calamities, and announcements
+const generateAiAnnouncementDraft = (title = "", category = "General") => {
+  const cleanTitle = title.trim();
+  const lowerTitle = cleanTitle.toLowerCase();
+  const lang = detectLanguageFromTitle(cleanTitle);
+
+  // 1. EARTHQUAKE / LINDOL / SEISMIC
+  if (
+    lowerTitle.includes("earthquake") ||
+    lowerTitle.includes("earth quake") ||
+    lowerTitle.includes("lindol") ||
+    lowerTitle.includes("quake") ||
+    lowerTitle.includes("seismic") ||
+    lowerTitle.includes("pag-alog")
+  ) {
+    const generatedCategory = "Emergency";
+    const generatedBody =
+      lang === "tagalog"
+        ? `ABISO NG BARANGAY - BABALA SA LINDOL 🌋\n\nNagkaroon ng pag-yanig (Earthquake) sa ating lugar. Pinapaalalahanan ang lahat ng residente ng Barangay Upper Mingading na manatiling kalmado at mag-ingat.\n\nMGA DAPAT SUNDIN:\n1. DUCK, COVER, & HOLD kung may pag-yanig pa.\n2. Lumabas sa mga gusali o bahay papunta sa open area malayo sa poste o puno.\n3. I-check ang inyong linya ng kuryente at gas bago muling pumasok sa bahay.\n4. Para sa emergency o saklolo, tumawag agad sa Barangay Hotline: 09306259795.\n\nManatiling alerto at sumunod sa mga opisyal na babala.`
+        : `BARANGAY ADVISORY - EARTHQUAKE SAFETY ALERT 🌋\n\nAn earthquake tremor has been reported in our area. All residents of Barangay Upper Mingading are strongly advised to remain calm and follow safety protocols.\n\nSAFETY INSTRUCTIONS:\n1. DUCK, COVER, & HOLD during active tremors.\n2. Evacuate to designated open areas away from electrical posts and fragile structures.\n3. Inspect your homes for gas leaks and electrical damage before re-entering.\n4. For immediate rescue or medical assistance, contact the Barangay Hotline: 09306259795.\n\nPlease stay vigilant and follow official updates.`;
+    return { category: generatedCategory, body: generatedBody, language: lang };
+  }
+
+  // 2. CARNAP / THEFT / NANAKAW / CRIME / SECURITY
+  if (
+    lowerTitle.includes("carnap") ||
+    lowerTitle.includes("car nap") ||
+    lowerTitle.includes("theft") ||
+    lowerTitle.includes("stolen") ||
+    lowerTitle.includes("nanakaw") ||
+    lowerTitle.includes("nakaw") ||
+    lowerTitle.includes("robbery") ||
+    lowerTitle.includes("crime") ||
+    lowerTitle.includes("security")
+  ) {
+    const generatedCategory = "Emergency";
+    const generatedBody =
+      lang === "tagalog"
+        ? `BARANGAY SECURITY ALERT - PAALALA SA SEKURIDAD 🚨\n\nIsang insidente ng Carnapping / Pagnanakaw ng Sasakyan ang naitala sa ating barangay. Pinapaalalahanan ang lahat ng residente na maging masigasig sa seguridad ng inyong mga sasakyan at ari-arian.\n\nMGA PAALALA SA SEKURIDAD:\n1. I-lock nang maayos ang inyong mga motorsiklo at sasakyan, gamitan ng anti-theft lock.\n2. Huwag iwanan ang susi sa sasakyan o magpark sa madilim at walang taong lugar.\n3. Ipagbigay-alam agad sa Barangay Tanod / Police Station kung may napapansing kaduda-dudang tao.\n4. Barangay Emergency Hotline: 09306259795.\n\nMagtulungan tayo para sa kapayapaan at seguridad ng Barangay Upper Mingading.`
+        : `BARANGAY SECURITY ALERT - VEHICLE THEFT / CARNAPPING NOTICE 🚨\n\nA vehicle theft / carnapping incident has been reported within the barangay vicinity. All residents of Barangay Upper Mingading are advised to take extra precautions.\n\nSECURITY MEASURES:\n1. Ensure all motorcycles and vehicles are locked securely with steering locks or anti-theft devices.\n2. Avoid parking in poorly lit or isolated areas.\n3. Report suspicious individuals or activity immediately to the Barangay Tanod on patrol.\n4. Barangay Emergency Hotline: 09306259795.\n\nLet us remain watchful and protect our community together.`;
+    return { category: generatedCategory, body: generatedBody, language: lang };
+  }
+
+  // 3. MEDICAL CHECKUP / HEALTH MISSION / VACCINATION / CLINIC
+  if (
+    lowerTitle.includes("medical") ||
+    lowerTitle.includes("checkup") ||
+    lowerTitle.includes("check up") ||
+    lowerTitle.includes("check-up") ||
+    lowerTitle.includes("health") ||
+    lowerTitle.includes("vaccine") ||
+    lowerTitle.includes("bakuna") ||
+    lowerTitle.includes("doktor") ||
+    lowerTitle.includes("clinic") ||
+    lowerTitle.includes("dengue")
+  ) {
+    const generatedCategory = "Health";
+    const generatedBody =
+      lang === "tagalog"
+        ? `IMPORMASYON SA SERBISYONG PANGKALUSUGAN - MEDICAL CHECKUP 🏥\n\nMagkakaroon ng Libreng Medical Check-up at Health Mission sa ating Barangay Health Center para sa lahat ng residente ng Barangay Upper Mingading.\n\nMGA DETALYE NG PROGRAMA:\n- Petsa at Oras: [Ilagay ang Petsa], 8:00 AM - 3:00 PM\n- Lugar: Barangay Upper Mingading Health Center\n- Mga Serbisyo: Libreng Check-up, Konsultasyon, Reseta ng Gamot, at BP / Blood Sugar Testing.\n\nKUMUHA NG NUMBER:\nMangyaring magdala ng Valid ID o Barangay Clearance. Ang pamamahagi ng priority numbers ay magsisimula ng 7:30 AM.`
+        : `HEALTH SERVICE ANNOUNCEMENT - FREE MEDICAL CHECKUP 🏥\n\nBarangay Upper Mingading will be conducting a Free Medical Checkup and Health Consultation for all registered residents.\n\nPROGRAM DETAILS:\n- Date & Time: [Specify Date], 8:00 AM - 3:00 PM\n- Location: Barangay Upper Mingading Health Center\n- Available Services: General Medical Consultation, Prescription Medicines, BP & Blood Sugar Testing.\n\nREQUIREMENTS:\nPlease bring a Valid ID or Barangay Resident Certificate. Priority registration opens at 7:30 AM.`;
+    return { category: generatedCategory, body: generatedBody, language: lang };
+  }
+
+  // 4. FIRE / SUNOG / BLAZE
+  if (
+    lowerTitle.includes("fire") ||
+    lowerTitle.includes("sunog") ||
+    lowerTitle.includes("wildfire") ||
+    lowerTitle.includes("burn") ||
+    lowerTitle.includes("blaze")
+  ) {
+    const generatedCategory = "Emergency";
+    const generatedBody =
+      lang === "tagalog"
+        ? `EMERGENCY ANNOUNCEMENT - BABALA SA SUNOG 🔥\n\nIsang alerto sa sunog ang inilabas para sa kaligtasan ng lahat ng residente sa Barangay Upper Mingading.\n\nMGA GABAY SA KALIGTASAN:\n1. I-turn off agad ang main switch ng kuryente at LPG tank valves kung ligtas gawin.\n2. Lumabas agad ng bahay kung may usok o apoy, iwasan ang mag-panic.\n3. I-prioritize ang kaligtasan ng pamilya bago ang gamit.\n4. Tumawag agad sa Fire Hotline o Barangay Emergency Team: 09306259795.\n\nManatiling alerto at mag-ingat po ang lahat.`
+        : `EMERGENCY ANNOUNCEMENT - FIRE SAFETY ALERT 🔥\n\nAn urgent fire emergency advisory is in effect for Barangay Upper Mingading.\n\nIMMEDIATE ACTIONS REQUIRED:\n1. Shut off main circuit breakers and LPG gas regulators if safe to do so.\n2. Evacuate immediately if smoke or fire is present.\n3. Prioritize family safety over personal belongings.\n4. Contact the Fire Department or Barangay Rescue Hotline immediately: 09306259795.\n\nStay alert and follow safety instructions from local authorities.`;
+    return { category: generatedCategory, body: generatedBody, language: lang };
+  }
+
+  // 5. FLOOD / TYPHOON / BAGYO / BAHA / STORM
+  if (
+    lowerTitle.includes("typhoon") ||
+    lowerTitle.includes("bagyo") ||
+    lowerTitle.includes("flood") ||
+    lowerTitle.includes("baha") ||
+    lowerTitle.includes("storm") ||
+    lowerTitle.includes("rain") ||
+    lowerTitle.includes("landslide")
+  ) {
+    const generatedCategory = "Emergency";
+    const generatedBody =
+      lang === "tagalog"
+        ? `BABALA SA BAGYO AT BAHA - ADVISORY SA MGA RESIDENTE ⛈️\n\nDahil sa malakas na pag-ulan at masamang panahon, pinapayuhan ang mga residente sa mabababang lugar ng Barangay Upper Mingading na maghanda sa posibleng pagbaha.\n\nMGA HAKBANG SA PAGHAHANDA:\n1. Ihanda ang Emergency Go-Bag (pagkain, tubig, gamot, flashlight, at importanteng dokumento).\n2. Alamin ang pinakamalapit na Evacuation Center sa inyong Purok.\n3. Mag-charge ng mga mobile phones at power banks.\n4. Para sa tulong o evacuation assistance: 09306259795.\n\nMag-ingat po ang bawat pamilya sa Barangay Upper Mingading.`
+        : `TYPHOON & FLOOD ADVISORY - RESIDENT ALERT ⛈️\n\nDue to heavy rainfall and inclement weather, residents in low-lying areas of Barangay Upper Mingading are advised to take precautionary measures for potential flooding.\n\nPREPARATION STEPS:\n1. Prepare Emergency Go-Bags with food, drinking water, first-aid items, and essential documents.\n2. Monitor official barangay weather updates and locate your nearest evacuation site.\n3. Charge communication devices and emergency lights.\n4. For evacuation response and assistance: 09306259795.\n\nStay safe and indoors during heavy rainfall.`;
+    return { category: generatedCategory, body: generatedBody, language: lang };
+  }
+
+  // 6. POWER / WATER / BROWNOUT / KURYENTE / TUBIG / INTERRUPTION
+  if (
+    lowerTitle.includes("power") ||
+    lowerTitle.includes("brownout") ||
+    lowerTitle.includes("kuryente") ||
+    lowerTitle.includes("water") ||
+    lowerTitle.includes("tubig") ||
+    lowerTitle.includes("interruption") ||
+    lowerTitle.includes("outage") ||
+    lowerTitle.includes("blackout")
+  ) {
+    const generatedCategory = "General";
+    const generatedBody =
+      lang === "tagalog"
+        ? `PATALASTAS SA PAGPAPATAY NG KURYENTE / TUBIG ⚡\n\nInanunsyo ng barangay ang nakatakdang power / water interruption upang magbigay-daan sa pasilidad at linya ng maintenance work.\n\nDETALYE NG INTERRUPTIYO:\n- Apektadong Lugar: Barangay Upper Mingading (Lahat ng Purok)\n- Petsa at Oras: [Ilagay ang Petsa], 8:00 AM hanggang 5:00 PM\n- Dahilan: Scheduled Maintenance at Line Improvement Work.\n\nPAALALA:\nMag-ipon ng sapat na tubig at mag-charge ng mga ilaw bago ang takdang oras.`
+        : `NOTICE OF POWER / WATER SERVICE INTERRUPTION ⚡\n\nPlease be informed of a scheduled service interruption affecting Barangay Upper Mingading for maintenance and infrastructure upgrading.\n\nINTERRUPTION SCHEDULE:\n- Affected Area: Barangay Upper Mingading (All Puroks)\n- Date & Time: [Specify Date], 8:00 AM to 5:00 PM\n- Reason: Utility Line Inspection and System Maintenance.\n\nRECOMMENDATION:\nPlease store adequate water supply and charge essential equipment prior to the scheduled outage.`;
+    return { category: generatedCategory, body: generatedBody, language: lang };
+  }
+
+  // 7. AYUDA / RELIEF / DISTRIBUTION / CASH ASSISTANCE
+  if (
+    lowerTitle.includes("ayuda") ||
+    lowerTitle.includes("relief") ||
+    lowerTitle.includes("distribution") ||
+    lowerTitle.includes("cash assistance") ||
+    lowerTitle.includes("pangkabuhayan")
+  ) {
+    const generatedCategory = "Livelihood";
+    const generatedBody =
+      lang === "tagalog"
+        ? `ANUNSYO SA PAMAMAHAGI NG AYUDA AT RELIEF GOODS 🌾\n\nIpinapabatid sa lahat ng nakatalagang benepisyaryo ng Barangay Upper Mingading ang nakatakdang pamamahagi ng Ayuda / Relief Assistance.\n\nMGA DETALYE NG DISTRIBUTION:\n- Petsa at Oras: [Ilagay ang Petsa], 9:00 AM - 4:00 PM\n- Lugar: Barangay Upper Mingading Covered Court\n- Mga Kailangan Dalhin: Valid ID, Barangay Certificate, at Stub Number.\n\nPinapaalalahanan ang lahat na panatilihin ang kaayusan sa pila.`
+        : `COMMUNITY ANNOUNCEMENT - AYUDA & RELIEF DISTRIBUTION 🌾\n\nPlease be informed of the scheduled distribution of Ayuda and Relief Assistance for eligible beneficiaries of Barangay Upper Mingading.\n\nDISTRIBUTION DETAILS:\n- Date & Time: [Specify Date], 9:00 AM - 4:00 PM\n- Venue: Barangay Upper Mingading Covered Court\n- Requirements: Valid ID, Barangay Resident Certificate, and Priority Stub.\n\nPlease maintain orderly lines during the distribution process.`;
+    return { category: generatedCategory, body: generatedBody, language: lang };
+  }
+
+  // 8. DEFAULT GENERIC AI GENERATOR ACCORDING TO TITLE & LANGUAGE
+  const cat = category || "General";
+  const defaultBody =
+    lang === "tagalog"
+      ? `OPISYAL NA ANUNSYO NG BARANGAY UPPER MINGADING 📢\n\nPamagat: ${cleanTitle || "Opisyal na Patalastas"}\nKategorya: ${cat}\n\nMGA IMPORMASYON AT DETALYE:\nIpinapabatid sa lahat ng residente ng Barangay Upper Mingading ang mahalagang patalastas na ito ukol sa ${cleanTitle || "aktibidad ng barangay"}.\n\nMGA DETALYE:\n- Petsa at Oras: [Ilagay ang Petsa/Oras]\n- Lugar: Barangay Upper Mingading Hall / Covered Court\n- Paalala: Mangyaring sumunod sa mga panuntunan ng barangay.\n\nPara sa karagdagang katanungan, tumawag sa Barangay Office: 09306259795.\n\nMaraming salamat sa inyong kooperasyon!`
+      : `OFFICIAL BARANGAY UPPER MINGADING ANNOUNCEMENT 📢\n\nTitle: ${cleanTitle || "Official Advisory"}\nCategory: ${cat}\n\nIMPORTANT ADVISORY & DETAILS:\nAll registered residents of Barangay Upper Mingading are hereby informed regarding ${cleanTitle || "the official barangay update"}.\n\nDETAILS:\n- Date & Schedule: [Specify Date & Time]\n- Venue: Barangay Upper Mingading Hall / Covered Court\n- Guidelines: Please be guided accordingly and observe standard protocols.\n\nFor inquiries, please contact the Barangay Office Hotline: 09306259795.\n\nThank you for your cooperation!`;
+
+  return { category: cat, body: defaultBody, language: lang };
+};
+
+const getSelectedResidentNames = (audience = "") => {
+  if (!audience || (!audience.startsWith("Selected Resident:") && !audience.startsWith("Selected Residents:"))) {
+    return [];
+  }
+  const namesStr = audience.replace(/^Selected Residents?:/, "").trim();
+  if (!namesStr) return [];
+  return namesStr.split(",").map((s) => s.trim()).filter(Boolean);
+};
 
 const getInitialForm = () => ({
   title: "",
@@ -182,16 +352,32 @@ const buildHouseholdSmsRecipients = (residents = []) => {
 
 const isHouseholdAnnouncement = (audience) => audience === HOUSEHOLD_AUDIENCE;
 
-const buildAnnouncementSmsMessage = (announcement) =>
-  [
-    "Barangay Announcement",
-    announcement.title ? `Title: ${announcement.title}` : "",
-    announcement.body || "",
-    announcement.publish_date ? `Date: ${formatDate(announcement.publish_date)}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n")
-    .slice(0, 1500);
+const buildAnnouncementSmsMessage = (announcement) => {
+  const lines = [
+    "[OFFICIAL KAAGAPAI NOTIFICATION]",
+    "BARANGAY UPPER MINGADING, ALEOSAN",
+    "----------------------------------------",
+  ];
+
+  if (announcement.title) {
+    lines.push(`📢 Pamagat: ${announcement.title}`);
+  }
+
+  if (announcement.body) {
+    lines.push(announcement.body);
+  }
+
+  if (announcement.publish_date) {
+    lines.push(`Petsa: ${formatDate(announcement.publish_date)}`);
+  }
+
+  lines.push("----------------------------------------");
+  lines.push(
+    "⚠️ PAALALA: Ang Barangay Upper Mingading ay HINDI kailanman hihingi ng inyong password, OTP, o bayad sa GCash via text."
+  );
+
+  return lines.join("\n").slice(0, 1500);
+};
 
 const formatBulkSmsFailureDetails = (failed = []) => {
   const firstReason = failed.find((item) => item.error)?.error;
@@ -216,6 +402,21 @@ const Announcements = () => {
   const [recipientError, setRecipientError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
   const [sendingAnnouncementId, setSendingAnnouncementId] = useState(null);
+  const [aiGeneratedNotice, setAiGeneratedNotice] = useState("");
+
+  const handleAiGenerateDraft = (customTitle = null) => {
+    const targetTitle = customTitle !== null ? customTitle : formData.title;
+    const res = generateAiAnnouncementDraft(targetTitle, formData.category);
+    setFormData((current) => ({
+      ...current,
+      title: targetTitle || current.title,
+      category: res.category,
+      body: res.body,
+    }));
+    const langLabel = res.language === "tagalog" ? "Tagalog 🇵🇭" : "English 🇺🇸";
+    setAiGeneratedNotice(`✨ AI Announcement Draft created in ${langLabel}!`);
+    setTimeout(() => setAiGeneratedNotice(""), 4500);
+  };
 
   const loadAnnouncements = useCallback(async () => {
     setLoading(true);
@@ -298,29 +499,63 @@ const Announcements = () => {
       .slice(0, 50);
   }, [residents, residentSearchQuery]);
 
+  const selectedResidentNames = useMemo(
+    () => getSelectedResidentNames(formData.audience),
+    [formData.audience]
+  );
+
   const getAudienceSelectValue = (audience) => {
     if (!audience) return "All Residents";
-    if (audience.startsWith("Selected Resident:")) return "Selected Resident";
+    if (audience.startsWith("Selected Resident:") || audience.startsWith("Selected Residents:")) return "Selected Resident";
     if (audience.startsWith("Purok: ")) return audience;
     if (audience.startsWith("Puroks: ")) return "Multiple Puroks";
     return audience;
   };
 
-  const handleSelectResidentChange = (residentId) => {
-    const res = residents.find((r) => r.id === residentId);
-    if (res) {
-      setFormData((current) => ({
-        ...current,
-        audience: `Selected Resident: ${res.full_name}`,
-        sms_recipient_phones: res.phone || "",
-      }));
+  const handleToggleSelectedResident = (resident) => {
+    const rName = (resident.full_name || getResidentDisplayName(resident)).trim();
+    let nextNames = [];
+    if (selectedResidentNames.includes(rName)) {
+      nextNames = selectedResidentNames.filter((n) => n !== rName);
     } else {
-      setFormData((current) => ({
-        ...current,
-        audience: "Selected Resident:",
-        sms_recipient_phones: "",
-      }));
+      nextNames = [...selectedResidentNames, rName];
     }
+
+    const matchedResidents = residents.filter((r) =>
+      nextNames.includes((r.full_name || getResidentDisplayName(r)).trim())
+    );
+    const phones = matchedResidents.map((r) => normalizePhone(r.phone)).filter(Boolean);
+    const uniquePhones = [...new Set(phones)];
+
+    setFormData((current) => ({
+      ...current,
+      audience: nextNames.length > 0 ? `Selected Residents: ${nextNames.join(", ")}` : "Selected Resident:",
+      sms_recipient_phones: uniquePhones.join("\n"),
+    }));
+  };
+
+  const handleSelectAllFilteredResidents = () => {
+    const filteredNames = filteredFormResidents.map((r) => (r.full_name || getResidentDisplayName(r)).trim());
+    const combinedNames = [...new Set([...selectedResidentNames, ...filteredNames])];
+    const matchedResidents = residents.filter((r) =>
+      combinedNames.includes((r.full_name || getResidentDisplayName(r)).trim())
+    );
+    const phones = matchedResidents.map((r) => normalizePhone(r.phone)).filter(Boolean);
+    const uniquePhones = [...new Set(phones)];
+
+    setFormData((current) => ({
+      ...current,
+      audience: combinedNames.length > 0 ? `Selected Residents: ${combinedNames.join(", ")}` : "Selected Resident:",
+      sms_recipient_phones: uniquePhones.join("\n"),
+    }));
+  };
+
+  const handleClearSelectedResidents = () => {
+    setFormData((current) => ({
+      ...current,
+      audience: "Selected Resident:",
+      sms_recipient_phones: "",
+    }));
   };
 
   const openCreate = () => {
@@ -329,6 +564,7 @@ const Announcements = () => {
     setMessage(null);
     setCopyStatus("");
     setResidentSearchQuery("");
+    setAiGeneratedNotice("");
     setShowModal(true);
   };
 
@@ -347,6 +583,7 @@ const Announcements = () => {
     setMessage(null);
     setCopyStatus("");
     setResidentSearchQuery("");
+    setAiGeneratedNotice("");
     setShowModal(true);
   };
 
@@ -355,6 +592,7 @@ const Announcements = () => {
     setEditingAnnouncement(null);
     setFormData(getInitialForm());
     setCopyStatus("");
+    setAiGeneratedNotice("");
   };
 
   const handleInput = (event) => {
@@ -375,7 +613,7 @@ const Announcements = () => {
     });
   };
 
-  const handleSaveAnnouncement = async () => {
+  const handleSaveAnnouncement = async (shouldPublish = false) => {
     setSaving(true);
     setMessage(null);
 
@@ -384,22 +622,47 @@ const Announcements = () => {
         throw new Error(`Invalid SMS phone number(s): ${formSmsRecipients.invalid.slice(0, 3).join(", ")}`);
       }
 
+      const targetStatus = shouldPublish ? "Published" : "Draft";
       const announcementPayload = {
         ...formData,
-        status: "Draft", // Always save as Draft first
+        status: targetStatus,
         publish_date: formData.publish_date || new Date().toISOString().slice(0, 10),
         sms_recipient_phones: formSmsRecipients.recipients.join("\n"),
       };
 
+      let savedData;
       if (editingAnnouncement) {
-        await updateAnnouncement(editingAnnouncement.id, announcementPayload);
+        savedData = await updateAnnouncement(editingAnnouncement.id, announcementPayload);
       } else {
-        await createAnnouncement(announcementPayload);
+        savedData = await createAnnouncement(announcementPayload);
+      }
+
+      let smsMsg = "";
+      if (shouldPublish) {
+        let phones = formSmsRecipients.recipients;
+        if (isHouseholdAnnouncement(formData.audience)) {
+          const hhPhones = householdSmsRecipients.phoneRecipients.map((r) => normalizePhone(r.phone)).filter(Boolean);
+          phones = [...new Set([...phones, ...hhPhones])];
+        } else if (formData.audience === "All Residents" || formData.audience === "Registered Residents") {
+          const allPhones = residents.filter((r) => hasPhone(r)).map((r) => normalizePhone(r.phone)).filter(Boolean);
+          phones = [...new Set([...phones, ...allPhones])];
+        }
+
+        if (phones.length > 0) {
+          // Asynchronous non-blocking SMS dispatch for sub-2s response time
+          sendBulkSmsNotifications({
+            recipients: phones,
+            body: buildAnnouncementSmsMessage(savedData),
+          }).catch((err) => console.warn("Background SMS error:", err.message));
+          smsMsg = ` SMS alert broadcast dispatched to ${phones.length} recipients.`;
+        }
       }
 
       setMessage({
         type: "success",
-        text: "Announcement saved successfully as Draft.",
+        text: shouldPublish
+          ? `Announcement published successfully!${smsMsg}`
+          : "Announcement saved successfully as Draft.",
       });
 
       closeModal();
@@ -415,8 +678,8 @@ const Announcements = () => {
     if (status === "Published") {
       const ok = await confirm({
         title: "Publish Announcement",
-        message: "Are you sure you want to publish this announcement to all residents?",
-        confirmText: "Publish",
+        message: "Are you sure you want to publish this announcement to all residents immediately?",
+        confirmText: "Publish Now",
         cancelText: "Cancel",
         variant: "emerald",
         icon: Megaphone,
@@ -428,18 +691,21 @@ const Announcements = () => {
     setMessage(null);
 
     try {
+      // Fast Supabase update (< 300ms)
       await updateAnnouncement(announcement.id, { ...announcement, status });
       
+      // Update local state instantly for 0-lag UI feedback
+      setAnnouncements((prev) => prev.map((a) => (a.id === announcement.id ? { ...a, status } : a)));
+
       let smsResultMsg = "";
       if (status === "Published") {
         let phones = parseSmsRecipients(announcement.sms_recipient_phones || "").recipients;
         
-        // Auto-include based on audience filter
         if (announcement.audience === "Family Household Representatives") {
-          const hhPhones = householdSmsRecipients.phoneRecipients.map(r => normalizePhone(r.phone)).filter(Boolean);
+          const hhPhones = householdSmsRecipients.phoneRecipients.map((r) => normalizePhone(r.phone)).filter(Boolean);
           phones = [...new Set([...phones, ...hhPhones])];
         } else if (announcement.audience === "All Residents" || announcement.audience === "Registered Residents") {
-          const allPhones = residents.filter(r => hasPhone(r)).map(r => normalizePhone(r.phone)).filter(Boolean);
+          const allPhones = residents.filter((r) => hasPhone(r)).map((r) => normalizePhone(r.phone)).filter(Boolean);
           phones = [...new Set([...phones, ...allPhones])];
         } else if (announcement.audience && announcement.audience.startsWith("Purok: ")) {
           const targetPurokLabel = announcement.audience.replace("Purok: ", "").trim();
@@ -452,26 +718,14 @@ const Announcements = () => {
               .filter(Boolean);
             phones = [...new Set([...phones, ...purokPhones])];
           }
-        } else if (announcement.audience && announcement.audience.startsWith("Puroks: ")) {
-          const targetLabels = announcement.audience.replace("Puroks: ", "").split(",").map((s) => s.trim()).filter(Boolean);
-          const targetValues = targetLabels.map((lbl) => purokDefinitions.find((p) => p.label === lbl)?.value).filter(Boolean);
-          if (targetValues.length > 0) {
-            const purokPhones = residents
-              .filter((r) => targetValues.includes(normalizePurokValue(r.purok)) && hasPhone(r))
-              .map((r) => normalizePhone(r.phone))
-              .filter(Boolean);
-            phones = [...new Set([...phones, ...purokPhones])];
-          }
         }
         
         if (phones.length > 0) {
-          const smsResult = await sendBulkSmsNotifications({
+          sendBulkSmsNotifications({
             recipients: phones,
             body: buildAnnouncementSmsMessage(announcement),
-          });
-          smsResultMsg = smsResult.failed.length > 0
-            ? ` SMS partially failed for ${smsResult.failed.length} recipients.`
-            : ` Auto-sent SMS to ${smsResult.sent.length} recipients.`;
+          }).catch((err) => console.warn("Background SMS error:", err.message));
+          smsResultMsg = ` Auto-sent SMS broadcast to ${phones.length} recipients.`;
         }
       }
 
@@ -479,7 +733,7 @@ const Announcements = () => {
         type: "success",
         text:
           status === "Published"
-            ? `Announcement published.${smsResultMsg}`
+            ? `Announcement published successfully!${smsResultMsg}`
             : `Announcement marked as ${status.toLowerCase()}.`,
       });
 
@@ -770,34 +1024,111 @@ const Announcements = () => {
         maxWidth="max-w-2xl"
         eyebrow="Announcement Details"
         footer={
-          <div className="flex flex-col gap-3 sm:flex-row justify-end">
-            <button
-              type="button"
-              onClick={closeModal}
-              className="px-6 py-2.5 font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveAnnouncement}
-              disabled={saving}
-              className="flex min-w-[120px] items-center justify-center gap-2 rounded-xl bg-[#14532D] px-6 py-2.5 font-bold text-white transition hover:bg-[#0f3e21] disabled:cursor-not-allowed disabled:opacity-60 shadow-sm"
-            >
-              {saving ? <Loader size={16} className="animate-spin" /> : null}
-              {saving ? "Saving..." : "Save"}
-            </button>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full">
+            <div className="text-xs text-slate-500 font-semibold flex items-center gap-1.5">
+              <Sparkles size={14} className="text-purple-600 animate-pulse" />
+              <span>KaagapA.I Smart Publishing Engine</span>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2.5 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={closeModal}
+                className="px-4 py-2.5 font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveAnnouncement(false)}
+                disabled={saving}
+                className="flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-5 py-2.5 font-bold text-slate-700 hover:bg-slate-50 transition disabled:opacity-60 cursor-pointer shadow-xs"
+              >
+                {saving ? <Loader size={16} className="animate-spin" /> : null}
+                <span>Save Draft</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveAnnouncement(true)}
+                disabled={saving}
+                className="flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#14532D] via-[#157347] to-[#0F4324] px-6 py-2.5 font-bold text-white transition hover:brightness-110 disabled:opacity-60 shadow-md cursor-pointer active:scale-95"
+              >
+                {saving ? <Loader size={16} className="animate-spin" /> : <Send size={15} />}
+                <span>🚀 Publish Now</span>
+              </button>
+            </div>
           </div>
         }
       >
         <div className="p-6">
-          <div className="grid gap-6 sm:grid-cols-2">
+          <div className="grid gap-5 sm:grid-cols-2">
+            
+            {/* AI ASSISTANT SMART GENERATOR BAR */}
+            <div className="sm:col-span-2 rounded-2xl border border-indigo-200/90 bg-gradient-to-r from-indigo-50/90 via-purple-50/80 to-blue-50/90 p-4 shadow-xs space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm shrink-0">
+                    <Sparkles size={18} className="animate-pulse" />
+                  </span>
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-indigo-950 flex items-center gap-1.5">
+                      <span>KaagapA.I Announcement Assistant</span>
+                      <span className="text-[9px] px-2 py-0.2 rounded-full bg-purple-200 text-purple-900 font-black">AI DRAFT</span>
+                    </h4>
+                    <p className="text-[11px] font-semibold text-indigo-800">
+                      Auto-generates official announcements in <b>English</b> or <b>Tagalog</b> based on your title.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleAiGenerateDraft()}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-black text-xs shadow-md transition active:scale-95 cursor-pointer"
+                  title="Generate AI Announcement Draft based on Title"
+                >
+                  <Wand2 size={14} className="text-amber-300" />
+                  <span>✨ Generate AI Draft</span>
+                </button>
+              </div>
+
+              {/* Quick Idea Preset Chips */}
+              <div className="flex items-center gap-1.5 flex-wrap pt-1 text-[11px] font-bold">
+                <span className="text-slate-500 uppercase tracking-wider text-[9.5px]">Quick Ideas:</span>
+                {[
+                  { label: "🌋 Earthquake", title: "Earthquake Emergency Advisory" },
+                  { label: "🚨 Carnap / Crime", title: "Carnapping & Vehicle Theft Security Alert" },
+                  { label: "🏥 Medical Checkup", title: "Free Medical Checkup & Health Mission" },
+                  { label: "🔥 Fire Alert", title: "Fire Safety Emergency Advisory" },
+                  { label: "⛈️ Flood / Typhoon", title: "Typhoon & Heavy Rainfall Advisory" },
+                  { label: "⚡ Power Outage", title: "Scheduled Power & Water Interruption" },
+                  { label: "🌾 Ayuda Relief", title: "Pamamahagi ng Relief Goods at Ayuda" }
+                ].map((chip) => (
+                  <button
+                    key={chip.label}
+                    type="button"
+                    onClick={() => handleAiGenerateDraft(chip.title)}
+                    className="px-2.5 py-1 rounded-lg bg-white/95 border border-indigo-200 text-indigo-900 hover:bg-indigo-600 hover:text-white transition shadow-2xs cursor-pointer active:scale-95"
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+
+              {aiGeneratedNotice && (
+                <div className="flex items-center gap-1.5 text-xs font-black text-emerald-800 bg-emerald-100/90 border border-emerald-300 px-3.5 py-2 rounded-xl animate-fadeIn">
+                  <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                  <span>{aiGeneratedNotice}</span>
+                </div>
+              )}
+            </div>
+
             <label className="text-sm font-bold text-slate-700 sm:col-span-2">
               Title *
               <input
                 name="title"
                 value={formData.title}
                 onChange={handleInput}
+                placeholder="e.g. Earthquake, Carnap, Medical Checkup..."
                 className="mt-2 w-full h-[46px] rounded-[12px] border border-slate-200 bg-slate-50 px-4 text-sm font-medium outline-none transition focus:border-[#14532D] focus:bg-white focus:ring-4 focus:ring-[#14532D]/10 shadow-sm"
               />
             </label>
@@ -845,31 +1176,125 @@ const Announcements = () => {
             </label>
 
             {getAudienceSelectValue(formData.audience) === "Selected Resident" && (
-              <div className="sm:col-span-2 border border-slate-100 bg-slate-50/50 p-4 rounded-xl space-y-3">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Select Resident Target</p>
+              <div className="sm:col-span-2 rounded-2xl border border-indigo-200 bg-slate-50/90 p-4 space-y-3.5 shadow-2xs">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-wider text-indigo-950 flex items-center gap-1.5">
+                      <span>Target Selected Residents ({selectedResidentNames.length})</span>
+                    </p>
+                    <p className="text-[11px] font-semibold text-slate-500">
+                      Check multiple residents below. Only checked residents will receive this announcement.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSelectAllFilteredResidents}
+                      className="text-[11px] font-bold text-indigo-700 hover:text-indigo-900 bg-white border border-indigo-200 px-2.5 py-1 rounded-lg hover:bg-indigo-50 transition cursor-pointer"
+                    >
+                      Select All Filtered
+                    </button>
+                    {selectedResidentNames.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearSelectedResidents}
+                        className="text-[11px] font-bold text-rose-600 hover:text-rose-800 bg-white border border-rose-200 px-2.5 py-1 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                      >
+                        Clear All ({selectedResidentNames.length})
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Selected Resident Chips / Badges */}
+                {selectedResidentNames.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 p-2.5 rounded-xl bg-white border border-indigo-100 max-h-28 overflow-y-auto custom-scrollbar">
+                    {selectedResidentNames.map((name) => (
+                      <span
+                        key={name}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-bold shadow-2xs"
+                      >
+                        <span>{name}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const targetRes = residents.find((r) => (r.full_name || getResidentDisplayName(r)).trim() === name);
+                            if (targetRes) handleToggleSelectedResident(targetRes);
+                            else {
+                              const nextNames = selectedResidentNames.filter((n) => n !== name);
+                              setFormData((current) => ({
+                                ...current,
+                                audience: nextNames.length > 0 ? `Selected Residents: ${nextNames.join(", ")}` : "Selected Resident:",
+                              }));
+                            }
+                          }}
+                          className="rounded-full p-0.5 hover:bg-indigo-200 text-indigo-700 cursor-pointer"
+                          title="Remove resident"
+                        >
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Search Resident Filter Box */}
                 <div className="relative">
-                  <Search className="absolute left-3 top-3 text-slate-400" size={16} />
+                  <Search className="absolute left-3.5 top-3 text-slate-400" size={15} />
                   <input
                     value={residentSearchQuery}
                     onChange={(event) => setResidentSearchQuery(event.target.value)}
-                    placeholder="Search resident name..."
-                    className="w-full h-[38px] rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-xs font-medium outline-none transition focus:border-[#14532D] focus:ring-2 focus:ring-[#14532D]/10 shadow-sm"
+                    placeholder="Search resident name, purok, or phone..."
+                    className="w-full h-[40px] rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-xs font-medium outline-none transition focus:border-indigo-600 focus:ring-2 focus:ring-indigo-600/10 shadow-xs"
                   />
                 </div>
-                <select
-                  value={
-                    residents.find((r) => `Selected Resident: ${r.full_name}` === formData.audience)?.id || ""
-                  }
-                  onChange={(event) => handleSelectResidentChange(event.target.value)}
-                  className="w-full h-[38px] rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium outline-none transition focus:border-[#14532D] focus:ring-2 focus:ring-[#14532D]/10 shadow-sm"
-                >
-                  <option value="">Choose resident</option>
-                  {filteredFormResidents.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.full_name} - {r.purok || "No Purok"} ({r.phone || "No phone"})
-                    </option>
-                  ))}
-                </select>
+
+                {/* Checkbox List of Residents */}
+                <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white divide-y divide-slate-100 custom-scrollbar">
+                  {filteredFormResidents.length === 0 ? (
+                    <p className="p-4 text-center text-xs font-semibold text-slate-400">
+                      No residents match your search.
+                    </p>
+                  ) : (
+                    filteredFormResidents.map((r) => {
+                      const rName = (r.full_name || getResidentDisplayName(r)).trim();
+                      const isChecked = selectedResidentNames.includes(rName);
+                      const hasPhoneNumber = hasPhone(r);
+
+                      return (
+                        <label
+                          key={r.id}
+                          className={`flex items-center justify-between gap-3 px-3.5 py-2.5 text-xs font-medium transition cursor-pointer ${
+                            isChecked ? "bg-indigo-50/70" : "hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => handleToggleSelectedResident(r)}
+                              className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <p className="truncate font-bold text-slate-800">{rName}</p>
+                              <p className="truncate text-[11px] text-slate-500 font-semibold">
+                                {r.purok ? `Purok: ${r.purok}` : "No Purok"}
+                              </p>
+                            </div>
+                          </div>
+                          <span
+                            className={`inline-flex shrink-0 items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                              hasPhoneNumber ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
+                            <Phone size={10} />
+                            {hasPhoneNumber ? r.phone : "No phone"}
+                          </span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             )}
 

@@ -10,8 +10,18 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   </head>
-  <body>
-    <div id="root"></div>
+  <body class="bg-[#032B1E] text-slate-100 min-h-screen">
+    <div id="root">
+      <div style="display:flex;min-height:100vh;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#02281B 0%,#043E2B 50%,#011B12 100%);color:#ffffff;font-family:system-ui,-apple-system,sans-serif;text-align:center;padding:20px;">
+        <div style="position:relative;margin-bottom:20px;">
+          <img src="/logo.png" alt="Barangay Upper Mingading" style="width:84px;height:84px;object-fit:contain;border-radius:50%;box-shadow:0 10px 25px rgba(0,0,0,0.5);border:2px solid rgba(52,211,153,0.5);" onerror="this.style.display='none'" />
+        </div>
+        <h1 style="font-size:22px;font-weight:900;margin:0 0 6px 0;letter-spacing:0.5px;">Kaagap<span style="color:#FBBF24;">AI</span></h1>
+        <p style="font-size:12px;color:rgba(167,243,208,0.9);margin:0 0 24px 0;font-weight:600;">Barangay Upper Mingading, Aleosan</p>
+        <div style="width:36px;height:36px;border:3px solid rgba(255,255,255,0.15);border-top-color:#34D399;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+        <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

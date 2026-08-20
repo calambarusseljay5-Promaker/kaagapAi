@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS public.livelihood_posts (
   contact TEXT,
   status TEXT NOT NULL DEFAULT 'Open',
   deadline DATE,
+  audience TEXT DEFAULT 'All Residents',
+  sms_recipient_phones TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

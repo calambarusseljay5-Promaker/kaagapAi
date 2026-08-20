@@ -206,11 +206,15 @@ const Residents = () => {
     <div className="min-h-screen bg-slate-50">
       <Header title="Residents" subtitle="Manage and view all barangay residents" />
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm border border-slate-200">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <section className="relative overflow-hidden mb-6 rounded-3xl border border-emerald-200/80 bg-gradient-to-br from-[#ECFDF5] via-[#F6FCF9] to-white p-6 shadow-sm shadow-emerald-950/5">
+          {/* Subtle ambient gradient orbs */}
+          <div className="pointer-events-none absolute -top-16 -right-16 h-48 w-48 rounded-full bg-emerald-200/30 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-16 -left-16 h-48 w-48 rounded-full bg-teal-200/20 blur-3xl" />
+
+          <div className="relative z-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
-              <h2 className="text-2xl font-semibold text-slate-900">Residents Management</h2>
-              <p className="mt-1 text-sm text-slate-500">Add, edit, search, and remove residents from Supabase.</p>
+              <h2 className="text-2xl font-black text-emerald-950 tracking-tight">Residents Management</h2>
+              <p className="mt-1 text-sm font-medium text-emerald-800/80">Add, edit, search, and remove residents from Supabase.</p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <input
@@ -218,12 +222,12 @@ const Residents = () => {
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Search residents..."
-                className="w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 sm:w-80"
+                className="w-full rounded-2xl border border-emerald-200/80 bg-white/95 px-4 py-2.5 text-sm font-semibold text-slate-900 placeholder-slate-400 outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 shadow-sm sm:w-80"
               />
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value)}
-                className="w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 sm:w-48"
+                className="w-full rounded-2xl border border-emerald-200/80 bg-white/95 px-4 py-2.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 shadow-sm sm:w-48"
               >
                 {statusOptions.map((status) => (
                   <option key={status} value={status}>
@@ -234,7 +238,7 @@ const Residents = () => {
               <button
                 type="button"
                 onClick={resetForm}
-                className="inline-flex items-center justify-center rounded-3xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                className="inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-[#044E35] via-[#057A55] to-[#046C4E] hover:from-[#033E2B] hover:to-[#035438] px-5 py-2.5 text-sm font-bold text-white transition-all shadow-md shadow-emerald-900/20 active:scale-95"
               >
                 New Resident
               </button>

@@ -51,21 +51,34 @@ const MainLayout = () => {
     };
   }, []);
 
+  const isDashboard = location.pathname === "/" || location.pathname === "/dashboard";
+
+  // Auto expand on Dashboard, auto collapse on feature pages
+  useEffect(() => {
+    if (isDashboard) {
+      setIsCollapsed(false);
+    } else {
+      setIsCollapsed(true);
+    }
+  }, [location.pathname, isDashboard]);
+
+  const effectiveCollapsed = isDashboard ? false : isCollapsed;
+
   return (
-    <div className="admin-shell-bg min-h-screen flex bg-bg-main" data-admin-theme={adminTheme}>
-      <Sidebar isCollapsed={isCollapsed} setIsCollapsed={setIsCollapsed} />
+    <div className="admin-shell-bg min-h-screen flex bg-slate-50" data-admin-theme={adminTheme}>
+      <Sidebar isCollapsed={effectiveCollapsed} setIsCollapsed={setIsCollapsed} />
 
       <motion.main
-        className="relative flex-1 min-w-0 min-h-screen"
+        className="relative flex-1 min-w-0 min-h-screen overflow-x-hidden"
         initial={false}
-        animate={{ paddingLeft: isCollapsed ? 80 : 260 }}
+        animate={{ paddingLeft: effectiveCollapsed ? 76 : 240 }}
         transition={
           shouldReduceMotion
             ? { duration: 0 }
             : { type: "spring", stiffness: 260, damping: 30, mass: 0.75 }
         }
       >
-        <div className="system-page-area min-h-screen w-full bg-transparent">
+        <div className="system-page-area min-h-screen w-full bg-transparent overflow-x-hidden">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}

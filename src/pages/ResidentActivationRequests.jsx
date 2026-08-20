@@ -179,9 +179,30 @@ const ResidentActivationRequests = () => {
 
       if (smsPhone && isValidSmsPhone(smsPhone)) {
         try {
+          const residentName = result.full_name || request.full_name || "Residente";
           const bodyText = result.used_resident_credentials
-            ? `Hello ${result.full_name || request.full_name || "Resident"}, your KaagapAI registration is approved! You can now log in using your created username & password.`
-            : `Hello ${result.full_name || request.full_name || "Resident"}, your Barangay resident account is verified. Username: ${result.username}. Password: ${result.temporary_password}.`;
+            ? [
+                "[OFFICIAL KAAGAPAI NOTIFICATION]",
+                "BARANGAY UPPER MINGADING, ALEOSAN",
+                "----------------------------------------",
+                `🏛️ Magandang araw, ${residentName}!`,
+                "Ang inyong KaagapAI resident registration ay APPROVED na.",
+                "Maaari na kayong mag-login sa Citizen Portal gamit ang inyong ginawang username at password.",
+                "----------------------------------------",
+                "⚠️ PAALALA: Ingatan ang inyong account. Ang Barangay ay HINDI kailanman hihingi ng password o pera via text.",
+              ].join("\n")
+            : [
+                "[OFFICIAL KAAGAPAI NOTIFICATION]",
+                "BARANGAY UPPER MINGADING, ALEOSAN",
+                "----------------------------------------",
+                `🏛️ Magandang araw, ${residentName}!`,
+                "Ang inyong Barangay resident account ay VERIFIED na.",
+                `Username: ${result.username}`,
+                `Temporary Password: ${result.temporary_password}`,
+                "Mangyaring palitan ang inyong password pagkatapos mag-login.",
+                "----------------------------------------",
+                "⚠️ PAALALA: Ingatan ang inyong account. Ang Barangay ay HINDI kailanman hihingi ng password o pera via text.",
+              ].join("\n");
 
           await sendSmsNotification({
             to: smsPhone,
@@ -266,15 +287,17 @@ const ResidentActivationRequests = () => {
       minWidth: 260,
       renderCell: (params) => {
         const request = params.row;
+        const displayUsername = request.requested_username || request.username || "-";
+        const displayEmail = request.requested_email || request.gmail || request.email || "-";
         return (
           <div className="py-2 leading-tight">
             <p className="font-bold text-[#17233c] text-sm truncate">{request.full_name || request.requested_full_name || "-"}</p>
             <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs mt-0.5 text-slate-500 font-semibold">
               <span>Household: {request.household_no || request.requested_household_no || "-"}</span>
               <span>•</span>
-              <span>User: {request.requested_username || "-"}</span>
+              <span className="text-emerald-700 font-bold font-mono">User: {displayUsername}</span>
             </div>
-            <p className="text-xs text-slate-400 mt-0.5 font-medium truncate">{request.requested_email || request.email || "-"}</p>
+            <p className="text-xs text-slate-400 mt-0.5 font-medium truncate">{displayEmail}</p>
             <p className="text-[10px] font-bold text-blue-600 mt-1 uppercase tracking-wider">
               {request.registration_type || (request.resident_id ? "Existing Access" : "New Registration")}
             </p>

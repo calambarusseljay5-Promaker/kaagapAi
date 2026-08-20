@@ -127,7 +127,15 @@ export async function sendOTP(phone) {
   try {
     await sendSmsNotification({
       to: normalized,
-      body: `[KaagapAI] Your verification code is: ${plainOTP}. This code expires in 5 minutes. Do not share this code with anyone.`,
+      body: [
+        "[OFFICIAL KAAGAPAI NOTIFICATION]",
+        "BARANGAY UPPER MINGADING, ALEOSAN",
+        "----------------------------------------",
+        `🔒 Ang inyong One-Time PIN (OTP) verification code ay: ${plainOTP}`,
+        "Mag-eexpire ang code na ito sa loob ng 5 minuto.",
+        "----------------------------------------",
+        "⚠️ PAALALA: Huwag ibigay ang code na ito kahit kanino. Ang Barangay ay HINDI kailanman hihingi ng inyong OTP via text o tawag.",
+      ].join("\n"),
     });
   } catch (smsError) {
     // Clear stored OTP if SMS fails

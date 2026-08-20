@@ -8,7 +8,8 @@ const MAX_LOCAL_LOGS = 200;
 export const DEFAULT_SYSTEM_SETTINGS = {
   systemName: "KaagapAI",
   barangayName: "Barangay Upper Mingading",
-  officeEmail: "calambarusseljay5@gmail.com",
+  adminUsername: "kaagapai",
+  officeEmail: "uppermingading@gmail.com",
   officePhone: "09306259795",
   officeHours: "Monday to Friday, 8:00 AM - 5:00 PM",
   adminTheme: "favorite",
@@ -112,6 +113,7 @@ export function getSystemSettings() {
   const settings = getStoredObject(SETTINGS_KEY, DEFAULT_SYSTEM_SETTINGS);
   return {
     ...settings,
+    adminUsername: String(settings.adminUsername || DEFAULT_SYSTEM_SETTINGS.adminUsername || "kaagapai").trim(),
     adminTheme: settings.adminTheme === "light" ? "light" : "favorite",
   };
 }

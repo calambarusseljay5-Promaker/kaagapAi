@@ -66,7 +66,8 @@ export async function createLivelihoodPost(postData) {
     .from(TABLE)
     .insert([payload])
     .select()
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) throw normalizeSupabaseError(error);
   syncKnowledgeFromLivelihood(data).catch((syncError) => {
@@ -85,7 +86,8 @@ export async function updateLivelihoodPost(id, updates) {
     .update(payload)
     .eq("id", id)
     .select()
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) throw normalizeSupabaseError(error);
   syncKnowledgeFromLivelihood(data).catch((syncError) => {
@@ -102,7 +104,8 @@ export async function deleteLivelihoodPost(id) {
     .from(TABLE)
     .select("*")
     .eq("id", id)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (record) {
     moveToRecycleBin("livelihood_posts", id, record);
@@ -129,7 +132,8 @@ export async function applyForLivelihood(livelihoodId, residentId) {
     .select("id")
     .eq("livelihood_post_id", livelihoodId)
     .eq("resident_id", residentId)
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (existing) {
     throw new Error("You have already applied for this opportunity.");
@@ -142,7 +146,8 @@ export async function applyForLivelihood(livelihoodId, residentId) {
     .from("livelihood_applications")
     .insert([{ livelihood_post_id: livelihoodId, resident_id: residentId, status: "Pending" }])
     .select()
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) throw normalizeSupabaseError(error);
   return data;
@@ -184,7 +189,8 @@ export async function updateLivelihoodApplicationStatus(id, newStatus, residentI
     .update({ status: newStatus, updated_at: new Date().toISOString() })
     .eq("id", id)
     .select()
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) throw normalizeSupabaseError(error);
 
@@ -198,3 +204,83 @@ export async function updateLivelihoodApplicationStatus(id, newStatus, residentI
 
   return data;
 }
+
+export async function notifyResidentsForLivelihoodPost(post, residents = []) {
+  if (!post || !residents || residents.length === 0) return 0;
+  try {
+    const notifications = residents
+      .filter((r) => r && r.id)
+      .map((r) => ({
+        resident_id: r.id,
+        title: `Livelihood Alert: ${post.title}`,
+        message: `A new ${post.category || "Livelihood"} opportunity is now open: "${post.title}". Organization: ${post.organization || "Barangay"}. Deadline: ${post.deadline || "Open"}. Log in to your portal to apply.`,
+        is_read: false,
+      }));
+
+    if (notifications.length === 0) return 0;
+
+    // Batch insert up to 100 at a time
+    const chunkSize = 100;
+    for (let i = 0; i < notifications.length; i += chunkSize) {
+      const chunk = notifications.slice(i, i + chunkSize);
+      await supabase.from("resident_notifications").insert(chunk);
+    }
+    return notifications.length;
+  } catch (err) {
+    console.warn("Error creating resident notifications for livelihood:", err);
+    return 0;
+  }
+}
+
+export async function fetchPendingLivelihoodApplicationsCount() {
+  try {
+    const { count, error } = await supabase
+      .from("livelihood_applications")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "Pending");
+
+    if (error) {
+      const { count: fallbackCount, error: fbErr } = await supabase
+        .from("livelihood_applications")
+        .select("*", { count: "exact", head: true });
+      if (fbErr) return 0;
+      return fallbackCount || 0;
+    }
+    return count || 0;
+  } catch (err) {
+    console.warn("Unable to fetch pending livelihood applications count:", err);
+    return 0;
+  }
+}
+
+export async function fetchLivelihoodApplicationsCountsGrouped() {
+  try {
+    const { data, error } = await supabase
+      .from("livelihood_applications")
+      .select("id, livelihood_post_id, status");
+
+    if (error) {
+      console.warn("Unable to fetch grouped livelihood applications counts:", error);
+      return {};
+    }
+
+    const map = {};
+    (data || []).forEach((app) => {
+      const pId = app.livelihood_post_id;
+      if (!pId) return;
+      if (!map[pId]) {
+        map[pId] = { total: 0, pending: 0, approved: 0, rejected: 0 };
+      }
+      map[pId].total += 1;
+      if (app.status === "Pending") map[pId].pending += 1;
+      if (app.status === "Approved") map[pId].approved += 1;
+      if (app.status === "Rejected") map[pId].rejected += 1;
+    });
+
+    return map;
+  } catch (err) {
+    console.warn("Error calculating grouped livelihood application counts:", err);
+    return {};
+  }
+}
+

@@ -280,51 +280,26 @@ const Dashboard = () => {
   };
 
   const dashboardSearch = (
-    <div className="relative w-[320px] max-w-full">
-      <style dangerouslySetInnerHTML={{__html: `
-        .transparent-search-input,
-        input.transparent-search-input {
-          background: rgba(255, 255, 255, 0.1) !important;
-          background-color: rgba(255, 255, 255, 0.1) !important;
-          border: 1px solid rgba(255, 255, 255, 0.15) !important;
-          color: #ffffff !important;
-          border-radius: 8px !important;
-        }
-        .transparent-search-input::placeholder,
-        input.transparent-search-input::placeholder {
-          color: rgba(255, 255, 255, 0.65) !important;
-        }
-        .transparent-search-input:focus,
-        input.transparent-search-input:focus {
-          background: rgba(255, 255, 255, 0.16) !important;
-          background-color: rgba(255, 255, 255, 0.16) !important;
-          border-color: rgba(255, 255, 255, 0.25) !important;
-        }
-      `}} />
-      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/70" size={17} />
+    <div className="relative w-full max-w-full" style={{ width: 'min(320px, calc(100vw - 8rem))' }}>
+      <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-white/80 z-10" size={17} />
       <input
         ref={searchInputRef}
         value={searchQuery}
         onChange={(event) => updateSearchQuery(event.target.value)}
-        onFocus={(e) => {
-          e.target.style.setProperty('background', 'rgba(255, 255, 255, 0.16)', 'important');
-          e.target.style.setProperty('background-color', 'rgba(255, 255, 255, 0.16)', 'important');
-          e.target.style.setProperty('border-color', 'rgba(255, 255, 255, 0.25)', 'important');
-        }}
-        onBlur={(e) => {
-          e.target.style.setProperty('background', 'rgba(255, 255, 255, 0.1)', 'important');
-          e.target.style.setProperty('background-color', 'rgba(255, 255, 255, 0.1)', 'important');
-          e.target.style.setProperty('border-color', 'rgba(255, 255, 255, 0.15)', 'important');
-        }}
         placeholder="Search records, requests, residents..."
-        className="transparent-search-input hd-focus h-10 w-full rounded-lg border border-[#ffffff1a] bg-[#ffffff1a] pl-9 pr-10 text-sm font-medium text-white placeholder-white/65 shadow-sm shadow-slate-900/5 focus:border-[#ffffff33] focus:bg-[#ffffff26] focus:ring-0"
+        className="admin-search-input h-10 w-full rounded-xl pl-9 pr-10 text-sm font-medium text-white placeholder-white/70 backdrop-blur-md shadow-sm transition-all focus:outline-none"
+        style={{
+          backgroundColor: 'rgba(255, 255, 255, 0.12)',
+          borderColor: 'rgba(255, 255, 255, 0.3)',
+          color: '#ffffff',
+        }}
         aria-label="Search admin records"
       />
       {searchQuery && (
         <button
           type="button"
           onClick={clearSearchQuery}
-          className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-white/70 transition hover:bg-[#ffffff1a] hover:text-white"
+          className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-white/80 hover:bg-white/20 hover:text-white transition z-10"
           aria-label="Clear dashboard search"
         >
           <X size={15} />
@@ -423,29 +398,24 @@ const Dashboard = () => {
   });
 
   return (
-    <div className="dashboard-v2-shell relative min-h-screen bg-[#F0FDF4] p-4 sm:p-5">
-      {/* Light green solid background layout overlay */}
-      <div className="fixed inset-0 pointer-events-none z-0 bg-[#F0FDF4]" />
-
-      <div className="relative z-10 max-w-[1600px] mx-auto min-w-0">
-        <div>
-          <DashboardOverview
-            stats={stats}
-            overview={overview}
-            residents={chartResidents}
-            requests={recentRequests}
-            announcements={publishedAnnouncements}
-            activities={recentActivities}
-            header={
-              <Header
-                title={`${greeting}, Admin! 👋`}
-                subtitle="Welcome back to Barangay Upper Mingading"
-                middleContent={dashboardSearch}
-                transparent={true}
-              />
-            }
-          />
-        </div>
+    <div className="flex flex-col min-h-screen bg-[#F0FDF4] overflow-x-hidden">
+      <div className="flex-1 min-h-0 overflow-y-auto pb-16 custom-scrollbar">
+        <DashboardOverview
+          header={
+            <Header
+              title={`${greeting}, Admin! 👋`}
+              subtitle="Welcome back to Barangay Upper Mingading"
+              middleContent={dashboardSearch}
+              transparent={true}
+            />
+          }
+          stats={stats}
+          overview={overview}
+          residents={chartResidents}
+          requests={recentRequests}
+          announcements={publishedAnnouncements}
+          activities={recentActivities}
+        />
       </div>
     </div>
   );

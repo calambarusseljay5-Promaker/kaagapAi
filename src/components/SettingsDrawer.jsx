@@ -248,12 +248,14 @@ const SettingsDrawer = ({ isOpen, onClose }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">Office Phone</label>
+                    <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">Office Phone (Max 11 Digits)</label>
                     <input
-                      type="text"
+                      type="tel"
+                      maxLength={11}
                       value={settings.officePhone || ""}
-                      onChange={(e) => updateField("officePhone", e.target.value)}
-                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-xs font-semibold text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                      onChange={(e) => updateField("officePhone", e.target.value.replace(/\D/g, "").slice(0, 11))}
+                      placeholder="09XXXXXXXXX"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3.5 py-2.5 text-xs font-semibold text-slate-800 dark:text-white outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 font-mono"
                     />
                   </div>
                   <div className="sm:col-span-2">

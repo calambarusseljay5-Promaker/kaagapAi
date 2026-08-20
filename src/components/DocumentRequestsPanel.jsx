@@ -138,10 +138,10 @@ const DocumentRequestsPanel = () => {
                     <td className="px-5 py-3.5 text-sm text-slate-500">{formatDate(request.created_at)}</td>
                     <td className="px-5 py-3.5">
                       <span
-                        className="inline-flex rounded-md px-2.5 py-1 text-xs font-semibold"
+                        className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-semibold"
                         style={getStatusBadgeStyle(displayStatus)}
                       >
-                        {displayStatus}
+                        {displayStatus === "Completed" ? "Ready for Pick-up" : displayStatus}
                       </span>
                     </td>
                   </tr>

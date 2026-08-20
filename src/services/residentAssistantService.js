@@ -173,6 +173,114 @@ const buildGratitudeAnswer = (question) => {
   return "You're welcome! If you need anything else about barangay services or documents, feel free to ask. Have a great day!";
 };
 
+const OFFICIAL_ROLES_KNOWLEDGE_TEXT = `
+KNOWLEDGE CATEGORY: BARANGAY OFFICIALS - ROLES AND FUNCTIONS
+
+1. PUNONG BARANGAY (BARANGAY CAPTAIN / CHAIRMAN):
+- Enforce all laws and ordinances applicable within the barangay.
+- Negotiate, enter into, and sign contracts for and in behalf of the barangay, upon authorization of the Sangguniang Barangay.
+- Maintain public order in the barangay and assist the Municipal Mayor and Sangguniang Members in duties.
+- Call and preside over sessions of the Sangguniang Barangay and Barangay Assembly, voting only to break a tie.
+- Appoint or replace the Barangay Treasurer, Barangay Secretary, and other appointed barangay officials upon approval of majority of Sangguniang Barangay.
+- Organize and lead emergency group whenever necessary for peace and order or during emergencies/calamities.
+- Prepare annual executive and supplemental budgets with the Barangay Development Council.
+- Approve vouchers relating to disbursement of barangay funds.
+- Enforce environmental and pollution control laws.
+- Administer operations of Katarungang Pambarangay.
+- Exercise general supervision over Sangguniang Kabataan activities.
+- Ensure delivery of basic services as mandated under Section 17 of LGC.
+- Conduct annual Palarong Pambarangay featuring traditional and national sports in coordination with DepEd.
+- Promote general welfare of the barangay.
+
+2. SANGGUNIANG BARANGAY (LEGISLATIVE BODY):
+- Enact ordinances necessary to promote the general welfare of inhabitants.
+- Enact tax and revenue ordinances subject to Local Government Code (LGC) limits.
+- Enact annual and supplemental budgets.
+- Assist COMELEC in preparing forms for elections, initiative, referenda, or plebiscites.
+- Assist Municipal Civil Registrar in registering births, deaths, and marriages.
+- Keep updated record of all inhabitants (name, address, birth date/place, sex, civil status, citizenship, occupation).
+- Provide administrative needs of Lupong Tagapamayapa and Pangkat ng Tagapagkasundo.
+- Organize community brigades, barangay tanod, or community service units.
+- Organize regular lectures/fora on sanitation, nutrition, literacy, drug abuse, child abuse, and juvenile delinquency.
+- Adopt measures to prevent squatters, mendicants, drug abuse, and juvenile delinquency.
+- Provide for proper development and welfare of children (especially under 7 years of age).
+
+3. SANGGUNIANG KABATAAN (SK):
+- Promulgate resolutions necessary for youth objectives in accordance with LGC.
+- Initiate programs to enhance social, political, economic, cultural, intellectual, moral, spiritual, and physical development of youth.
+- Hold tax-exempt fundraising activities for youth general funds.
+- Create youth bodies and committees.
+
+4. BARANGAY SECRETARY:
+- Keep custody of all records and prepare minutes of all Sangguniang Barangay and Barangay Assembly meetings.
+- Prepare and post list of Barangay Assembly members in conspicuous places.
+- Assist in election, initiative, referendum, and plebiscite preparation with COMELEC.
+- Assist Municipal Civil Registrar in registering births, deaths, and marriages.
+- Keep updated record of all inhabitants (name, address, birth date/place, sex, civil status, citizenship, occupation).
+- Submit report on actual number of barangay residents as required.
+
+5. BARANGAY TREASURER:
+- Custody of barangay funds and properties.
+- Collect and issue official receipts for all taxes, fees, contributions, and resources.
+- Disburse funds per LGC financial procedures.
+- Submit financial statement of income and expenditures to Punong Barangay.
+- Render annual written accounting report of funds and property to Barangay Assembly and government agencies.
+- Certify availability of funds.
+- Plan and attend to rural postal circuit within jurisdiction.
+
+KNOWLEDGE CATEGORY: POLITICAL HISTORY OF BARANGAY UPPER MINGADING
+
+1. Hon. Gaudencio Catenas
+Position: Teniente del Barrio
+Year of Service: 1952–1958
+Accomplishments: Facilitated opening of Bacolod Primary School (founded 1953) with 2 hectares donated by Mr. Sagadan, plus 1.85 hectares donated for barangay site.
+
+2. Hon. Dioscoro Bolivar
+Position: Teniente del Barrio
+Year of Service: 1958–1964
+Accomplishments: In 1958, the barangay was divided into two (Upper Mingading and Lower Mingading).
+
+3. Hon. Eustaquio Garito
+Position: Teniente del Barrio
+Accomplishments: Maintained longstanding unity among Muslim and Christian constituents.
+
+4. Hon. Segundo Cari
+Position: Barangay Captain
+Year of Service: 1969–1972
+Accomplishments: Area of barangay expanded to parts of Lower Mingading following ILAGA-Black Shirt conflict when Moro residents vacated and sold land.
+
+5. Hon. Bonifacio Capio
+Position: Barangay Captain
+Year of Service: 1972–1986
+Accomplishments: Improved San Mateo to Upper Mingading road; initiated road opening to Sitio Nalpan.
+
+6. Hon. Sofia Garito
+Position: Barangay Captain
+Year of Service: 1986–1991
+Accomplishments: Rehabilitated San Mateo–Upper Mingading road; encouraged constituents to plant permanent fruit and forest trees.
+
+7. Hon. Sito Calician
+Position: Barangay Captain
+Year of Service: 1991–1994
+Accomplishments: Civilian Volunteer Officer (CVO) was organized in the barangay.
+
+8. Hon. Mamerto Garito
+Position: Barangay Captain
+Year of Service: 1994–2004
+Accomplishments: Construction of Barangay Hall, Health Center, Water System, Day Care Center, and All-Weather Road. Organized CAFGU, cooperatives, and Farmer Association. Established barangay electrification and street lights. Maintained Peace and Order.
+
+9. Hon. Myrna Garito
+Position: Assumed as Barangay Captain
+Year: 2004–2007
+Accomplishments: Constructed Material Recovery Facility (MRF) and water system in Puroks Malipayon & Motor. Opened Brgy Road from Purok Payhod to Purok Buklod. Opened Bacolod Annex Primary School in Purok Muslim. Built new Punong Barangay Office & Brgy Hall funded by Hon. Congresswoman Em "Lala" Talino-Mendoza. Purchased 1 desktop computer & printer. Box Culvert & 2 classrooms in Purok Muslim. Maintained cleanliness.
+
+10. Hon. Wilson Caponpon
+Position: Punong Barangay
+Year of Service: 2007 up to present
+Accomplishments: Implemented National, Provincial, and Municipal programs; maintained peace and order; improved barangay roads.
+Awards Received: Special Award Nominee at Nat'l level, Outstanding Achievement in Environment Management at Reg'l level, Best Performing Barangay at Prov'l level, Special Award (Best Recycling Innovation) at Prov'l level, Model RIC (Recycle) at Prov'l level, Model Barangay in Solid Waste Management.
+`;
+
 const SERVICE_TERMS = [
   "account",
   "announcement",
@@ -2026,9 +2134,10 @@ By Purok: ${formatCounts(residentStats.purokCounts)}`
       .map((r, i) => `- ${r.document_type} (Status: ${r.status}, Requested: ${formatDate(r.created_at)})`)
       .join("\n") || "No requests submitted yet.";
 
-    const knowledgeStr = knowledgeItems
-      .map((k, i) => `- Title: ${k.title}\n  Content: ${k.content}`)
-      .join("\n\n") || "No custom knowledge items.";
+    const knowledgeStr = [
+      OFFICIAL_ROLES_KNOWLEDGE_TEXT,
+      ...knowledgeItems.map((k, i) => `- Title: ${k.title}\n  Content: ${k.content}`)
+    ].join("\n\n");
 
     const settings = getSystemSettings();
     const officeHours = settings.officeHours || "Monday to Friday, 8:00 AM - 5:00 PM";
@@ -2056,8 +2165,11 @@ Whenever the user asks for ANY population, purok count, senior count, PWD count,
 STRICT NO "LOG IN" STEP RULE:
 - NEVER tell the user to "Log in to your account" or "Sign in"! The resident is ALREADY LOGGED IN to their dashboard. Start step 1 directly with: "1. Click 'Request Document' on your dashboard."
 
-LANGUAGE RULE:
-Always respond in the same language as the user's question (Tagalog for Tagalog/Taglish questions, English for English questions).`;
+LANGUAGE & ELOQUENT TONE RULES:
+- Always match the user's language:
+  * For Tagalog or Taglish inquiries: Respond in fluent, formal, polite, and elegant Filipino/Tagalog (using polite markers like "po" and "opo"). NEVER use street slang, balbal words, or choppy shorthand so the voice reader sounds natural, professional, and pleasant just like a courteous barangay officer.
+  * For English inquiries: Respond in clear, polite, and professional English.
+- Use complete, well-formed sentences so text-to-speech voice narration sounds graceful, human, and crystal clear.`;
 
     const prompt = `System Settings:
 - Barangay Name: Barangay Upper Mingading

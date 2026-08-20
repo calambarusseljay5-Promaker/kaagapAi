@@ -433,13 +433,14 @@ const Settings = () => {
                   </label>
 
                   <label className="block text-sm font-bold text-slate-700">
-                    Office Phone
+                    Office Phone (Max 11 Digits)
                     <input
-                      type="text"
-                      value={settings.officePhone || "+63 912 345 6789"}
-                      onChange={(e) => updateField("officePhone", e.target.value)}
-                      placeholder="+63 9XX XXX XXXX"
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#00552E] focus:bg-white focus:ring-2 focus:ring-[#00552E]/20"
+                      type="tel"
+                      maxLength={11}
+                      value={settings.officePhone || "09306259795"}
+                      onChange={(e) => updateField("officePhone", e.target.value.replace(/\D/g, "").slice(0, 11))}
+                      placeholder="09XXXXXXXXX (11 digits)"
+                      className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#00552E] focus:bg-white focus:ring-2 focus:ring-[#00552E]/20 font-mono"
                     />
                   </label>
 

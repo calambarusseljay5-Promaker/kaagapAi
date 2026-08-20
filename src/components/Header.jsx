@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
 import { Bell, User, ChevronDown, X, CheckCheck, Loader2, RefreshCw, LogOut, Shield, Settings } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useConfirm } from "../context/ConfirmContext";
 import {
   getCurrentUserWithProfile,
   logoutUser,
   PROFILE_UPDATED_EVENT,
 } from "../services/authService";
+import { getSystemSettings } from "../services/adminActivityService";
 import {
   fetchAdminNotifications,
   markAdminNotificationRead,
@@ -18,6 +20,8 @@ import {
 const getDisplayName = (user) =>
   user?.user_metadata?.full_name ||
   user?.user_metadata?.name ||
+  user?.user_metadata?.username ||
+  getSystemSettings().adminUsername ||
   user?.email?.split("@")[0] ||
   "Admin User";
 
@@ -75,9 +79,38 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
 
   const unreadCount = notifications.filter((notification) => !notification.is_read).length;
   const displayName = getDisplayName(account?.user);
-  const displayEmail = account?.user?.email || "calambarusseljay5@gmail.com";
+  const displayEmail = getSystemSettings().officeEmail || account?.user?.email || "uppermingading@gmail.com";
   const displayRole = account?.profile?.role || "Administrator";
-  const profilePhotoUrl = account?.profile?.profile_photo_url;
+  const savedPhoto = typeof window !== "undefined" ? localStorage.getItem("kaagapai_admin_profile_photo") : null;
+  const profilePhotoUrl = account?.profile?.profile_photo_url || account?.user?.user_metadata?.avatar_url || savedPhoto || null;
+
+  const messages = useMemo(() => {
+    return [
+      {
+        title: title || "Good Evening, Admin! 👋",
+        subtitle: subtitle || "Welcome back to Barangay Upper Mingading"
+      },
+      {
+        title: "Serbisyong Tapat, Para sa Lahat 🏛️",
+        subtitle: "Official Barangay Upper Mingading Administrative Portal"
+      },
+      {
+        title: "KaagapA.I Active & Operational ⚡",
+        subtitle: "Real-time statistics & instant document processing"
+      }
+    ];
+  }, [title, subtitle]);
+
+  const [msgIdx, setMsgIdx] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setMsgIdx((prev) => (prev + 1) % messages.length);
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [messages]);
+
+  const currentMsg = messages[msgIdx];
 
   const loadNotifications = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -221,24 +254,54 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
 
   return (
     <header
-      className={`z-30 w-full ${
+      className={`z-[9990] w-full ${
         transparent
           ? "bg-transparent border-b-0 shadow-none relative"
-          : "sticky top-0 border-b border-slate-200/80 bg-white/92 shadow-xs backdrop-blur-xl"
+          : "sticky top-0 border-b border-emerald-400/20 bg-gradient-to-r from-[rgba(2,43,29,0.85)] via-[rgba(3,62,43,0.78)] to-[rgba(2,35,23,0.85)] text-white shadow-xl backdrop-blur-xl relative transition-all"
       } ${className}`}
     >
-      <div className={`mx-auto flex min-h-[72px] max-w-[1600px] flex-wrap items-center justify-between gap-3 py-3 lg:flex-nowrap ${
-        transparent ? "px-0" : "px-6 lg:px-8"
+      {!transparent && (
+        <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/10 pointer-events-none z-0 overflow-hidden" />
+      )}
+
+      <div className={`relative z-10 flex min-h-[82px] w-full items-center justify-between gap-4 py-3 ${
+        transparent ? "px-0" : "px-4 sm:px-6 lg:px-8"
       }`}>
-        <div className="min-w-0 flex-1 lg:flex-none">
-          <h1 className={`truncate font-extrabold tracking-tight ${
-            transparent ? "text-2xl sm:text-3xl text-white" : "text-xl text-slate-900"
-          }`}>{title}</h1>
-          {subtitle && (
-            <p className={`mt-1.5 truncate font-semibold ${
-              transparent ? "text-xs sm:text-sm text-emerald-200/90" : "text-xs text-slate-500"
-            }`}>{subtitle}</p>
-          )}
+        <div className="flex items-center gap-4 min-w-0 flex-1 lg:flex-none overflow-hidden">
+          {/* Animated Slide Out Right / Slide In Left Title & Subtitle Container */}
+          <div className="min-w-0 flex-1 relative overflow-hidden min-h-[48px] flex flex-col justify-center">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={msgIdx}
+                initial={{ opacity: 0, x: -45 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 45 }}
+                transition={{ duration: 0.5, ease: "easeInOut" }}
+                className="space-y-0.5"
+              >
+                <h1
+                  className={`truncate font-black tracking-tight ${
+                    transparent
+                      ? "text-2xl sm:text-3xl text-white font-sans drop-shadow-md"
+                      : "text-xl sm:text-2xl lg:text-3xl text-white font-sans tracking-tight drop-shadow-md"
+                  }`}
+                >
+                  {currentMsg.title}
+                </h1>
+                {currentMsg.subtitle && (
+                  <p
+                    className={`truncate font-medium ${
+                      transparent
+                        ? "text-xs sm:text-sm text-emerald-100 font-semibold drop-shadow-sm"
+                        : "text-xs sm:text-sm text-emerald-100/90 drop-shadow-xs"
+                    }`}
+                  >
+                    {currentMsg.subtitle}
+                  </p>
+                )}
+              </motion.div>
+            </AnimatePresence>
+          </div>
         </div>
 
         {middleContent && (
@@ -267,9 +330,7 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                       <div className="relative w-full max-w-[420px] rounded-[1.1rem] border border-white/20 bg-white/95 p-5 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl">
                         <div className="rounded-[0.85rem] bg-gradient-to-br from-rose-50 to-rose-100 p-3">
                           <div className="flex items-center gap-3">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/70 ring-1 ring-rose-100">
-                              <img src="/logo.png" alt="Barangay logo" className="h-9 w-9 object-contain" />
-                            </div>
+                            <img src="/logo.png" alt="Barangay logo" className="h-10 w-10 object-contain drop-shadow-md shrink-0" />
                             <div>
                               <div className="text-sm font-extrabold text-rose-800">Sign out</div>
                               <div className="mt-1 text-sm font-semibold text-slate-800">Are you sure you want to sign out?</div>
@@ -303,23 +364,28 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
 
                 <button
                   onClick={toggleNotifications}
-                  className={`relative flex h-10 w-10 items-center justify-center rounded-xl border transition shadow-sm ${
-                    transparent
-                      ? "border-[#ffffff1a] bg-[#ffffff1a] text-white hover:bg-[#ffffff33]"
-                      : "border-slate-200 bg-white text-slate-500 hover:border-emerald-300 hover:text-emerald-700 hover:shadow-md"
-                  }`}
+                  className="admin-header-glass-btn relative flex h-10 w-10 items-center justify-center rounded-xl transition cursor-pointer"
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                    borderColor: 'rgba(255, 255, 255, 0.3)',
+                    color: '#ffffff',
+                    borderWidth: '1px',
+                    borderStyle: 'solid',
+                  }}
                   aria-label="Notifications"
                 >
-                  <Bell size={18} />
+                  <Bell size={18} className="text-white" />
                   {unreadCount > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[#FFB800] px-1 text-[10px] font-bold text-white shadow-[0_0_0_2px_rgba(255,184,0,0.16)]">
+                    <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-rose-600 px-1 text-[10px] font-black text-white ring-2 ring-white shadow-md">
                       {unreadCount > 9 ? "9+" : unreadCount}
                     </span>
                   )}
                 </button>
 
                 {showNotifications && (
-                  <div className="dashboard-v2-popup hd-surface-strong absolute right-0 top-full z-50 mt-3 w-[340px] overflow-hidden rounded-lg">
+                  <>
+                    <div className="fixed inset-0 z-[99990]" onClick={() => setShowNotifications(false)} />
+                    <div className="dashboard-v2-popup hd-surface-strong absolute right-0 top-full z-[99999] mt-3 overflow-hidden rounded-xl shadow-2xl border border-slate-200" style={{ width: 'min(340px, calc(100vw - 2rem))' }}>
                     <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                       <div>
                         <h3 className="text-sm font-semibold text-slate-900">Notifications</h3>
@@ -432,7 +498,8 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                       </button>
                     </div>
                   </div>
-                )}
+                </>
+              )}
               </div>
 
               <div className="relative">
@@ -441,65 +508,70 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                     setShowProfile(!showProfile);
                     setShowNotifications(false);
                   }}
-                  className={`flex h-10 items-center gap-2.5 rounded-xl border px-3 py-1.5 shadow-sm transition ${
-                    transparent
-                      ? "border-[#ffffff1a] bg-[#ffffff1a] text-white hover:bg-[#ffffff33]"
-                      : "border-slate-200 bg-white hover:border-emerald-300 hover:shadow-md"
-                  }`}
+                  className="admin-header-profile-btn flex h-10 items-center gap-2.5 rounded-xl px-3 py-1.5 transition cursor-pointer"
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+                    borderColor: 'rgba(255, 255, 255, 0.3)',
+                    color: '#ffffff',
+                    borderWidth: '1px',
+                    borderStyle: 'solid',
+                  }}
                 >
-                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-50 to-teal-50 text-emerald-700 ring-1 ring-emerald-100">
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20 text-white ring-2 ring-emerald-300/50">
                     {profilePhotoUrl ? (
                       <img src={profilePhotoUrl} alt="" className="h-full w-full rounded-full object-cover" />
                     ) : (
-                      <User size={16} />
+                      <User size={16} className="text-white" />
                     )}
                   </span>
                   <div className="hidden text-left sm:block leading-tight">
-                    <p className={`max-w-[120px] truncate text-xs font-bold ${transparent ? "text-white" : "text-slate-900"}`}>{displayName}</p>
-                    <p className={`text-[10px] capitalize font-medium ${transparent ? "text-emerald-300" : "text-slate-500"}`}>{displayRole}</p>
+                    <p className="max-w-[120px] truncate text-xs font-black text-white">{displayName}</p>
+                    <p className="text-[10px] capitalize font-extrabold text-emerald-300">{displayRole}</p>
                   </div>
-                  <ChevronDown size={14} className={`hidden sm:block ml-2 ${transparent ? "text-slate-200" : "text-slate-400"}`} />
+                  <ChevronDown size={14} className="hidden sm:block ml-2 text-white/90" />
                 </button>
 
                 {showProfile && (
-                  <div className="absolute right-0 top-full z-50 mt-3 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-xl backdrop-blur-xl">
+                  <>
+                    <div className="fixed inset-0 z-[99990]" onClick={() => setShowProfile(false)} />
+                    <div className="absolute right-0 top-full z-[99999] mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl backdrop-blur-xl text-slate-900" style={{ width: 'min(16rem, calc(100vw - 2rem))' }}>
                     <div className="flex items-center gap-3 border-b border-slate-100 px-2 pb-3 pt-1">
                       <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00552E]/10 text-[#00552E] ring-2 ring-[#00552E]/20">
                         {profilePhotoUrl ? (
                           <img src={profilePhotoUrl} alt="" className="h-full w-full rounded-full object-cover" />
                         ) : (
-                          <User size={20} />
+                          <User size={20} className="text-[#00552E]" />
                         )}
                       </span>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-extrabold text-slate-900">{displayName}</p>
-                        <p className="truncate text-xs font-semibold text-emerald-700">{displayRole}</p>
+                        <p className="truncate text-xs font-bold text-emerald-700">{displayRole}</p>
                       </div>
                     </div>
-                    <div className="mt-2 space-y-1">
+                    <div className="mt-2 space-y-1 text-slate-900">
                       <Link
                         to="/my-account"
                         onClick={() => setShowProfile(false)}
-                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-[#00552E]/10 hover:text-[#00552E]"
+                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-black text-slate-800 transition hover:bg-[#00552E]/10 hover:text-[#00552E] bg-slate-50 border border-slate-200/80"
                       >
-                        <User size={17} className="text-[#00552E]" />
-                        <span>My Account</span>
+                        <User size={17} className="text-[#00552E] shrink-0" />
+                        <span className="text-slate-900 font-extrabold">My Account</span>
                       </Link>
                       <Link
                         to="/account-security"
                         onClick={() => setShowProfile(false)}
-                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-[#00552E]/10 hover:text-[#00552E]"
+                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-[#00552E]/10 hover:text-[#00552E]"
                       >
-                        <Shield size={17} className="text-[#00552E]" />
-                        <span>Account Security</span>
+                        <Shield size={17} className="text-[#00552E] shrink-0" />
+                        <span className="text-slate-900 font-bold">Account Security</span>
                       </Link>
                       <Link
                         to="/system-settings"
                         onClick={() => setShowProfile(false)}
-                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-[#00552E]/10 hover:text-[#00552E]"
+                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-[#00552E]/10 hover:text-[#00552E]"
                       >
-                        <Settings size={17} className="text-[#00552E]" />
-                        <span>System Settings</span>
+                        <Settings size={17} className="text-[#00552E] shrink-0" />
+                        <span className="text-slate-900 font-bold">System Settings</span>
                       </Link>
                       <div className="my-1.5 border-t border-slate-100" />
                       <button
@@ -508,12 +580,13 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                         disabled={isSigningOut}
                         className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-bold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        <LogOut size={17} className="text-rose-600" />
-                        <span>{isSigningOut ? "Signing out..." : "Sign Out"}</span>
+                        <LogOut size={17} className="text-rose-600 shrink-0" />
+                        <span className="text-rose-600 font-black">{isSigningOut ? "Signing out..." : "Sign Out"}</span>
                       </button>
                     </div>
                   </div>
-                )}
+                </>
+              )}
               </div>
             </div>
           </div>

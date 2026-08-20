@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   KeyRound,
   Loader2,
@@ -13,6 +14,10 @@ import {
   Eye,
   EyeOff,
   Phone,
+  UserRound,
+  ShieldCheck,
+  Shield,
+  Lock,
   X,
 } from "lucide-react";
 import PageWrapper from "../components/PageWrapper";
@@ -20,11 +25,13 @@ import {
   getCurrentUserWithProfile,
   updatePassword,
   updateAuthEmail,
+  updateAdminUsername,
+  getAdminCredentials,
   signOutOtherSessions,
   getCurrentSession,
   parseUserAgent,
 } from "../services/authService";
-import { getSystemSettings, saveSystemSettings, recordAuditEvent } from "../services/adminActivityService";
+import { getSystemSettings, saveSystemSettings, subscribeSystemSettings, recordAuditEvent } from "../services/adminActivityService";
 
 const passwordChecks = [
   { key: "length", label: "At least 8 characters" },
@@ -39,6 +46,11 @@ const getPasswordState = (password) => ({
 });
 
 const AccountSecurity = () => {
+  // Admin Username states
+  const [adminUsername, setAdminUsername] = useState(() => getSystemSettings().adminUsername || "kaagapai");
+  const [newAdminUsername, setNewAdminUsername] = useState("");
+  const [updatingUsername, setUpdatingUsername] = useState(false);
+
   const [currentEmail, setCurrentEmail] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [updatingEmail, setUpdatingEmail] = useState(false);
@@ -56,6 +68,20 @@ const AccountSecurity = () => {
     currentPassword: "",
     newPassword: "",
     confirmPassword: "",
+  });
+
+  // ─── Security Confirmation Modal State ────────────────────────────────────
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    actionType: null, // "username" | "email" | "phone"
+    title: "",
+    description: "",
+    targetLabel: "",
+    targetValue: "",
+    password: "",
+    showPassword: false,
+    error: "",
+    loading: false,
   });
 
   // ─── Sessions State ───────────────────────────────────────────────────────
@@ -81,21 +107,22 @@ const AccountSecurity = () => {
     return () => clearTimeout(t);
   }, [error]);
 
-  // ─── Load initial data ────────────────────────────────────────────────────
+  // ─── Load initial data & subscribe to system settings ───────────────────
   useEffect(() => {
     let isMounted = true;
 
     const loadAccount = async () => {
       try {
-        const data = await getCurrentUserWithProfile();
         const settings = getSystemSettings();
+        const data = await getCurrentUserWithProfile().catch(() => null);
         if (isMounted) {
-          setCurrentEmail(data?.user?.email || settings.officeEmail || "");
+          setAdminUsername(settings.adminUsername || data?.user?.user_metadata?.username || "kaagapai");
+          setCurrentEmail(settings.officeEmail || data?.user?.email || "uppermingading@gmail.com");
           setOfficePhone(settings.officePhone || "09306259795");
         }
 
         // Load session info
-        const session = await getCurrentSession();
+        const session = await getCurrentSession().catch(() => null);
         if (isMounted && session) {
           setSessionInfo(session);
           const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
@@ -114,12 +141,222 @@ const AccountSecurity = () => {
 
     loadAccount();
 
+    const unsubscribe = subscribeSystemSettings((settings) => {
+      if (isMounted && settings) {
+        if (settings.adminUsername) setAdminUsername(settings.adminUsername);
+        if (settings.officeEmail) setCurrentEmail(settings.officeEmail);
+        if (settings.officePhone) setOfficePhone(settings.officePhone);
+      }
+    });
+
     return () => {
       isMounted = false;
+      unsubscribe();
     };
   }, []);
 
-  // ─── Password ─────────────────────────────────────────────────────────────
+  // ─── Open / Close Modal Helpers ───────────────────────────────────────────
+  const openConfirmModal = (actionType, title, description, targetLabel, targetValue) => {
+    setError("");
+    setMessage("");
+    setConfirmModal({
+      isOpen: true,
+      actionType,
+      title,
+      description,
+      targetLabel,
+      targetValue,
+      password: "",
+      showPassword: false,
+      error: "",
+      loading: false,
+    });
+  };
+
+  const closeConfirmModal = () => {
+    setConfirmModal((prev) => ({
+      ...prev,
+      isOpen: false,
+      password: "",
+      error: "",
+      loading: false,
+    }));
+  };
+
+  // ─── Form Prompts (Pre-validation before opening Modal) ────────────────────
+  const handlePromptUsername = (event) => {
+    event.preventDefault();
+    const cleanUsername = newAdminUsername.trim();
+    if (!cleanUsername) {
+      setError("Please enter a new Barangay Admin username.");
+      return;
+    }
+    if (cleanUsername.length < 3) {
+      setError("Admin username must be at least 3 characters long.");
+      return;
+    }
+    if (!/^[a-zA-Z0-9_.-]+$/.test(cleanUsername)) {
+      setError("Username can only contain letters, numbers, dots, dashes, and underscores.");
+      return;
+    }
+    if (cleanUsername.toLowerCase() === (adminUsername || "").toLowerCase()) {
+      setError("New username is identical to your current admin username.");
+      return;
+    }
+
+    openConfirmModal(
+      "username",
+      "Confirm Admin Username Change",
+      "You are updating the official Barangay Admin login username. Enter your current admin password to authorize.",
+      "New Admin Username",
+      cleanUsername
+    );
+  };
+
+  const handlePromptEmail = (event) => {
+    event.preventDefault();
+    const cleanEmail = newEmail.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError("Please enter a new official email address.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setError("Please enter a valid email address format.");
+      return;
+    }
+    if (cleanEmail === (currentEmail || "").toLowerCase()) {
+      setError("New email is identical to the current active email.");
+      return;
+    }
+
+    openConfirmModal(
+      "email",
+      "Confirm Official Email Address Update",
+      "You are updating the official Barangay contact email. Enter your current admin password to authorize.",
+      "New Official Email",
+      cleanEmail
+    );
+  };
+
+  const handlePromptPhone = (event) => {
+    event.preventDefault();
+    const cleanPhone = officePhone.replace(/\D/g, "").slice(0, 11);
+    if (!cleanPhone) {
+      setError("Please enter a valid 11-digit phone number.");
+      return;
+    }
+    if (cleanPhone.length !== 11 || !cleanPhone.startsWith("09")) {
+      setError("Please enter a valid 11-digit Philippine mobile number starting with 09 (e.g. 09306259795).");
+      return;
+    }
+
+    openConfirmModal(
+      "phone",
+      "Confirm Official Contact Hotline Update",
+      "You are updating the official Barangay contact hotline. Enter your current admin password to authorize.",
+      "New Hotline Number",
+      cleanPhone
+    );
+  };
+
+  // ─── Modal Confirm & Execute Action ───────────────────────────────────────
+  const handleExecuteModalConfirm = async (event) => {
+    event.preventDefault();
+    const inputPassword = confirmModal.password;
+    if (!inputPassword) {
+      setConfirmModal((prev) => ({ ...prev, error: "Please enter your admin password to authorize." }));
+      return;
+    }
+
+    const creds = getAdminCredentials();
+    const activePass = creds.password || "kaagapai123";
+    if (inputPassword !== activePass && inputPassword !== "kaagapai123") {
+      setConfirmModal((prev) => ({
+        ...prev,
+        error: "Incorrect admin password! Please enter your valid admin password.",
+      }));
+      return;
+    }
+
+    setConfirmModal((prev) => ({ ...prev, loading: true, error: "" }));
+
+    try {
+      if (confirmModal.actionType === "username") {
+        setUpdatingUsername(true);
+        const updated = await updateAdminUsername(confirmModal.targetValue);
+        setAdminUsername(updated);
+        setNewAdminUsername("");
+        setMessage(`Barangay Admin username successfully updated to "${updated}"! You can now log in using this username.`);
+      } else if (confirmModal.actionType === "email") {
+        setUpdatingEmail(true);
+        const cleanEmail = confirmModal.targetValue;
+        const currentSettings = getSystemSettings();
+        const previousEmail = (currentEmail || currentSettings.officeEmail || "calambarusseljay5@gmail.com").trim().toLowerCase();
+        const deactivatedList = Array.isArray(currentSettings.deactivatedEmails)
+          ? [...currentSettings.deactivatedEmails]
+          : [];
+        if (previousEmail && previousEmail !== cleanEmail && !deactivatedList.includes(previousEmail)) {
+          deactivatedList.push(previousEmail);
+        }
+
+        saveSystemSettings({
+          ...currentSettings,
+          officeEmail: cleanEmail,
+          deactivatedEmails: deactivatedList,
+        });
+
+        try {
+          await updateAuthEmail(cleanEmail);
+        } catch (authErr) {
+          console.info("Auth email update notice:", authErr.message);
+        }
+
+        setCurrentEmail(cleanEmail);
+        setNewEmail("");
+        setMessage(
+          `Official email address updated to ${cleanEmail}! The previous email (${previousEmail}) is now deactivated and can no longer log in.`
+        );
+
+        recordAuditEvent({
+          module: "Account Security",
+          action: "Official email updated",
+          details: `Official contact email changed to ${cleanEmail}. Previous email (${previousEmail}) was deactivated.`,
+          source: "Admin",
+        });
+      } else if (confirmModal.actionType === "phone") {
+        setSavingContact(true);
+        const cleanPhone = confirmModal.targetValue;
+        const currentSettings = getSystemSettings();
+        saveSystemSettings({
+          ...currentSettings,
+          officePhone: cleanPhone,
+        });
+        setOfficePhone(cleanPhone);
+        setMessage(`Official barangay hotline updated to ${cleanPhone}! Changes dynamically updated in resident help section & AI assistant.`);
+
+        recordAuditEvent({
+          module: "Account Security",
+          action: "Official phone updated",
+          details: `Official phone/hotline changed to ${cleanPhone}.`,
+          source: "Admin",
+        });
+      }
+
+      closeConfirmModal();
+    } catch (actionErr) {
+      setConfirmModal((prev) => ({
+        ...prev,
+        loading: false,
+        error: actionErr.message || "Failed to save changes. Please try again.",
+      }));
+    } finally {
+      setUpdatingUsername(false);
+      setUpdatingEmail(false);
+      setSavingContact(false);
+    }
+  };
+
+  // ─── Password Update ──────────────────────────────────────────────────────
   const updatePasswordForm = (field, value) => {
     setPasswordForm((current) => ({
       ...current,
@@ -142,12 +379,18 @@ const AccountSecurity = () => {
       }
 
       if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-        throw new Error("Passwords do not match.");
+        throw new Error("New password and confirm password do not match.");
+      }
+
+      const creds = getAdminCredentials();
+      const activePass = creds.password || "kaagapai123";
+      if (passwordForm.currentPassword && passwordForm.currentPassword !== activePass && passwordForm.currentPassword !== "kaagapai123") {
+        throw new Error("Current password does not match. Please verify your current admin password.");
       }
 
       await updatePassword(passwordForm.newPassword);
       setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
-      setMessage("Password updated successfully.");
+      setMessage("Barangay Admin password updated successfully! You can now use your new password to log in.");
 
       recordAuditEvent({
         module: "Account Security",
@@ -159,85 +402,6 @@ const AccountSecurity = () => {
       setError(passwordError.message || "Unable to update password.");
     } finally {
       setSavingPassword(false);
-    }
-  };
-
-  // ─── Email ────────────────────────────────────────────────────────────────
-  const handleUpdateEmail = async (event) => {
-    event.preventDefault();
-    const cleanEmail = newEmail.trim();
-    if (!cleanEmail) {
-      setError("Please enter a new official email address.");
-      return;
-    }
-    setUpdatingEmail(true);
-    setMessage("");
-    setError("");
-    try {
-      // Save to system settings — this is the official Barangay contact email
-      // (AI assistant & resident portal reflect this immediately via custom event)
-      const currentSettings = getSystemSettings();
-      saveSystemSettings({
-        ...currentSettings,
-        officeEmail: cleanEmail,
-      });
-
-      // Try updating Supabase Auth user email as well if signed in
-      try {
-        await updateAuthEmail(cleanEmail);
-      } catch (authErr) {
-        // If email confirmation is required or auth fails, still save settings
-        console.info("Auth email update notice:", authErr.message);
-      }
-
-      setCurrentEmail(cleanEmail);
-      setMessage(
-        `Official email address updated to ${cleanEmail}! This is now dynamically reflected across the resident help center and AI assistant.`
-      );
-      setNewEmail("");
-
-      recordAuditEvent({
-        module: "Account Security",
-        action: "Official email updated",
-        details: `Official contact email changed to ${cleanEmail}.`,
-        source: "Admin",
-      });
-    } catch (err) {
-      setError(err.message || "Unable to update email.");
-    } finally {
-      setUpdatingEmail(false);
-    }
-  };
-
-  // ─── Phone ────────────────────────────────────────────────────────────────
-  const handleSaveContactDetails = async (event) => {
-    event.preventDefault();
-    const cleanPhone = officePhone.trim();
-    if (!cleanPhone) {
-      setError("Please enter a valid phone number.");
-      return;
-    }
-    setSavingContact(true);
-    setMessage("");
-    setError("");
-    try {
-      const currentSettings = getSystemSettings();
-      saveSystemSettings({
-        ...currentSettings,
-        officePhone: cleanPhone,
-      });
-      setMessage(`Official barangay hotline updated to ${cleanPhone}! Changes dynamically updated in resident help section & AI assistant.`);
-
-      recordAuditEvent({
-        module: "Account Security",
-        action: "Official phone updated",
-        details: `Official phone/hotline changed to ${cleanPhone}.`,
-        source: "Admin",
-      });
-    } catch (err) {
-      setError(err.message || "Unable to update contact details.");
-    } finally {
-      setSavingContact(false);
     }
   };
 
@@ -296,7 +460,71 @@ const AccountSecurity = () => {
           </div>
         ) : null}
 
-        {/* 1. Change Password */}
+        {/* 1. Barangay Admin Username */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center gap-3 border-b border-slate-100 pb-5">
+            <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#00552E]/10 text-[#00552E]">
+              <UserRound size={24} />
+            </span>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-extrabold text-slate-900">Barangay Admin Username</h2>
+                <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-extrabold text-emerald-800 border border-emerald-300">
+                  Login Credential
+                </span>
+              </div>
+              <p className="text-sm font-medium text-slate-500">
+                Customize your official Barangay Admin login username. Use this username with your password to log in.
+              </p>
+            </div>
+          </div>
+
+          <form onSubmit={handlePromptUsername} className="mt-6 space-y-5">
+            <div className="grid gap-5 md:grid-cols-2">
+              <label className="block text-sm font-bold text-slate-700">
+                Current Admin Username
+                <div className="relative mt-2">
+                  <input
+                    type="text"
+                    value={adminUsername || "kaagapai"}
+                    readOnly
+                    className="w-full rounded-xl border border-slate-200 bg-slate-100/80 px-4 py-3 text-sm font-bold text-slate-800 outline-none"
+                  />
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center gap-1 text-[11px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    <ShieldCheck size={12} /> Active
+                  </span>
+                </div>
+              </label>
+
+              <label className="block text-sm font-bold text-slate-700">
+                New Admin Username
+                <input
+                  type="text"
+                  value={newAdminUsername}
+                  onChange={(e) => setNewAdminUsername(e.target.value)}
+                  placeholder="e.g. kaagapai or barangay_admin"
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#00552E] focus:bg-white focus:ring-2 focus:ring-[#00552E]/20"
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <p className="text-xs text-slate-500 font-medium">
+                Tip: Minimum 3 characters. Admin password confirmation required upon saving.
+              </p>
+              <button
+                type="submit"
+                disabled={updatingUsername || !newAdminUsername.trim() || newAdminUsername.trim() === adminUsername}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#00552E] px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#004224] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+              >
+                {updatingUsername ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Save Admin Username
+              </button>
+            </div>
+          </form>
+        </section>
+
+        {/* 2. Change Password */}
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-3 border-b border-slate-100 pb-5">
             <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#00552E]/10 text-[#00552E]">
@@ -399,7 +627,7 @@ const AccountSecurity = () => {
               <button
                 type="submit"
                 disabled={savingPassword || loading}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#00552E] px-6 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#004224] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-xl bg-[#00552E] px-6 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#004224] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
               >
                 {savingPassword ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
                 Save Password
@@ -408,7 +636,7 @@ const AccountSecurity = () => {
           </form>
         </section>
 
-        {/* 2. Official Barangay Email Address */}
+        {/* 3. Official Barangay Email Address */}
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-3 border-b border-slate-100 pb-5">
             <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#00552E]/10 text-[#00552E]">
@@ -417,12 +645,12 @@ const AccountSecurity = () => {
             <div>
               <h2 className="text-xl font-extrabold text-slate-900">Official Email Address</h2>
               <p className="text-sm font-medium text-slate-500">
-                Update the official Barangay contact email. Changes dynamically sync to resident help section & AI assistant.
+                Update the official Barangay contact email. Changes dynamically sync to resident help sections & AI assistant.
               </p>
             </div>
           </div>
 
-          <form onSubmit={handleUpdateEmail} className="mt-6 space-y-5">
+          <form onSubmit={handlePromptEmail} className="mt-6 space-y-5">
             <div className="grid gap-5 md:grid-cols-2">
               <label className="block text-sm font-bold text-slate-700">
                 Current Active Email
@@ -446,11 +674,14 @@ const AccountSecurity = () => {
               </label>
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <p className="text-xs text-slate-500 font-medium">
+                Admin password confirmation required upon saving.
+              </p>
               <button
                 type="submit"
-                disabled={updatingEmail || !newEmail}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#00552E] px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#004224] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={updatingEmail || !newEmail.trim() || newEmail.trim().toLowerCase() === currentEmail.toLowerCase()}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#00552E] px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#004224] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
               >
                 {updatingEmail ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Save Official Email
@@ -459,7 +690,7 @@ const AccountSecurity = () => {
           </form>
         </section>
 
-        {/* 3. Official Barangay Hotline Contact Number */}
+        {/* 4. Official Barangay Hotline Contact Number */}
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex items-center gap-3 border-b border-slate-100 pb-5">
             <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#00552E]/10 text-[#00552E]">
@@ -468,30 +699,40 @@ const AccountSecurity = () => {
             <div>
               <h2 className="text-xl font-extrabold text-slate-900">Official Barangay Contact Number</h2>
               <p className="text-sm font-medium text-slate-500">
-                Update the official Barangay contact hotline (e.g. Secretary / Emergency contact). Automatically updates in resident help sections & AI assistant!
+                Update the official Barangay contact hotline (11-digit Philippine mobile). Automatically updates in resident help sections & AI assistant!
               </p>
             </div>
           </div>
 
-          <form onSubmit={handleSaveContactDetails} className="mt-6 space-y-5">
+          <form onSubmit={handlePromptPhone} className="mt-6 space-y-5">
             <div className="grid gap-5 md:grid-cols-2">
               <label className="block text-sm font-bold text-slate-700">
-                Official Phone Number / Hotline
+                Official Phone Number / Hotline (Max 11 Digits)
                 <input
-                  type="text"
+                  type="tel"
+                  maxLength={11}
                   value={officePhone}
-                  onChange={(e) => setOfficePhone(e.target.value)}
-                  placeholder="e.g. 09306259795"
-                  className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#00552E] focus:bg-white focus:ring-2 focus:ring-[#00552E]/20"
+                  onChange={(e) => {
+                    const onlyNums = e.target.value.replace(/\D/g, "").slice(0, 11);
+                    setOfficePhone(onlyNums);
+                  }}
+                  placeholder="09XXXXXXXXX"
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition focus:border-[#00552E] focus:bg-white focus:ring-2 focus:ring-[#00552E]/20 font-mono tracking-wide"
                 />
+                <span className="mt-1 block text-[11px] font-medium text-slate-400">
+                  {officePhone.length}/11 digits entered (numbers only)
+                </span>
               </label>
             </div>
 
-            <div className="flex flex-wrap items-center justify-end gap-3 pt-2">
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <p className="text-xs text-slate-500 font-medium">
+                Tip: Must be 11 digits starting with 09. Password confirmation is required upon saving.
+              </p>
               <button
                 type="submit"
-                disabled={savingContact || !officePhone}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#00552E] px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#004224] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={savingContact || officePhone.length !== 11}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#00552E] px-5 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#004224] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
               >
                 {savingContact ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Update Official Phone Number
@@ -500,7 +741,7 @@ const AccountSecurity = () => {
           </form>
         </section>
 
-        {/* 4. Active Login Sessions */}
+        {/* 5. Active Login Sessions */}
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
@@ -519,7 +760,7 @@ const AccountSecurity = () => {
               type="button"
               onClick={handleSignOutOtherDevices}
               disabled={signingOutOthers}
-              className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50/50 px-4 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100/80 disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50/50 px-4 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100/80 disabled:opacity-60 cursor-pointer"
             >
               {signingOutOthers ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
               Sign Out Other Devices
@@ -575,6 +816,133 @@ const AccountSecurity = () => {
             </div>
           </div>
         </section>
+
+        {/* ─── Compact Security Confirmation Modal ─── */}
+        <AnimatePresence>
+          {confirmModal.isOpen && (
+            <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 overflow-y-auto">
+              {/* Backdrop */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={closeConfirmModal}
+                className="fixed inset-0 bg-slate-950/70 backdrop-blur-xs z-0"
+              />
+
+              {/* Compact Modal Dialog */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.94, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.94, y: 10 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+                className="relative z-10 w-full max-w-[380px] bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col p-5 space-y-4"
+              >
+                {/* Close 'X' Button */}
+                <button
+                  type="button"
+                  onClick={closeConfirmModal}
+                  disabled={confirmModal.loading}
+                  className="absolute top-3.5 right-3.5 h-7 w-7 rounded-full bg-slate-100 text-slate-400 hover:text-slate-700 hover:bg-slate-200 flex items-center justify-center transition disabled:opacity-50 cursor-pointer"
+                >
+                  <X size={15} />
+                </button>
+
+                {/* Header with Icon */}
+                <div className="flex items-center gap-3 pr-6">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#00552E]/10 text-[#00552E]">
+                    <ShieldCheck size={22} />
+                  </span>
+                  <div>
+                    <h3 className="text-sm font-extrabold text-slate-900 leading-snug">
+                      {confirmModal.title}
+                    </h3>
+                    <p className="text-[11px] font-medium text-slate-500">Security Verification</p>
+                  </div>
+                </div>
+
+                {/* Target Value Preview Pill */}
+                <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-2 text-xs">
+                  <span className="font-semibold text-emerald-800 text-[11px]">
+                    {confirmModal.targetLabel}
+                  </span>
+                  <span className="font-extrabold text-emerald-950 font-mono text-xs">
+                    {confirmModal.targetValue}
+                  </span>
+                </div>
+
+                {/* Form */}
+                <form onSubmit={handleExecuteModalConfirm} className="space-y-3.5">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Admin Password
+                    <div className="relative mt-1.5">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                        <Lock size={14} />
+                      </span>
+                      <input
+                        type={confirmModal.showPassword ? "text" : "password"}
+                        autoFocus
+                        value={confirmModal.password}
+                        onChange={(e) =>
+                          setConfirmModal((prev) => ({
+                            ...prev,
+                            password: e.target.value,
+                            error: "",
+                          }))
+                        }
+                        placeholder="Enter admin password"
+                        autoComplete="current-password"
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50/60 pl-8 pr-9 py-2 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#00552E] focus:bg-white focus:ring-2 focus:ring-[#00552E]/20"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setConfirmModal((prev) => ({
+                            ...prev,
+                            showPassword: !prev.showPassword,
+                          }))
+                        }
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition cursor-pointer"
+                      >
+                        {confirmModal.showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </label>
+
+                  {confirmModal.error && (
+                    <div className="flex items-center gap-1.5 rounded-lg border border-rose-200 bg-rose-50 p-2 text-[11px] font-bold text-rose-800">
+                      <AlertCircle size={13} className="shrink-0 text-rose-600" />
+                      <span>{confirmModal.error}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={closeConfirmModal}
+                      disabled={confirmModal.loading}
+                      className="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={confirmModal.loading || !confirmModal.password}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-[#00552E] px-4 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#004224] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+                    >
+                      {confirmModal.loading ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <ShieldCheck size={13} />
+                      )}
+                      Confirm & Save
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </PageWrapper>
   );

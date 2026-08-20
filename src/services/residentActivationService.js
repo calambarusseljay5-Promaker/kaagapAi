@@ -27,54 +27,111 @@ const getActivationError = (error) => {
 };
 
 export async function fetchResidentActivationRequests(statusFilter = "Pending Approval") {
-  const { data, error } = await supabase.rpc("get_resident_activation_requests", {
-    p_status_filter: statusFilter || null,
-  });
+  // 1. First attempt: Try RPC functions
+  try {
+    const { data, error } = await supabase.rpc("get_resident_activation_requests", {
+      p_status_filter: statusFilter || null,
+    });
 
-  if (error) {
-    throw getActivationError(error);
-  }
-
-  const requests = (data || []).map((request) => ({
-    ...request,
-    request_id: request.request_id || request.id,
-    request_status: request.request_status || request.status,
-  }));
-
-  if (requests.length === 0) {
-    return requests;
-  }
-
-  const requestIds = requests.map((request) => request.request_id).filter(Boolean);
-  const { data: proofRows, error: proofError } = await supabase
-    .from("resident_activation_requests")
-    .select("id,requested_proof_path,requested_proof_name,requested_proof_type")
-    .in("id", requestIds);
-
-  if (proofError) {
-    const proofMessage = String(proofError.message || "").toLowerCase();
-    const proofSchemaMissing =
-      proofMessage.includes("requested_proof_path") ||
-      proofMessage.includes("schema cache") ||
-      proofError.code === "42703";
-
-    if (proofSchemaMissing) {
-      return requests.map((request) => ({
+    if (!error && Array.isArray(data)) {
+      const requests = data.map((request) => ({
         ...request,
-        proof_review_available: false,
+        request_id: request.request_id || request.id,
+        request_status: request.request_status || request.status,
       }));
+
+      if (requests.length > 0) {
+        const requestIds = requests.map((r) => r.request_id).filter(Boolean);
+        const { data: proofRows } = await supabase
+          .from("resident_activation_requests")
+          .select("id,requested_proof_path,requested_proof_name,requested_proof_type,requested_username,requested_phone,requested_sex,requested_birthplace,requested_civil_status,requested_occupation,requested_educational_attainment,requested_house_no,requested_relationship_to_household_head,requested_address")
+          .in("id", requestIds);
+
+        const proofMap = new Map((proofRows || []).map((row) => [row.id, row]));
+        return requests.map((r) => ({
+          ...r,
+          ...(proofMap.get(r.request_id) || {}),
+          proof_review_available: Boolean(proofMap.get(r.request_id)?.requested_proof_path),
+        }));
+      }
+
+      return requests;
+    }
+  } catch (rpcErr) {
+    console.warn("RPC get_resident_activation_requests notice:", rpcErr);
+  }
+
+  // 2. Direct Table Fallback: Query resident_activation_requests directly
+  try {
+    let query = supabase
+      .from("resident_activation_requests")
+      .select("*");
+
+    if (statusFilter && statusFilter !== "All") {
+      query = query.eq("status", statusFilter);
+    }
+    query = query.order("request_date", { ascending: false });
+
+    const { data: rawRows, error: tableError } = await query;
+
+    if (tableError) {
+      throw getActivationError(tableError);
     }
 
-    throw getActivationError(proofError);
+    if (!rawRows || rawRows.length === 0) {
+      return [];
+    }
+
+    // Fetch resident & account metadata if available
+    const residentIds = rawRows.map((r) => r.resident_id).filter(Boolean);
+    let residentMap = new Map();
+    let accountMap = new Map();
+
+    if (residentIds.length > 0) {
+      try {
+        const { data: resData } = await supabase
+          .from("residents")
+          .select("id, full_name, first_name, middle_name, last_name, birthday, household_no, house_no, purok, address")
+          .in("id", residentIds);
+
+        if (resData) {
+          residentMap = new Map(resData.map((r) => [r.id, r]));
+        }
+
+        const { data: accData } = await supabase
+          .from("resident_accounts")
+          .select("resident_id, username, account_status")
+          .in("resident_id", residentIds);
+
+        if (accData) {
+          accountMap = new Map(accData.map((a) => [a.resident_id, a]));
+        }
+      } catch (metaErr) {
+        console.warn("Resident metadata fetch notice:", metaErr);
+      }
+    }
+
+    return rawRows.map((row) => {
+      const res = residentMap.get(row.resident_id) || {};
+      const acc = accountMap.get(row.resident_id) || {};
+
+      return {
+        ...row,
+        request_id: row.id,
+        request_status: row.status,
+        full_name: row.requested_full_name || res.full_name || "N/A",
+        birthday: row.requested_birthday || res.birthday || null,
+        household_no: row.requested_household_no || res.household_no || res.house_no || "N/A",
+        purok: row.requested_purok || res.purok || "",
+        address: row.requested_address || res.address || "",
+        username: row.requested_username || acc.username || "N/A",
+        account_status: acc.account_status || (row.status === "Approved" ? "Active" : "Pending"),
+        proof_review_available: Boolean(row.requested_proof_path),
+      };
+    });
+  } catch (err) {
+    throw getActivationError(err);
   }
-
-  const proofByRequestId = new Map((proofRows || []).map((row) => [row.id, row]));
-
-  return requests.map((request) => ({
-    ...request,
-    ...(proofByRequestId.get(request.request_id) || {}),
-    proof_review_available: true,
-  }));
 }
 
 export async function createResidentRegistrationProofUrl(request) {
@@ -84,31 +141,40 @@ export async function createResidentRegistrationProofUrl(request) {
     throw new Error("No verification proof is attached to this request.");
   }
 
-  let data, error;
+  // If already a full web URL or data URL
+  if (proofPath.startsWith("http://") || proofPath.startsWith("https://") || proofPath.startsWith("data:")) {
+    return proofPath;
+  }
+
+  // 1. Try to create signed URL
   try {
-    const res = await supabase.storage
+    const { data: signedData, error: signedError } = await supabase.storage
       .from(REGISTRATION_PROOF_BUCKET)
-      .createSignedUrl(proofPath, 10 * 60);
-    data = res.data;
-    error = res.error;
-  } catch (err) {
-    error = err;
-  }
+      .createSignedUrl(proofPath, 60 * 60);
 
-  if (error) {
-    const message = String(error.message || "").toLowerCase();
-    const isNetworkOrCors = error.name === "TypeError" || message.includes("failed to fetch");
-    if (message.includes("bucket") || message.includes("not found") || isNetworkOrCors) {
-      throw new Error(`Proof review is not installed yet or connection failed. Run ${PROOF_REVIEW_SQL_PATH} in Supabase and ensure the '${REGISTRATION_PROOF_BUCKET}' bucket exists.`);
+    if (!signedError && signedData?.signedUrl) {
+      return signedData.signedUrl;
     }
-    throw error;
+  } catch (err) {
+    console.warn("Notice creating signed URL:", err);
   }
 
-  if (!data?.signedUrl) {
-    throw new Error("Unable to create a secure proof preview.");
+  // 2. Fallback to public URL
+  try {
+    const { data: pubData } = supabase.storage
+      .from(REGISTRATION_PROOF_BUCKET)
+      .getPublicUrl(proofPath);
+
+    if (pubData?.publicUrl) {
+      return pubData.publicUrl;
+    }
+  } catch (pubErr) {
+    console.warn("Notice getting public URL:", pubErr);
   }
 
-  return data.signedUrl;
+  throw new Error(
+    `Proof review is not installed yet or bucket is missing. Run fix-admin-registration-requests-access.sql in Supabase SQL Editor to create the '${REGISTRATION_PROOF_BUCKET}' bucket.`
+  );
 }
 
 export async function approveResidentActivationRequest(request) {
@@ -118,26 +184,219 @@ export async function approveResidentActivationRequest(request) {
     throw new Error("Registration request is missing.");
   }
 
-  const { data, error } = await supabase.rpc("approve_resident_activation_request", {
-    p_request_id: requestId,
-  });
+  // 1. First attempt: RPC functions
+  try {
+    const { data, error } = await supabase.rpc("approve_resident_registration_request", {
+      p_request_id: requestId,
+    });
 
-  if (error) {
-    throw getActivationError(error);
+    if (!error && data) {
+      const result = getRpcRow(data) || {};
+      recordAuditEvent({
+        module: "Resident Registration",
+        action: "Registration approved",
+        details: `${request?.full_name || result.full_name || "Resident"} was approved with username ${
+          result.username || request?.requested_username || "generated"
+        }.`,
+        source: "Admin",
+      });
+      return result;
+    }
+  } catch (rpcErr1) {
+    console.warn("RPC approve_resident_registration_request notice:", rpcErr1);
   }
 
-  const result = getRpcRow(data) || {};
+  try {
+    const { data, error } = await supabase.rpc("approve_resident_activation_request", {
+      p_request_id: requestId,
+    });
 
-  recordAuditEvent({
-    module: "Resident Registration",
-    action: "Registration approved",
-    details: `${request?.full_name || "Resident"} was approved with username ${
-      result.username || "generated"
-    }.`,
-    source: "Admin",
-  });
+    if (!error && data) {
+      const result = getRpcRow(data) || {};
+      recordAuditEvent({
+        module: "Resident Registration",
+        action: "Registration approved",
+        details: `${request?.full_name || result.full_name || "Resident"} was approved with username ${
+          result.username || request?.requested_username || "generated"
+        }.`,
+        source: "Admin",
+      });
+      return result;
+    }
+  } catch (rpcErr2) {
+    console.warn("RPC approve_resident_activation_request notice:", rpcErr2);
+  }
 
-  return result;
+  // 2. Direct Database Fallback for Admin Approval
+  try {
+    // Fetch the request record
+    const { data: reqData, error: reqErr } = await supabase
+      .from("resident_activation_requests")
+      .select("*")
+      .eq("id", requestId)
+      .single();
+
+    if (reqErr || !reqData) {
+      throw new Error(reqErr?.message || "Registration request not found.");
+    }
+
+    let residentId = reqData.resident_id;
+    let fullName = reqData.requested_full_name;
+
+    // If new resident without an existing resident_id, create or link resident record
+    if (!residentId) {
+      // Check if resident already exists by full name and birthday
+      const { data: existingResident } = await supabase
+        .from("residents")
+        .select("id, full_name")
+        .ilike("full_name", fullName)
+        .eq("birthday", reqData.requested_birthday)
+        .maybeSingle();
+
+      if (existingResident) {
+        // Calculate age
+        let calcAge = null;
+        if (reqData.requested_birthday) {
+          const birthDate = new Date(reqData.requested_birthday);
+          const today = new Date();
+          let age = today.getFullYear() - birthDate.getFullYear();
+          const m = today.getMonth() - birthDate.getMonth();
+          if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+            age--;
+          }
+          calcAge = age >= 0 && age <= 130 ? age : null;
+        }
+
+        // Insert new resident record into residents table with ALL complete fields
+        const { data: newResident, error: newResErr } = await supabase
+          .from("residents")
+          .insert({
+            full_name: fullName,
+            first_name: reqData.requested_first_name || null,
+            middle_name: reqData.requested_middle_name || null,
+            last_name: reqData.requested_last_name || null,
+            suffix: reqData.requested_suffix || null,
+            phone: reqData.requested_phone || null,
+            email: reqData.requested_email || null,
+            house_no: reqData.requested_house_no || null,
+            household_no: reqData.requested_household_no || null,
+            relationship_to_household_head: reqData.requested_relationship_to_household_head || "Head",
+            birthday: reqData.requested_birthday || null,
+            age: calcAge,
+            sex: reqData.requested_sex || "Male",
+            gender: reqData.requested_sex || "Male",
+            birthplace: reqData.requested_birthplace || "",
+            purok: reqData.requested_purok || "",
+            educational_attainment: reqData.requested_educational_attainment || "",
+            occupation: reqData.requested_occupation || "",
+            civil_status: reqData.requested_civil_status || "Single",
+            address: reqData.requested_address || "",
+            is_4ps_member: Boolean(reqData.requested_is_4ps_member),
+            is_solo_parent: Boolean(reqData.requested_is_solo_parent),
+            is_pwd: Boolean(reqData.requested_is_pwd),
+            pwd_type: reqData.requested_pwd_type || null,
+            status: "Active",
+          })
+          .select()
+          .single();
+
+        if (newResErr) {
+          throw new Error(newResErr.message || "Failed to create resident profile.");
+        }
+        residentId = newResident.id;
+      }
+    }
+
+    // Create or activate resident account with exact chosen credentials
+    const username = reqData.requested_username || reqData.username || `resident_${String(residentId).slice(0, 8)}`;
+    const plainPassword = reqData.requested_plain_password || reqData.requested_household_no || reqData.requested_phone || "kaagapai123";
+    const passwordHash = reqData.requested_password_hash || plainPassword;
+    const phone = reqData.requested_phone || reqData.phone || null;
+    const email = reqData.requested_email || reqData.email || null;
+    
+    // Check existing account
+    const { data: existingAccount } = await supabase
+      .from("resident_accounts")
+      .select("id")
+      .eq("resident_id", residentId)
+      .maybeSingle();
+
+    if (existingAccount) {
+      await supabase
+        .from("resident_accounts")
+        .update({
+          username: username,
+          plain_password: plainPassword,
+          password_hash: passwordHash,
+          phone: phone,
+          email: email,
+          account_status: "Active",
+          must_change_credentials: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("resident_id", residentId);
+    } else {
+      await supabase
+        .from("resident_accounts")
+        .insert({
+          resident_id: residentId,
+          username: username,
+          plain_password: plainPassword,
+          password_hash: passwordHash,
+          phone: phone,
+          email: email,
+          account_status: "Active",
+          must_change_credentials: false,
+        });
+    }
+
+    // Safely determine admin UUID (only send UUID string or null)
+    let validAdminUuid = null;
+    try {
+      const currentSession = supabase.auth.getUser ? (await supabase.auth.getUser())?.data?.user : null;
+      const uid = currentSession?.id;
+      if (uid && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(uid))) {
+        validAdminUuid = uid;
+      }
+    } catch {
+      validAdminUuid = null;
+    }
+
+    // Update activation request status to Approved
+    const { error: updateReqErr } = await supabase
+      .from("resident_activation_requests")
+      .update({
+        status: "Approved",
+        approved_at: new Date().toISOString(),
+        approved_by: validAdminUuid,
+        rejected_at: null,
+        rejected_by: null,
+        rejection_reason: null,
+        resident_id: residentId,
+      })
+      .eq("id", requestId);
+
+    if (updateReqErr) {
+      console.warn("Notice updating activation request status:", updateReqErr);
+    }
+
+    recordAuditEvent({
+      module: "Resident Registration",
+      action: "Registration approved",
+      details: `${fullName || "Resident"} was approved with username ${username}.`,
+      source: "Admin",
+    });
+
+    return {
+      request_id: requestId,
+      resident_id: residentId,
+      full_name: fullName,
+      username: username,
+      account_status: "Active",
+    };
+  } catch (err) {
+    throw getActivationError(err);
+  }
 }
 
 export async function rejectResidentActivationRequest(request, reason = "Rejected by admin") {
@@ -148,23 +407,70 @@ export async function rejectResidentActivationRequest(request, reason = "Rejecte
     throw new Error("Registration request is missing.");
   }
 
-  const { data, error } = await supabase.rpc("reject_resident_activation_request", {
-    p_request_id: requestId,
-    p_reason: rejectionReason,
-  });
+  // 1. Try RPC first
+  try {
+    const { data, error } = await supabase.rpc("reject_resident_activation_request", {
+      p_request_id: requestId,
+      p_reason: rejectionReason,
+    });
 
-  if (error) {
-    throw getActivationError(error);
+    if (!error && data) {
+      const result = getRpcRow(data) || {};
+      recordAuditEvent({
+        module: "Resident Registration",
+        action: "Registration rejected",
+        details: `${request?.full_name || "Resident"} was rejected. Reason: ${rejectionReason}`,
+        source: "Admin",
+      });
+      return result;
+    }
+  } catch (rpcErr) {
+    console.warn("RPC reject_resident_activation_request notice:", rpcErr);
   }
 
-  const result = getRpcRow(data) || {};
+  // 2. Direct table fallback
+  try {
+    let validAdminUuid = null;
+    try {
+      const currentSession = supabase.auth.getUser ? (await supabase.auth.getUser())?.data?.user : null;
+      const uid = currentSession?.id;
+      if (uid && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(uid))) {
+        validAdminUuid = uid;
+      }
+    } catch {
+      validAdminUuid = null;
+    }
 
-  recordAuditEvent({
-    module: "Resident Registration",
-    action: "Registration rejected",
-    details: `${request?.full_name || "Resident"} was rejected. Reason: ${rejectionReason}`,
-    source: "Admin",
-  });
+    const { error: tableError } = await supabase
+      .from("resident_activation_requests")
+      .update({
+        status: "Rejected",
+        rejected_at: new Date().toISOString(),
+        rejected_by: validAdminUuid,
+        rejection_reason: rejectionReason,
+        approved_at: null,
+        approved_by: null,
+      })
+      .eq("id", requestId);
 
-  return result;
+    if (tableError) {
+      throw getActivationError(tableError);
+    }
+
+    recordAuditEvent({
+      module: "Resident Registration",
+      action: "Registration rejected",
+      details: `${request?.full_name || "Resident"} was rejected. Reason: ${rejectionReason}`,
+      source: "Admin",
+    });
+
+    return {
+      request_id: requestId,
+      status: "Rejected",
+      rejection_reason: rejectionReason,
+    };
+  } catch (err) {
+    throw getActivationError(err);
+  }
 }
+

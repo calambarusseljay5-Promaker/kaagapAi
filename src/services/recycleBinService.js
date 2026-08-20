@@ -157,7 +157,8 @@ export async function restoreFromRecycleBin(binEntryId) {
     .from(entry.tableName)
     .upsert([payload], { onConflict: "id" })
     .select()
-    .single();
+    .limit(1)
+    .maybeSingle();
 
   if (error) {
     throw new Error(

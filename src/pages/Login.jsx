@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ChevronRight,
@@ -21,33 +21,27 @@ import {
   User,
   MapPin,
   Heart,
-  Building2,
-  Award,
-  Users,
-  Bot,
-  BellRing,
-  Briefcase,
-  Sparkles,
-  X,
   Menu,
-  ArrowRight,
-  Shield,
-  Layers,
-  MessageSquare,
-  Clock,
-  Home as HomeIcon,
-  PhoneCall,
+  X,
+  LogIn,
   Check,
-  Globe,
-  Flame,
+  ArrowLeft,
+  Maximize2,
+  Sparkles,
   Calendar,
-  AlertTriangle,
-  Megaphone,
-  CalendarDays
+  Award,
+  ExternalLink,
+  Info,
+  Users,
+  Target,
+  Compass,
+  ArrowRight,
+  Briefcase,
 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 import FloatingModal from "../components/FloatingModal";
-import { clearAuthSession, loginUser, resetPassword } from "../services/authService";
+import BarangayCarousel, { DEFAULT_SHOWCASE_SLIDES } from "../components/BarangayCarousel";
+import { clearAuthSession, getAdminSession, loginUser, resetPassword } from "../services/authService";
 import {
   clearResidentSession,
   getResidentSession,
@@ -57,30 +51,40 @@ import {
   resetResidentPasswordByPhone,
 } from "../services/residentAuthService";
 import { isValidSmsPhone, normalizeSmsPhone } from "../services/smsService";
-import { getDashboardPathForRole } from "../utils/authRoutes";
-import { buildFullName, calculateAge, formatPurok, purokOptions } from "../utils/residentProfile";
-import { fetchPublishedAnnouncements } from "../services/announcementService";
-import { fetchLivelihoodPosts } from "../services/livelihoodService";
-import { fetchOrganizationOfficials } from "../services/organizationService";
+import { getDashboardPathForRole, isTargetAdminPortal } from "../utils/authRoutes";
+import {
+  buildFullName,
+  calculateAge,
+  civilStatusOptions,
+  educationalAttainmentOptions,
+  formatPurok,
+  getCustomPurokDefinitions,
+  householdRelationshipOptions,
+  purokOptions,
+  sexOptions,
+  standardOccupationOptions,
+} from "../utils/residentProfile";
 import { getSystemSettings } from "../services/adminActivityService";
 import ReCAPTCHA from "react-google-recaptcha";
 import {
   checkLoginAllowed,
   recordFailedAttempt,
   clearFailedAttempts,
-  logSecurityEvent
+  logSecurityEvent,
 } from "../services/securityService";
 import {
   sendOTP,
   verifyOTP,
-  getOTPCooldownSeconds
 } from "../services/otpService";
 
-const purokOptionList = purokOptions.map((purok) => (
-  <option key={purok} value={purok}>
-    {formatPurok(purok)}
-  </option>
-));
+const stepHeaders = [
+  { label: "Personal Info", icon: User },
+  { label: "Address & Household", icon: MapPin },
+  { label: "Education & Work", icon: Briefcase },
+  { label: "Sector Status", icon: Heart },
+  { label: "Security & Contact", icon: Lock },
+  { label: "Proof & Review", icon: FileCheck2 },
+];
 
 const getLoginDisplayName = ({ user, profile, resident }) =>
   resident?.full_name ||
@@ -91,38 +95,32 @@ const getLoginDisplayName = ({ user, profile, resident }) =>
   user?.email?.split("@")[0] ||
   "User";
 
-const stepHeaders = [
-  { label: "Personal Info", icon: User },
-  { label: "Address Details", icon: MapPin },
-  { label: "Security & Contact", icon: Lock },
-  { label: "Sector Status", icon: Heart },
-  { label: "Verification Proof", icon: FileText },
-  { label: "Review & Submit", icon: FileCheck2 },
-];
-
-const Login = () => {
+const Login = ({ portalMode = null }) => {
+  const [initialLoading, setInitialLoading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Port Detection (5173 = Admin, 5174 = Resident Portal)
-  const isResidentPort = typeof window !== "undefined" && (window.location.port === "5174" || window.location.port === "3000");
-  const isAdminPort = typeof window !== "undefined" && window.location.port === "5173";
+  const location = useLocation();
+  const currentPath = location.pathname ? location.pathname.toLowerCase() : "";
+  const isTargetAdmin = isTargetAdminPortal(portalMode, currentPath);
 
-  // Modal State System
-  const [showLoginModal, setShowLoginModal] = useState(true);
+  // View state: 'landing' (1st view matching NDMC reference) or 'login' (2nd view matching Image 3)
+  const [currentView, setCurrentView] = useState(() => (isTargetAdmin ? "login" : "landing"));
+  
   const [modalStep, setModalStep] = useState(() =>
-    isResidentPort ? "resident_login" : isAdminPort ? "admin_login" : "resident_login"
+    isTargetAdmin ? "admin_login" : "resident_login"
   );
   const [accessMode, setAccessMode] = useState(() =>
-    isResidentPort ? "Resident" : isAdminPort ? "Admin" : "Resident"
+    isTargetAdmin ? "Admin" : "Resident"
   );
   const [residentAuthMode, setResidentAuthMode] = useState("signin");
   const [registrationProof, setRegistrationProof] = useState(null);
   const [registrationStep, setRegistrationStep] = useState(1);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [showRecaptcha, setShowRecaptcha] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Forgot Password System States
   const [forgotEmail, setForgotEmail] = useState("");
@@ -134,14 +132,36 @@ const Login = () => {
   const [otpRemaining, setOtpRemaining] = useState(0);
   const [forgotResidentId, setForgotResidentId] = useState(null);
 
-  // Single-Screen Information Viewer Overlay
-  const [activeOverlay, setActiveOverlay] = useState(null); // null | "about" | "features" | "services" | "contact"
+  // Modal Overlays
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showAboutModal, setShowAboutModal] = useState(false);
+  const [selectedLightboxIndex, setSelectedLightboxIndex] = useState(null);
+
+  // Lightbox keyboard navigation
+  useEffect(() => {
+    if (selectedLightboxIndex === null) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === "Escape") {
+        setSelectedLightboxIndex(null);
+      } else if (e.key === "ArrowRight") {
+        setSelectedLightboxIndex((prev) => (prev + 1) % DEFAULT_SHOWCASE_SLIDES.length);
+      } else if (e.key === "ArrowLeft") {
+        setSelectedLightboxIndex(
+          (prev) => (prev - 1 + DEFAULT_SHOWCASE_SLIDES.length) % DEFAULT_SHOWCASE_SLIDES.length
+        );
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedLightboxIndex]);
 
   // Google reCAPTCHA integration refs & token state
   const adminCaptchaRef = useRef(null);
   const residentCaptchaRef = useRef(null);
   const [captchaToken, setCaptchaToken] = useState(null);
+
   const isRecaptchaConfigured = () => {
     const hostname = window.location.hostname;
     const isLocalHostOrIP =
@@ -157,8 +177,8 @@ const Login = () => {
     }
 
     return Boolean(
-      import.meta.env.VITE_RECAPTCHA_SITE_KEY && 
-      import.meta.env.VITE_RECAPTCHA_SITE_KEY !== "YOUR_SITE_KEY_HERE"
+      import.meta.env.VITE_RECAPTCHA_SITE_KEY &&
+        import.meta.env.VITE_RECAPTCHA_SITE_KEY !== "YOUR_SITE_KEY_HERE"
     );
   };
 
@@ -167,6 +187,7 @@ const Login = () => {
     last_name: "",
     first_name: "",
     middle_name: "",
+    suffix: "",
     email: "",
     password: "",
     birthday: "",
@@ -198,14 +219,31 @@ const Login = () => {
     () => calculateAge(formData.birthday),
     [formData.birthday]
   );
-  
+
   const residentRegistrationFullName = useMemo(
     () => buildFullName(formData),
     [formData]
   );
 
+  // Initial loading splash simulation (500ms)
+  useEffect(() => {
+    const splashTimer = setTimeout(() => {
+      setInitialLoading(false);
+    }, 500);
+    return () => clearTimeout(splashTimer);
+  }, []);
+
   const handleInputChange = (event) => {
-    const { checked, name, type, value } = event.target;
+    const { checked, name, type } = event.target;
+    let value = event.target.value;
+
+    if (name === "phone") {
+      value = value.replace(/\D/g, "").slice(0, 11);
+    }
+    if (name === "username") {
+      value = value.toLowerCase().replace(/[^a-z0-9_.-]/g, "");
+    }
+
     setFormData((current) => ({
       ...current,
       [name]: type === "checkbox" ? checked : value,
@@ -228,142 +266,21 @@ const Login = () => {
     }
   };
 
-  const openPortalModal = (type = "choose") => {
+  const openLoginView = (type = "resident_login") => {
     sessionStorage.removeItem("just_logged_out");
     setModalStep(type);
+    setAccessMode(type === "admin_login" ? "Admin" : "Resident");
     setError(null);
     setNotice(null);
-    setShowLoginModal(true);
+    setCurrentView("login");
   };
 
-  const closeModal = () => {
-    setShowLoginModal(false);
+  const goToLanding = () => {
+    setCurrentView("landing");
     setError(null);
     setNotice(null);
-    localStorage.removeItem("kaagapai_redirect_module");
+    setMobileMenuOpen(false);
   };
-
-  // Landing Page Data State
-  const [landingData, setLandingData] = useState({
-    stats: {
-      totalResidents: 0,
-      totalHouseholds: 0,
-      documentsProcessed: 0,
-      pendingRequests: 0,
-      announcementsPublished: 0,
-      completedPercent: 100,
-    },
-    announcements: [],
-    events: [],
-    officials: [],
-    systemSettings: {
-      officeEmail: "calambarusseljay5@gmail.com",
-      officePhone: "09306259795",
-      officeHours: "Monday to Friday, 8:00 AM - 4:00 PM",
-      barangayName: "Barangay Upper Mingading",
-    },
-    loading: true,
-  });
-
-  const [isScrolled, setIsScrolled] = useState(false);
-
-  // Scroll handler for navbar bg change
-  useEffect(() => {
-    const handleScroll = () => {
-      if (window.scrollY > 20) {
-        setIsScrolled(true);
-      } else {
-        setIsScrolled(false);
-      }
-    };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  // Fetch Homepage Data dynamically from Supabase
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadLandingData = async () => {
-      try {
-        const settings = getSystemSettings();
-        
-        const [
-          { count: resCount },
-          { data: hData },
-          { data: reqData },
-          { count: annCount },
-          annList,
-          oppList,
-          offList
-        ] = await Promise.all([
-          supabase.from("residents").select("*", { count: "exact", head: true }).neq("status", "Archived"),
-          supabase.from("residents").select("household_no").neq("status", "Archived"),
-          supabase.from("document_requests").select("status"),
-          supabase.from("announcements").select("*", { count: "exact", head: true }).eq("status", "Published"),
-          fetchPublishedAnnouncements(3).catch(() => []),
-          fetchLivelihoodPosts({ status: "Open", limit: 3 }).catch(() => []),
-          fetchOrganizationOfficials().catch(() => []),
-        ]);
-
-        const uniqueHouseholds = new Set(hData?.map(r => r.household_no).filter(Boolean)).size;
-        const totalReq = reqData?.length || 0;
-        const approvedReq = reqData?.filter(r => r.status === "Approved" || r.status === "Issued").length || 0;
-        const pendingReq = reqData?.filter(r => r.status === "Pending").length || 0;
-        const completedPercent = totalReq ? Math.round((approvedReq / totalReq) * 100) : 100;
-
-        if (isMounted) {
-          setLandingData({
-            stats: {
-              totalResidents: resCount || 0,
-              totalHouseholds: uniqueHouseholds || 0,
-              documentsProcessed: approvedReq || 0,
-              pendingRequests: pendingReq || 0,
-              announcementsPublished: annCount || 0,
-              completedPercent: completedPercent || 0,
-            },
-            announcements: annList || [],
-            events: oppList || [],
-            officials: offList?.filter(o => o.status === "Active") || [],
-            systemSettings: settings,
-            loading: false,
-          });
-        }
-      } catch (err) {
-        console.error("Failed to load landing data:", err);
-        if (isMounted) {
-          setLandingData(prev => ({ ...prev, loading: false }));
-        }
-      }
-    };
-
-    loadLandingData();
-
-    // Subscribe to real-time changes to update automatically
-    const announcementsChannel = supabase
-      .channel("announcements-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "announcements" }, loadLandingData)
-      .subscribe();
-
-    const residentsChannel = supabase
-      .channel("residents-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "residents" }, loadLandingData)
-      .subscribe();
-
-    const requestsChannel = supabase
-      .channel("requests-sync")
-      .on("postgres_changes", { event: "*", schema: "public", table: "document_requests" }, loadLandingData)
-      .subscribe();
-
-    return () => {
-      isMounted = false;
-      supabase.removeChannel(announcementsChannel);
-      supabase.removeChannel(residentsChannel);
-      supabase.removeChannel(requestsChannel);
-    };
-  }, []);
-
-
 
   // Handle countdown timers for resident forgot password OTP
   useEffect(() => {
@@ -377,297 +294,426 @@ const Login = () => {
     return () => clearInterval(timer);
   }, [otpCooldown, otpRemaining]);
 
+  // Session check & redirect (Strictly isolated between Admin and Resident portals)
   useEffect(() => {
     const justLoggedOut = sessionStorage.getItem("just_logged_out") === "true";
+    if (justLoggedOut) return;
 
-    // 1. If already logged in AND did not just log out, redirect immediately
-    const residentSession = getResidentSession();
-    if (residentSession && !justLoggedOut) {
-      navigate("/resident-dashboard", { replace: true });
-      return;
-    }
+    if (isTargetAdmin) {
+      // Strictly check Admin Session on Admin Portal
+      const adminSession = getAdminSession();
+      if (adminSession && adminSession.profile?.role === "admin") {
+        navigate("/dashboard", { replace: true });
+        return;
+      }
 
-    if (!justLoggedOut) {
       supabase.auth.getSession().then(({ data: { session } }) => {
         if (session) {
           supabase
             .from("user_profiles")
             .select("role")
             .eq("id", session.user.id)
-            .single()
+            .limit(1)
+            .maybeSingle()
             .then(({ data: profile }) => {
-              if (profile) {
-                const path = getDashboardPathForRole(profile.role);
-                if (path) {
-                  navigate(path, { replace: true });
-                }
+              if (profile && profile.role === "admin") {
+                navigate("/dashboard", { replace: true });
               }
             });
         }
       });
-    }
-
-    // 2. Otherwise check for auto-login (Skip completely if user just signed out)
-    if (justLoggedOut) {
       return;
     }
 
-    const timer = setTimeout(() => {
-      const emailInput = document.querySelector('input[name="email"]');
-      const passwordInput = document.querySelector('input[name="password"]');
-      
-      if (emailInput && passwordInput && emailInput.value && passwordInput.value) {
-        setFormData((current) => ({
-          ...current,
-          email: emailInput.value,
-          password: passwordInput.value,
-        }));
-        
-        setLoading(true);
-        clearResidentSession();
-        clearAuthSession();
-        
-        loginResident(emailInput.value, passwordInput.value)
-          .then((res) => {
-            closeModal();
-            navigate("/welcome", {
-              replace: true,
-              state: {
-                redirectTo: "/resident-dashboard",
-                role: "resident",
-                displayName: getLoginDisplayName({ resident: res }),
-              },
-            });
-          })
-          .catch((err) => {
-            console.error("Auto login failed:", err);
-            setError(err.message || "Auto login failed.");
-            setLoading(false);
-          });
-      }
-    }, 1200);
+    // Strictly check Resident Session on Resident Portal
+    const residentSession = getResidentSession();
+    if (residentSession) {
+      navigate("/resident-dashboard", { replace: true });
+    }
+  }, [navigate, isTargetAdmin]);
 
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [navigate]);
+  const checkUsernameExists = async (usernameToCheck) => {
+    const raw = (usernameToCheck || "").trim().toLowerCase();
+    if (!raw) return false;
+
+    try {
+      // 1. Check resident_accounts
+      const { data: resAcc, error: err1 } = await supabase
+        .from("resident_accounts")
+        .select("id, username")
+        .ilike("username", raw)
+        .limit(1)
+        .maybeSingle();
+
+      if (!err1 && resAcc) return true;
+
+      // 2. Check user_profiles (Admin / Staff users)
+      const { data: userProf, error: err2 } = await supabase
+        .from("user_profiles")
+        .select("id, username")
+        .ilike("username", raw)
+        .limit(1)
+        .maybeSingle();
+
+      if (!err2 && userProf) return true;
+
+      // 3. Check residents table if username exists
+      const { data: resUser, error: err3 } = await supabase
+        .from("residents")
+        .select("id")
+        .ilike("username", raw)
+        .limit(1)
+        .maybeSingle();
+
+      if (!err3 && resUser) return true;
+
+      return false;
+    } catch (err) {
+      console.warn("Username availability check notice:", err);
+      return false;
+    }
+  };
 
   const renderStep1Fields = () => (
-    <div className="space-y-2 text-left">
-      <div className="flex items-center gap-2 text-[#0B5D3B] font-bold text-xs border-b border-slate-100 pb-1 mb-1.5">
-        <User size={13} className="text-[#0B5D3B]" />
-        <span className="text-[11px]">Personal Details</span>
+    <div className="space-y-2.5 text-left">
+      <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs border-b border-emerald-500/30 pb-1 mb-1.5">
+        <User size={13} className="text-emerald-400" />
+        <span className="text-[11px] uppercase tracking-wider">Personal Details</span>
       </div>
-      
+
       <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-        {/* Row 1 */}
         <div className="space-y-0.5">
-          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">First Name *</label>
-          <input type="text" name="first_name" value={formData.first_name} onChange={handleInputChange} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium" placeholder="Juan" />
+          <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">First Name *</label>
+          <input
+            type="text"
+            name="first_name"
+            value={formData.first_name}
+            onChange={handleInputChange}
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-1.5 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 focus:ring-2 focus:ring-emerald-500/20 font-semibold shadow-inner"
+            placeholder="Juan"
+          />
         </div>
         <div className="space-y-0.5">
-          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Last Name *</label>
-          <input type="text" name="last_name" value={formData.last_name} onChange={handleInputChange} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium" placeholder="Dela Cruz" />
+          <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Middle Name <span className="normal-case font-normal text-emerald-200/60">(optional)</span></label>
+          <input
+            type="text"
+            name="middle_name"
+            value={formData.middle_name}
+            onChange={handleInputChange}
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-1.5 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 focus:ring-2 focus:ring-emerald-500/20 font-semibold shadow-inner"
+            placeholder="Reyes"
+          />
+        </div>
+        <div className="space-y-0.5">
+          <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Last Name *</label>
+          <input
+            type="text"
+            name="last_name"
+            value={formData.last_name}
+            onChange={handleInputChange}
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-1.5 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 focus:ring-2 focus:ring-emerald-500/20 font-semibold shadow-inner"
+            placeholder="Dela Cruz"
+          />
+        </div>
+        <div className="space-y-0.5">
+          <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Suffix / Ext. <span className="normal-case font-normal text-emerald-200/60">(optional)</span></label>
+          <input
+            type="text"
+            name="suffix"
+            value={formData.suffix}
+            onChange={handleInputChange}
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-1.5 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 focus:ring-2 focus:ring-emerald-500/20 font-semibold shadow-inner"
+            placeholder="Jr. / III"
+          />
         </div>
 
-        {/* Row 2 */}
         <div className="space-y-0.5">
-          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Middle Name</label>
-          <input type="text" name="middle_name" value={formData.middle_name} onChange={handleInputChange} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium" placeholder="Reyes" />
+          <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Birth Date *</label>
+          <input
+            type="date"
+            name="birthday"
+            value={formData.birthday}
+            onChange={handleInputChange}
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-1.5 text-xs text-white outline-none focus:border-emerald-400 focus:bg-black/40 focus:ring-2 focus:ring-emerald-500/20 font-semibold shadow-inner"
+          />
         </div>
         <div className="space-y-0.5">
-          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Relationship *</label>
-          <select name="relationship_to_household_head" value={formData.relationship_to_household_head} onChange={handleInputChange} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-900 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium">
-            <option value="Head">Head</option>
-            <option value="Spouse">Spouse</option>
-            <option value="Child">Child</option>
-            <option value="Sibling">Sibling</option>
-            <option value="Parent">Parent</option>
-            <option value="Other">Other Relative</option>
+          <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Sex *</label>
+          <select
+            name="sex"
+            value={formData.sex}
+            onChange={handleInputChange}
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-1.5 text-xs text-white outline-none focus:border-emerald-400 focus:bg-black/40 focus:ring-2 focus:ring-emerald-500/20 font-semibold shadow-inner cursor-pointer"
+          >
+            <option value="Male" className="bg-[#022B1D] text-white">Male</option>
+            <option value="Female" className="bg-[#022B1D] text-white">Female</option>
           </select>
         </div>
 
-        {/* Row 3 */}
         <div className="space-y-0.5">
-          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Birth Date *</label>
-          <input type="date" name="birthday" value={formData.birthday} onChange={handleInputChange} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-900 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium" />
+          <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Birth Place *</label>
+          <input
+            type="text"
+            name="birthplace"
+            value={formData.birthplace}
+            onChange={handleInputChange}
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-1.5 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 focus:ring-2 focus:ring-emerald-500/20 font-semibold shadow-inner"
+            placeholder="City / Municipality"
+          />
         </div>
         <div className="space-y-0.5">
-          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Sex *</label>
-          <select name="sex" value={formData.sex} onChange={handleInputChange} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-900 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium">
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-          </select>
-        </div>
-
-        {/* Row 4 */}
-        <div className="space-y-0.5">
-          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Birth Place *</label>
-          <input type="text" name="birthplace" value={formData.birthplace} onChange={handleInputChange} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium" placeholder="City" />
-        </div>
-        <div className="space-y-0.5">
-          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Civil Status *</label>
-          <select name="civil_status" value={formData.civil_status} onChange={handleInputChange} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-900 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium">
-            <option value="Single">Single</option>
-            <option value="Married">Married</option>
-            <option value="Widowed">Widowed</option>
-            <option value="Separated">Separated</option>
+          <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Civil Status *</label>
+          <select
+            name="civil_status"
+            value={formData.civil_status}
+            onChange={handleInputChange}
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-1.5 text-xs text-white outline-none focus:border-emerald-400 focus:bg-black/40 focus:ring-2 focus:ring-emerald-500/20 font-semibold shadow-inner cursor-pointer"
+          >
+            <option value="Single" className="bg-[#022B1D] text-white">Single</option>
+            <option value="Married" className="bg-[#022B1D] text-white">Married</option>
+            <option value="Widowed" className="bg-[#022B1D] text-white">Widowed</option>
+            <option value="Separated" className="bg-[#022B1D] text-white">Separated</option>
           </select>
         </div>
       </div>
     </div>
   );
 
-  const renderStep2Fields = () => (
-    <div className="space-y-3 text-left">
-      <div className="flex items-center gap-2 text-[#0B5D3B] font-bold text-xs border-b border-slate-100 pb-1.5 mb-2">
-        <MapPin size={14} className="text-[#0B5D3B]" />
-        <span>Address Information</span>
+  const [isCustomRegOccupation, setIsCustomRegOccupation] = useState(false);
+  const [customRegOccupationInput, setCustomRegOccupationInput] = useState("");
+
+  const renderStep2Fields = () => {
+    const puroks = getCustomPurokDefinitions();
+    return (
+      <div className="space-y-3 text-left">
+        <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs border-b border-emerald-500/30 pb-1.5 mb-2">
+          <MapPin size={14} className="text-emerald-400" />
+          <span className="text-[11px] uppercase tracking-wider">Address & Household Information</span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Household No *</label>
+            <input
+              type="text"
+              name="householdNo"
+              value={formData.householdNo}
+              onChange={handleInputChange}
+              className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-2 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 font-semibold shadow-inner"
+              placeholder="e.g. HH-001 or 024"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">House No <span className="normal-case font-normal text-emerald-200/60">(optional)</span></label>
+            <input
+              type="text"
+              name="house_no"
+              value={formData.house_no}
+              onChange={handleInputChange}
+              className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-2 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 font-semibold shadow-inner"
+              placeholder="e.g. 123"
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Family Relationship *</label>
+            <select
+              name="relationship_to_household_head"
+              value={formData.relationship_to_household_head}
+              onChange={handleInputChange}
+              className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400 focus:bg-black/40 font-semibold shadow-inner cursor-pointer"
+            >
+              {householdRelationshipOptions.map((rel) => (
+                <option key={rel} value={rel} className="bg-[#022B1D] text-white">
+                  {rel}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Purok *</label>
+            <select
+              name="purok"
+              value={formData.purok}
+              onChange={handleInputChange}
+              className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400 focus:bg-black/40 font-semibold shadow-inner cursor-pointer"
+            >
+              <option value="" className="bg-[#022B1D] text-white">Select Purok</option>
+              {puroks.map((purok) => (
+                <option key={purok.value} value={purok.value} className="bg-[#022B1D] text-white">
+                  {purok.label || formatPurok(purok.value)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {formData.purok && (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/40 px-3 py-2">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-400">Auto-generated Address</p>
+            <p className="mt-0.5 text-xs font-semibold text-emerald-100">
+              Purok {formatPurok(formData.purok)}, Upper Mingading, Aleosan, Cotabato
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">
+            Address Notes / Sitio <span className="normal-case font-normal text-emerald-200/60">(optional)</span>
+          </label>
+          <input
+            type="text"
+            name="address"
+            value={formData.address}
+            onChange={handleInputChange}
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-2 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 font-semibold shadow-inner"
+            placeholder="Sitio, street, landmark, or household notes"
+          />
+        </div>
       </div>
-      
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1">
-          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Household No *</label>
-          <input type="text" name="householdNo" value={formData.householdNo} onChange={handleInputChange} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium" placeholder="e.g. 024" />
-        </div>
-        <div className="space-y-1">
-          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Family Relationship *</label>
-          <select name="relationship_to_household_head" value={formData.relationship_to_household_head} onChange={handleInputChange} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium">
-            <option value="Head">Head</option>
-            <option value="Spouse">Spouse</option>
-            <option value="Child">Child</option>
-            <option value="Parent">Parent</option>
-            <option value="Sibling">Sibling</option>
-            <option value="Grandparent">Grandparent</option>
-            <option value="Grandchild">Grandchild</option>
-            <option value="Relative">Relative</option>
-            <option value="Boarder">Boarder</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
+    );
+  };
+
+  const renderStep3Fields = () => (
+    <div className="space-y-3 text-left">
+      <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs border-b border-emerald-500/30 pb-1.5 mb-2">
+        <Briefcase size={14} className="text-emerald-400" />
+        <span className="text-[11px] uppercase tracking-wider">Education & Occupation</span>
       </div>
 
       <div className="space-y-1">
-        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Purok *</label>
-        <select name="purok" value={formData.purok} onChange={handleInputChange} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium">
-          <option value="">Select Purok</option>
-          {purokOptions.map((purok) => (
-            <option key={purok} value={purok}>
-              {formatPurok(purok)}
+        <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Educational Attainment</label>
+        <select
+          name="educational_attainment"
+          value={formData.educational_attainment}
+          onChange={handleInputChange}
+          className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400 focus:bg-black/40 font-semibold shadow-inner cursor-pointer"
+        >
+          <option value="" className="bg-[#022B1D] text-white">Select Educational Attainment</option>
+          {educationalAttainmentOptions.map((opt) => (
+            <option key={opt} value={opt} className="bg-[#022B1D] text-white">
+              {opt}
             </option>
           ))}
         </select>
       </div>
 
-      {formData.purok && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-3 py-2">
-          <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-600">Auto-generated Address</p>
-          <p className="mt-0.5 text-xs font-semibold text-emerald-800">Purok {formatPurok(formData.purok)}, Upper Mingading, Aleosan, Cotabato</p>
+      <div className="space-y-1">
+        <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Occupation / Livelihood</label>
+        <select
+          value={
+            !formData.occupation
+              ? ""
+              : standardOccupationOptions.includes(formData.occupation) && formData.occupation !== "Others (Please Specify)"
+              ? formData.occupation
+              : "Others (Please Specify)"
+          }
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val === "Others (Please Specify)") {
+              setIsCustomRegOccupation(true);
+              setFormData((prev) => ({ ...prev, occupation: customRegOccupationInput || "" }));
+            } else {
+              setIsCustomRegOccupation(false);
+              setFormData((prev) => ({ ...prev, occupation: val }));
+            }
+          }}
+          className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400 focus:bg-black/40 font-semibold shadow-inner cursor-pointer"
+        >
+          <option value="" className="bg-[#022B1D] text-white">Select Occupation</option>
+          {standardOccupationOptions.map((occ) => (
+            <option key={occ} value={occ} className="bg-[#022B1D] text-white">
+              {occ}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {isCustomRegOccupation && (
+        <div className="space-y-1 pt-1">
+          <label className="text-[10px] font-bold text-emerald-300 uppercase tracking-wider">Specify Occupation *</label>
+          <input
+            type="text"
+            value={customRegOccupationInput}
+            onChange={(e) => {
+              setCustomRegOccupationInput(e.target.value);
+              setFormData((prev) => ({ ...prev, occupation: e.target.value }));
+            }}
+            placeholder="Type your specific job title or livelihood..."
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-2 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 font-semibold shadow-inner"
+          />
         </div>
       )}
-
-      <div className="space-y-1">
-        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Address Notes <span className="normal-case font-normal text-slate-400">(optional)</span></label>
-        <input type="text" name="address" value={formData.address} onChange={handleInputChange} className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium" placeholder="Sitio, street, landmark, or household notes" />
-      </div>
-    </div>
-  );
-
-  const renderStep3Fields = () => (
-    <div className="space-y-3 text-left">
-      <div className="flex items-center gap-2 text-[#0B5D3B] font-bold text-xs border-b border-slate-100 pb-1.5 mb-2">
-        <Lock size={14} className="text-[#0B5D3B]" />
-        <span>Account Credentials & Contact</span>
-      </div>
-      
-      <div className="space-y-1">
-        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Gmail Address *</label>
-        <div className="relative">
-          <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-          <input type="email" name="gmail" value={formData.gmail} onChange={handleInputChange} className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium" placeholder="yourname@gmail.com" />
-        </div>
-        <p className="text-[10px] text-slate-400 mt-1 font-semibold">Required for password recovery and account verification.</p>
-      </div>
-
-      <div className="space-y-1">
-        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Phone Number *</label>
-        <div className="relative">
-          <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-          <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium" placeholder="09171234567" />
-        </div>
-        <p className="text-[10px] text-slate-400 mt-1 font-semibold">Used for SMS notifications about your account status.</p>
-      </div>
-
-      <div className="space-y-1">
-        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Username *</label>
-        <div className="relative">
-          <UserRound className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-          <input type="text" name="username" value={formData.username} onChange={handleInputChange} className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium" placeholder="Choose your username" autoComplete="username" />
-        </div>
-        <p className="text-[10px] text-slate-400 mt-1 font-semibold">You will use this to log in after approval. Must be unique.</p>
-      </div>
-
-      <div className="space-y-1">
-        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Password *</label>
-        <div className="relative">
-          <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-          <input type={showPassword ? "text" : "password"} name="portal_password" value={formData.portal_password} onChange={handleInputChange} className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-10 py-2 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium" placeholder="Create your password" autoComplete="new-password" />
-          <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center text-slate-400 hover:text-slate-700 transition">
-            {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-          </button>
-        </div>
-        <p className="text-[10px] text-slate-400 mt-1 font-semibold">Must be at least 6 characters long.</p>
-      </div>
-
-      <div className="space-y-1">
-        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Confirm Password *</label>
-        <div className="relative">
-          <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-          <input type={showPassword ? "text" : "password"} name="confirm_password" value={formData.confirm_password} onChange={handleInputChange} className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-[#0B5D3B] focus:bg-white font-medium" placeholder="Re-enter your password" autoComplete="new-password" />
-        </div>
-      </div>
     </div>
   );
 
   const renderStep4Fields = () => (
     <div className="space-y-3 text-left">
-      <div className="flex items-center gap-2 text-[#0B5D3B] font-bold text-xs border-b border-slate-100 pb-1.5 mb-2">
-        <Heart size={14} className="text-[#0B5D3B]" />
-        <span>Community Sector Details</span>
+      <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs border-b border-emerald-500/30 pb-1.5 mb-2">
+        <Heart size={14} className="text-emerald-400" />
+        <span className="text-[11px] uppercase tracking-wider">Community Sector Details</span>
       </div>
-      
-      <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-3 space-y-2">
+
+      <div className="rounded-2xl border border-emerald-500/30 bg-black/25 p-3 space-y-2">
         <label className="flex items-start gap-3 cursor-pointer">
-          <input type="checkbox" name="is_pwd" checked={formData.is_pwd} onChange={handleInputChange} className="h-4 w-4 rounded border-slate-350 text-[#0B5D3B] focus:ring-emerald-500 mt-0.5" />
+          <input
+            type="checkbox"
+            name="is_pwd"
+            checked={formData.is_pwd}
+            onChange={handleInputChange}
+            className="h-4 w-4 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500 mt-0.5 cursor-pointer"
+          />
           <div className="min-w-0">
-            <p className="text-xs font-bold text-slate-800">Person with Disability (PWD / PWED)</p>
-            <p className="text-[10px] text-slate-400 font-medium">Check this if you are a registered PWD.</p>
+            <p className="text-xs font-bold text-white">Person with Disability (PWD / PWED)</p>
+            <p className="text-[10px] text-emerald-200/70 font-medium">Check this if you are a registered PWD.</p>
           </div>
         </label>
 
         {formData.is_pwd && (
           <div className="pl-7 pt-1">
-            <input type="text" name="pwd_type" value={formData.pwd_type} onChange={handleInputChange} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900 outline-none focus:border-[#0B5D3B] font-medium" placeholder="Specify disability type..." />
+            <input
+              type="text"
+              name="pwd_type"
+              value={formData.pwd_type}
+              onChange={handleInputChange}
+              className="w-full rounded-xl border border-emerald-400/30 bg-black/30 px-3 py-1.5 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 font-medium"
+              placeholder="Specify disability type..."
+            />
           </div>
         )}
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-3">
+      <div className="rounded-2xl border border-emerald-500/30 bg-black/25 p-3">
         <label className="flex items-start gap-3 cursor-pointer">
-          <input type="checkbox" name="is_solo_parent" checked={formData.is_solo_parent} onChange={handleInputChange} className="h-4 w-4 rounded border-slate-350 text-[#0B5D3B] focus:ring-emerald-500 mt-0.5" />
+          <input
+            type="checkbox"
+            name="is_solo_parent"
+            checked={formData.is_solo_parent}
+            onChange={handleInputChange}
+            className="h-4 w-4 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500 mt-0.5 cursor-pointer"
+          />
           <div className="min-w-0">
-            <p className="text-xs font-bold text-slate-800">Solo Parent</p>
-            <p className="text-[10px] text-slate-400 font-medium">Registered single parent supporting dependents.</p>
+            <p className="text-xs font-bold text-white">Solo Parent</p>
+            <p className="text-[10px] text-emerald-200/70 font-medium">Registered single parent supporting dependents.</p>
           </div>
         </label>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 bg-slate-50/50 p-3">
+      <div className="rounded-2xl border border-emerald-500/30 bg-black/25 p-3">
         <label className="flex items-start gap-3 cursor-pointer">
-          <input type="checkbox" name="is_4ps_member" checked={formData.is_4ps_member} onChange={handleInputChange} className="h-4 w-4 rounded border-slate-350 text-[#0B5D3B] focus:ring-emerald-500 mt-0.5" />
+          <input
+            type="checkbox"
+            name="is_4ps_member"
+            checked={formData.is_4ps_member}
+            onChange={handleInputChange}
+            className="h-4 w-4 rounded border-emerald-400 text-emerald-600 focus:ring-emerald-500 mt-0.5 cursor-pointer"
+          />
           <div className="min-w-0">
-            <p className="text-xs font-bold text-slate-800">DSWD 4Ps Beneficiary</p>
-            <p className="text-[10px] text-slate-400 font-medium">Household listed as DSWD 4Ps beneficiary.</p>
+            <p className="text-xs font-bold text-white">DSWD 4Ps Beneficiary</p>
+            <p className="text-[10px] text-emerald-200/70 font-medium">Household listed as DSWD 4Ps beneficiary.</p>
           </div>
         </label>
       </div>
@@ -676,59 +722,321 @@ const Login = () => {
 
   const renderStep5Fields = () => (
     <div className="space-y-3 text-left">
-      <div className="flex items-center gap-2 text-[#0B5D3B] font-bold text-xs border-b border-slate-100 pb-1.5 mb-2">
-        <FileText size={14} className="text-[#0B5D3B]" />
-        <span>Verification Documents</span>
+      <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs border-b border-emerald-500/30 pb-1.5 mb-2">
+        <Lock size={14} className="text-emerald-400" />
+        <span className="text-[11px] uppercase tracking-wider">Account Credentials & Contact</span>
       </div>
-      
+
+      <div className="space-y-1">
+        <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Email Address *</label>
+        <div className="relative">
+          <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-300/60" size={14} />
+          <input
+            type="email"
+            name="gmail"
+            value={formData.gmail}
+            onChange={handleInputChange}
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 pl-10 pr-3 py-2 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 font-semibold shadow-inner"
+            placeholder="resident@email.com"
+          />
+        </div>
+        <p className="text-[10px] text-emerald-200/70 mt-1 font-medium">Required for password recovery and account verification.</p>
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">
+          Phone Number * <span className="text-emerald-200/60 font-normal">(Strictly 11 digits)</span>
+        </label>
+        <div className="relative">
+          <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-300/60" size={14} />
+          <input
+            type="tel"
+            name="phone"
+            value={formData.phone}
+            onChange={handleInputChange}
+            maxLength={11}
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 pl-10 pr-3 py-2 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 font-mono font-semibold shadow-inner"
+            placeholder="09171234567"
+          />
+        </div>
+        <p className="text-[10px] text-emerald-200/70 mt-1 font-medium">Used for SMS notifications. Must start with 09 (11 digits).</p>
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Portal Username *</label>
+        <div className="relative">
+          <UserRound className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-300/60" size={14} />
+          <input
+            type="text"
+            name="username"
+            value={formData.username}
+            onChange={handleInputChange}
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 pl-10 pr-3 py-2 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 font-semibold shadow-inner"
+            placeholder="Choose unique username"
+            autoComplete="username"
+          />
+        </div>
+        <p className="text-[10px] text-emerald-200/70 mt-1 font-medium">You will use this to log in after approval. Must be unique.</p>
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Password *</label>
+        <div className="relative">
+          <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-300/60" size={14} />
+          <input
+            type={showPassword ? "text" : "password"}
+            name="portal_password"
+            value={formData.portal_password}
+            onChange={handleInputChange}
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 pl-10 pr-10 py-2 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 font-semibold shadow-inner"
+            placeholder="Create your password"
+            autoComplete="new-password"
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center text-emerald-300/70 hover:text-white transition cursor-pointer"
+          >
+            {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        </div>
+        <p className="text-[10px] text-emerald-200/70 mt-1 font-medium">Must be at least 6 characters long.</p>
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Confirm Password *</label>
+        <div className="relative">
+          <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-300/60" size={14} />
+          <input
+            type={showPassword ? "text" : "password"}
+            name="confirm_password"
+            value={formData.confirm_password}
+            onChange={handleInputChange}
+            className="w-full rounded-xl border border-emerald-400/30 bg-black/25 pl-10 pr-3 py-2 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 font-semibold shadow-inner"
+            placeholder="Re-enter your password"
+            autoComplete="new-password"
+          />
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderStep6Fields = () => (
+    <div className="space-y-3 text-left">
+      <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs border-b border-emerald-500/30 pb-1.5 mb-2">
+        <FileText size={14} className="text-emerald-400" />
+        <span className="text-[11px] uppercase tracking-wider">Attach Valid ID Proof & Review</span>
+      </div>
+
       <div className="space-y-2 text-left">
-        <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Attach Official ID or Residency Proof *</label>
-        
-        <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 p-5 text-center hover:bg-slate-50 hover:border-[#0B5D3B] transition relative overflow-hidden group">
-          <input type="file" accept="image/*,application/pdf" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer z-10" />
-          
+        <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider block">
+          Attach Official ID or Residency Proof *
+        </label>
+
+        <div className="flex flex-col items-center justify-center border-2 border-dashed border-emerald-400/40 rounded-2xl bg-black/25 p-4 text-center hover:bg-black/40 hover:border-emerald-300 transition relative overflow-hidden group">
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={handleFileChange}
+            className="absolute inset-0 opacity-0 cursor-pointer z-10"
+          />
+
           {registrationProof ? (
             <div className="flex flex-col items-center">
-              <FileCheck2 size={24} className="text-[#0B5D3B] mb-1" />
-              <p className="text-xs font-extrabold text-slate-800 truncate max-w-[240px]">{registrationProof.name}</p>
-              <p className="text-[10px] text-slate-400 font-bold mt-0.5">{(registrationProof.size / 1024 / 1024).toFixed(2)} MB • Click to replace</p>
+              <FileCheck2 size={24} className="text-emerald-400 mb-1" />
+              <p className="text-xs font-extrabold text-white truncate max-w-[240px]">
+                {registrationProof.name}
+              </p>
+              <p className="text-[10px] text-emerald-200/80 font-bold mt-0.5">
+                {(registrationProof.size / 1024 / 1024).toFixed(2)} MB • Click to replace
+              </p>
             </div>
           ) : (
             <div className="flex flex-col items-center">
-              <Upload size={22} className="text-slate-400 mb-1" />
-              <p className="text-xs font-extrabold text-slate-800">Choose residency file proof</p>
-              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">JPG, PNG, WebP or PDF (Max 5MB)</p>
+              <Upload size={22} className="text-emerald-300 mb-1" />
+              <p className="text-xs font-extrabold text-white">Upload Valid ID or Residency Proof</p>
+              <p className="text-[10px] text-emerald-200/60 font-semibold mt-0.5">
+                JPG, PNG, WebP or PDF (Max 5MB)
+              </p>
             </div>
           )}
         </div>
       </div>
+
+      {/* Comprehensive Registration Summary Card */}
+      <div className="space-y-2 rounded-2xl border border-emerald-400/40 bg-black/45 p-3.5 text-xs text-left shadow-lg">
+        <div className="flex items-center justify-between border-b border-emerald-500/30 pb-1.5">
+          <p className="text-[11px] font-extrabold uppercase text-emerald-400 tracking-wider flex items-center gap-1.5">
+            <CheckCircle2 size={13} className="text-emerald-400" />
+            <span>Buong Detalye ng Rehistrasyon (Summary Review)</span>
+          </p>
+          <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-400/30">
+            I-review Bago I-submit
+          </span>
+        </div>
+
+        {/* Section 1: Personal Details */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] pt-1">
+          <div>
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Pangalan (Full Name):</span>
+            <span className="font-bold text-white">{residentRegistrationFullName || "N/A"}</span>
+          </div>
+          <div>
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Kapanganakan & Edad:</span>
+            <span className="font-bold text-white">{formData.birthday ? `${formData.birthday} (${residentRegistrationAge} y/o)` : "N/A"}</span>
+          </div>
+          <div>
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Kasarian (Sex):</span>
+            <span className="font-bold text-white">{formData.sex || "N/A"}</span>
+          </div>
+          <div>
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Civil Status:</span>
+            <span className="font-bold text-white">{formData.civil_status || "N/A"}</span>
+          </div>
+          <div className="col-span-2">
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Lugar ng Kapanganakan:</span>
+            <span className="font-bold text-white">{formData.birthplace || "N/A"}</span>
+          </div>
+        </div>
+
+        <div className="border-t border-emerald-500/20 my-1" />
+
+        {/* Section 2: Address & Household */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+          <div>
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Purok:</span>
+            <span className="font-bold text-white">Purok {formatPurok(formData.purok)}</span>
+          </div>
+          <div>
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Household No:</span>
+            <span className="font-bold text-white">{formData.householdNo || "N/A"}</span>
+          </div>
+          <div>
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">House No:</span>
+            <span className="font-bold text-white">{formData.house_no || "N/A"}</span>
+          </div>
+          <div>
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Family Relationship:</span>
+            <span className="font-bold text-white">{formData.relationship_to_household_head || "Head"}</span>
+          </div>
+          <div className="col-span-2">
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Address Notes / Sitio:</span>
+            <span className="font-bold text-white">{formData.address || "None"}</span>
+          </div>
+        </div>
+
+        <div className="border-t border-emerald-500/20 my-1" />
+
+        {/* Section 3: Education, Occupation & Sector */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+          <div>
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Edukasyon:</span>
+            <span className="font-bold text-white">{formData.educational_attainment || "N/A"}</span>
+          </div>
+          <div>
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Hanapbuhay (Occupation):</span>
+            <span className="font-bold text-white">{formData.occupation || "None"}</span>
+          </div>
+          <div>
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Sector:</span>
+            <span className="font-bold text-white">
+              {[
+                formData.is_pwd ? `PWD (${formData.pwd_type || 'Yes'})` : null,
+                formData.is_solo_parent ? "Solo Parent" : null,
+                formData.is_4ps_member ? "4Ps Member" : null,
+              ].filter(Boolean).join(", ") || "General"}
+            </span>
+          </div>
+        </div>
+
+        <div className="border-t border-emerald-500/20 my-1" />
+
+        {/* Section 4: Credentials */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+          <div>
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Username:</span>
+            <span className="font-bold text-amber-300 font-mono">{formData.username}</span>
+          </div>
+          <div>
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Email Address:</span>
+            <span className="font-bold text-white truncate">{formData.gmail}</span>
+          </div>
+          <div>
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Contact Phone:</span>
+            <span className="font-bold text-white font-mono">{formData.phone}</span>
+          </div>
+        </div>
+      </div>
+
+      <label className="flex items-start gap-3 cursor-pointer pt-1">
+        <input
+          type="checkbox"
+          checked={agreeTerms}
+          onChange={(e) => setAgreeTerms(e.target.checked)}
+          className="h-4 w-4 rounded border-emerald-500/40 text-[#0B5D3B] focus:ring-emerald-500 mt-0.5 cursor-pointer"
+        />
+        <span className="text-xs text-emerald-100/90 font-semibold leading-normal">
+          I agree to the{" "}
+          <span
+            onClick={(e) => {
+              e.preventDefault();
+              setShowTermsModal(true);
+            }}
+            className="font-semibold text-amber-300 hover:underline cursor-pointer"
+          >
+            Privacy Policy and Terms of Service
+          </span>{" "}
+          of Barangay Upper Mingading.
+        </span>
+      </label>
     </div>
   );
 
   const validateStep = (step) => {
     try {
       if (step === 1) {
-        if (!formData.first_name.trim() || !formData.last_name.trim()) throw new Error("First name and last name are required.");
+        if (!formData.first_name.trim() || !formData.last_name.trim())
+          throw new Error("First name and last name are required.");
         if (!formData.birthday) throw new Error("Please select a valid birth date.");
         if (!formData.sex) throw new Error("Please select your sex.");
-        if (!formData.birthplace.trim()) throw new Error("Please enter your birth place.");
+        if (!formData.birthplace.trim())
+          throw new Error("Please enter your birth place.");
       } else if (step === 2) {
-        if (!formData.householdNo.trim()) throw new Error("Household number is required.");
+        if (!formData.householdNo.trim())
+          throw new Error("Household number is required.");
         if (!formData.purok) throw new Error("Please select your Purok.");
       } else if (step === 3) {
-        if (!formData.gmail.trim()) throw new Error("Gmail address is required for account recovery.");
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.gmail.trim())) throw new Error("Please enter a valid Gmail address.");
-        if (!formData.phone.trim()) throw new Error("Phone number is required for SMS notifications.");
-        if (!isValidSmsPhone(formData.phone)) throw new Error("Invalid phone format (e.g. 09171234567).");
-        if (!formData.username.trim()) throw new Error("Username is required.");
-        if (formData.username.trim().length < 3) throw new Error("Username must be at least 3 characters.");
-        if (!/^[a-zA-Z0-9_.-]+$/.test(formData.username.trim())) throw new Error("Username can only contain letters, numbers, dots, dashes, and underscores.");
-        if (!formData.portal_password || formData.portal_password.length < 6) throw new Error("Password must be at least 6 characters.");
-        if (formData.portal_password !== formData.confirm_password) throw new Error("Passwords do not match.");
+        if (isCustomRegOccupation && !customRegOccupationInput.trim()) {
+          throw new Error("Please specify your occupation or select from the list.");
+        }
       } else if (step === 4) {
-        if (formData.is_pwd && !formData.pwd_type.trim()) throw new Error("Please detail your PWD type.");
+        if (formData.is_pwd && !formData.pwd_type.trim())
+          throw new Error("Please detail your PWD type.");
       } else if (step === 5) {
-        if (!registrationProof) throw new Error("Please attach proof of identity/residency.");
+        if (!formData.gmail.trim())
+          throw new Error("Email address is required for account recovery.");
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.gmail.trim()))
+          throw new Error("Please enter a valid email address.");
+        const cleanPhone = formData.phone.replace(/\D/g, "");
+        if (!cleanPhone)
+          throw new Error("Phone number is required for SMS notifications.");
+        if (cleanPhone.length !== 11 || !cleanPhone.startsWith("09"))
+          throw new Error("Phone number must be exactly 11 digits starting with 09 (e.g. 09171234567).");
+        if (!formData.username.trim())
+          throw new Error("Username is required.");
+        if (formData.username.trim().length < 3)
+          throw new Error("Username must be at least 3 characters.");
+        if (!/^[a-zA-Z0-9_.-]+$/.test(formData.username.trim()))
+          throw new Error("Username can only contain letters, numbers, dots, dashes, and underscores.");
+        if (!formData.portal_password || formData.portal_password.length < 6)
+          throw new Error("Password must be at least 6 characters.");
+        if (formData.portal_password !== formData.confirm_password)
+          throw new Error("Passwords do not match.");
+      } else if (step === 6) {
+        if (!registrationProof)
+          throw new Error("Please attach proof of identity/residency.");
+        if (!agreeTerms)
+          throw new Error("You must agree to the Terms of Service.");
       }
       return true;
     } catch (err) {
@@ -737,11 +1045,29 @@ const Login = () => {
     }
   };
 
-  const nextStep = () => {
-    if (validateStep(registrationStep)) {
-      setRegistrationStep((current) => current + 1);
-      setError(null);
+  const nextStep = async () => {
+    if (!validateStep(registrationStep)) return;
+
+    // Real-time strict database duplicate username check before proceeding from step 5
+    if (registrationStep === 5) {
+      const normalizedUsername = formData.username.trim().toLowerCase();
+      setLoading(true);
+      try {
+        const isTaken = await checkUsernameExists(normalizedUsername);
+        if (isTaken) {
+          setError(`⚠️ Ang username na "${formData.username}" ay nagamit na o existing na sa database. Mangyaring pumili ng ibang unique username.`);
+          setLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.warn("Username uniqueness check notice:", err);
+      } finally {
+        setLoading(false);
+      }
     }
+
+    setRegistrationStep((current) => current + 1);
+    setError(null);
   };
 
   const prevStep = () => {
@@ -758,16 +1084,18 @@ const Login = () => {
 
   const signInAdmin = async () => {
     const result = await loginUser(formData.email, formData.password);
-    const dashboardPath = getDashboardPathForRole(result.profile?.role);
+    const role = result.profile?.role;
 
-    if (!dashboardPath) throw new Error("Unauthorized access.");
+    if (role !== "admin") {
+      await clearAuthSession();
+      throw new Error("Access Denied: This portal is strictly for Barangay Administrators and Staff.");
+    }
 
-    closeModal();
     navigate("/welcome", {
       replace: true,
       state: {
-        redirectTo: dashboardPath,
-        role: result.profile?.role || "admin",
+        redirectTo: "/dashboard",
+        role: "admin",
         displayName: getLoginDisplayName(result),
       },
     });
@@ -775,7 +1103,6 @@ const Login = () => {
 
   const signInResident = async () => {
     const resident = await loginResident(formData.email, formData.password);
-    closeModal();
     navigate("/welcome", {
       replace: true,
       state: {
@@ -789,9 +1116,16 @@ const Login = () => {
   const registerResidentOnline = async () => {
     if (!agreeTerms) throw new Error("You must agree to the Terms of Service.");
 
+    const normalizedUsername = (formData.username || "").trim().toLowerCase();
+    const isTaken = await checkUsernameExists(normalizedUsername);
+    if (isTaken) {
+      throw new Error(`⚠️ Ang username na "${formData.username}" ay nagamit na sa database. Paki-palitan ang username bago mag-rehistro.`);
+    }
+
     const result = await requestResidentActivation({
       ...formData,
       fullName: residentRegistrationFullName,
+      suffix: formData.suffix,
       birthday: formData.birthday,
       householdNo: formData.householdNo,
       house_no: formData.house_no,
@@ -822,7 +1156,6 @@ const Login = () => {
       return;
     }
 
-    // 1. Validate Lockout / Rate Limiting
     if (modalStep === "admin_login" || modalStep === "resident_login") {
       const loginCheck = checkLoginAllowed(formData.email);
       if (!loginCheck.allowed) {
@@ -831,7 +1164,6 @@ const Login = () => {
       }
     }
 
-    // 2. Validate Google reCAPTCHA
     if ((modalStep === "admin_login" || modalStep === "resident_login") && isRecaptchaConfigured()) {
       if (!showRecaptcha) {
         setShowRecaptcha(true);
@@ -850,7 +1182,7 @@ const Login = () => {
       clearResidentSession();
       await clearAuthSession();
 
-      if (modalStep === "admin_login" || accessMode === "Admin") {
+      if (isTargetAdmin || modalStep === "admin_login" || accessMode === "Admin") {
         await signInAdmin();
         clearFailedAttempts(formData.email);
         logSecurityEvent("login_success", { identifier: formData.email, role: "admin" });
@@ -870,9 +1202,12 @@ const Login = () => {
     } catch (submitError) {
       if (modalStep === "admin_login" || modalStep === "resident_login") {
         recordFailedAttempt(formData.email);
-        logSecurityEvent("login_failed", { identifier: formData.email, role: modalStep === "admin_login" ? "admin" : "resident", error: submitError.message });
-        
-        // Reset Google reCAPTCHA state and widget
+        logSecurityEvent("login_failed", {
+          identifier: formData.email,
+          role: isTargetAdmin ? "admin" : "resident",
+          error: submitError.message,
+        });
+
         if (modalStep === "admin_login") {
           adminCaptchaRef.current?.reset();
         } else {
@@ -886,7 +1221,6 @@ const Login = () => {
     }
   };
 
-  // ─── Forgot Password: Send TextBee SMS OTP ───
   const handleResidentForgotSendOTP = async (e) => {
     if (e) e.preventDefault();
     const cleanPhone = normalizeSmsPhone(forgotPhone);
@@ -907,7 +1241,6 @@ const Login = () => {
         accessMode === "Admin";
 
       if (!isAdminPhone) {
-        // Validate phone number exists in active residents list
         const { data: resident, error: fetchErr } = await supabase
           .from("residents")
           .select("id, full_name, phone, status")
@@ -926,17 +1259,19 @@ const Login = () => {
         setForgotResidentId(resident.id);
       }
 
-      // Generate OTP and send via SMS using TextBee service
       await sendOTP(cleanPhone);
 
-      setOtpCooldown(60); // 60 seconds cooldown for resending
-      setOtpRemaining(5 * 60); // 5 minutes validity
+      setOtpCooldown(60);
+      setOtpRemaining(5 * 60);
       setModalStep("resident_otp_verify");
       setNotice({
         type: "success",
-        text: `A secure 6-digit verification OTP code has been sent via TextBee SMS to ${cleanPhone}. Please wait a few seconds for delivery.`,
+        text: `A secure 6-digit verification OTP code has been sent via TextBee SMS to ${cleanPhone}.`,
       });
-      logSecurityEvent("otp_sent", { phone: cleanPhone, role: isAdminPhone ? "admin" : "resident" });
+      logSecurityEvent("otp_sent", {
+        phone: cleanPhone,
+        role: isAdminPhone ? "admin" : "resident",
+      });
     } catch (err) {
       setError(err.message || "Failed to send verification SMS. Please try again later.");
     } finally {
@@ -944,7 +1279,6 @@ const Login = () => {
     }
   };
 
-  // ─── Forgot Password: Verify Code ───
   const handleResidentForgotVerifyOTP = async (e) => {
     if (e) e.preventDefault();
     if (forgotOTP.length !== 6) {
@@ -970,7 +1304,6 @@ const Login = () => {
     }
   };
 
-  // ─── Forgot Password: Apply Password Update ───
   const handleResidentForgotResetPassword = async (e) => {
     if (e) e.preventDefault();
     if (forgotNewPassword.length < 6) {
@@ -994,26 +1327,26 @@ const Login = () => {
         accessMode === "Admin";
 
       if (isAdminPhone) {
-        // Reset Admin password using auth service
         try {
           await resetPassword(settings.officeEmail || "calambarusseljay5@gmail.com");
         } catch (adminErr) {
           console.info("Admin reset notice:", adminErr);
         }
       } else {
-        // Update Resident password
         await resetResidentPasswordByPhone(cleanPhone, forgotNewPassword);
       }
 
-      logSecurityEvent("password_reset_completed", { phone: cleanPhone, role: isAdminPhone ? "admin" : "resident" });
+      logSecurityEvent("password_reset_completed", {
+        phone: cleanPhone,
+        role: isAdminPhone ? "admin" : "resident",
+      });
 
-      // Require reCAPTCHA before logging in for security
       setShowRecaptcha(true);
       setCaptchaToken(null);
 
       setNotice({
         type: "success",
-        text: "Password updated successfully and ready to use! Please complete the reCAPTCHA security check before logging in.",
+        text: "Password updated successfully! Please login with your new credentials.",
       });
 
       setModalStep(isAdminPhone ? "admin_login" : "resident_login");
@@ -1028,594 +1361,903 @@ const Login = () => {
     }
   };
 
-  if (landingData.loading) {
+  // ─── INITIAL LOADING SCREEN (Step 1: First visit loading state) ───
+  if (initialLoading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#F0FDF4]">
-        <Loader2 className="animate-spin text-[#16A34A] mb-3" size={32} />
-        <p className="text-sm font-semibold text-slate-600">Loading Barangay Portal, please wait...</p>
+      <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#01160E] text-white select-none">
+        <div className="relative flex flex-col items-center">
+          <div className="relative h-20 w-20 sm:h-24 sm:w-24 rounded-2xl border-2 border-emerald-400/50 bg-gradient-to-b from-emerald-900/80 to-emerald-950 p-2 shadow-2xl shadow-emerald-950/80 ring-4 ring-emerald-500/20 animate-pulse">
+            <img
+              src="/logo.png"
+              alt="Barangay Upper Mingading Seal"
+              className="h-full w-full object-contain"
+            />
+          </div>
+
+          <div className="mt-5 flex items-center gap-2">
+            <Loader2 size={16} className="animate-spin text-emerald-400" />
+            <span className="text-xs sm:text-sm font-extrabold tracking-wide text-emerald-200">
+              Loading Barangay Upper Mingading Portal...
+            </span>
+          </div>
+        </div>
       </div>
     );
   }
 
-  const inputHeightClass = "h-[40px] md:h-[44px]";
-  const inputRadiusClass = "rounded-[12px]";
-  const inputBgClass = "bg-[#F8FAFC] border border-[#E4E7EC] focus:bg-white focus:border-[#0B5D3B] focus:ring-4 focus:ring-emerald-50/50";
+  // ═════════════════════════════════════════════════════════════════
+  // VIEW 1: FULLSCREEN WHITE LANDING PAGE (SEPARATE HEADER, CAROUSEL & BUTTON)
+  // ═════════════════════════════════════════════════════════════════
+  if (currentView === "landing") {
+    return (
+      <div className="min-h-screen w-full bg-white flex flex-col justify-between select-none font-sans text-slate-800 antialiased overflow-x-hidden">
+        
+        {/* TOP SOCIAL BAR */}
+        <div className="w-full bg-[#0B5D3B] text-white py-1 px-3 sm:px-8 flex items-center justify-center sm:justify-end text-xs">
+          <div className="flex items-center gap-4 text-white/90">
+            <span className="text-[10.5px] sm:text-[11px] font-semibold tracking-wide">
+              Upper Mingading Official Portal
+            </span>
+          </div>
+        </div>
 
-  return (
-    <div 
-      className="h-screen w-full font-sans antialiased text-slate-900 selection:bg-emerald-500 selection:text-white flex items-center justify-center p-4 sm:p-6 relative overflow-hidden bg-cover bg-center"
-      style={{ 
-        backgroundImage: "url('/new%20barangay.pmg.png')", 
-        backgroundSize: 'cover', 
-        backgroundPosition: 'center', 
-        backgroundRepeat: 'no-repeat' 
-      }}
-    >
-      {/* Background Tint Overlay with soft glass blur */}
-      <div className="absolute inset-0 bg-slate-950/45 backdrop-blur-[2px] pointer-events-none" />
-
-      {/* Main Content Area: Centered Login System Container */}
-      <div className="relative z-10 w-full max-w-[460px] flex flex-col items-center justify-center py-4 lg:py-8">
-          
-          {/* DYNAMIC CARD CONTAINER */}
-          <div className="w-full max-w-[460px] bg-white rounded-[28px] p-6 sm:p-8 lg:p-10 shadow-[0_15px_50px_rgba(0,0,0,0.08)] border border-[#ECECEC] flex flex-col relative transition-all duration-300 hover:shadow-[0_20px_60px_rgba(0,0,0,0.12)]">
-            
-            {/* Logo + Welcome heading inside the card */}
-            {modalStep !== "resident_register" && (
-              <div className="flex flex-col items-center text-center mb-5">
-                <img src="/logo.png" alt="Barangay Seal" className="h-[96px] w-[96px] object-contain mb-2.5" />
-                <h2 className="text-[30px] sm:text-[34px] font-extrabold text-[#0B5D3B] tracking-tight leading-none">KaagapAI</h2>
+        {/* 1. SEPARATE FULL-WIDTH HEADER */}
+        <header className="w-full bg-white border-b-4 border-[#0B5D3B] shadow-xs relative z-30">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between">
+            {/* Logo and Titles */}
+            <div className="flex items-center gap-3">
+              <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-full border border-slate-200 p-0.5 flex items-center justify-center shrink-0 bg-emerald-50/40">
+                <img
+                  src="/logo.png"
+                  alt="Barangay Logo"
+                  className="h-full w-full object-contain"
+                />
               </div>
-            )}
-
-            {/* DYNAMIC STEPS RENDERING */}
-            {modalStep === "resident_login" && (
-              <div className="space-y-5">
-                {error && (
-                  <div className="flex items-start gap-2.5 rounded-2xl bg-rose-50 border border-rose-100 p-4 text-xs font-semibold text-rose-700">
-                    <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-600" />
-                    <span>{error}</span>
-                  </div>
-                )}
-                {notice && (
-                  <div className="flex items-start gap-2.5 rounded-2xl bg-amber-50 border border-amber-100 p-4 text-xs font-semibold text-amber-800">
-                    <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-amber-600" />
-                    <span>{notice.text}</span>
-                  </div>
-                )}
-                <form onSubmit={handleSubmit} className="space-y-3.5">
-                  <div className="relative">
-                    <User className="absolute left-[16px] top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input
-                      type="text"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      placeholder="Enter your username or email"
-                      className={`w-full ${inputHeightClass} ${inputRadiusClass} ${inputBgClass} pl-[44px] pr-4 outline-none text-xs text-slate-900 placeholder-slate-400 transition-all duration-200 font-semibold`}
-                      required
-                    />
-                  </div>
-                  <div className="relative">
-                    <Lock className="absolute left-[16px] top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      name="password"
-                      value={formData.password}
-                      onChange={handleInputChange}
-                      placeholder="Enter your password"
-                      className={`w-full ${inputHeightClass} ${inputRadiusClass} ${inputBgClass} pl-[44px] pr-[44px] outline-none text-xs text-slate-900 placeholder-slate-400 transition-all duration-200 font-semibold`}
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-[16px] top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition"
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  {isRecaptchaConfigured() && showRecaptcha && (
-                    <div className="flex justify-center py-1 transition-all duration-300">
-                      <ReCAPTCHA
-                        ref={residentCaptchaRef}
-                        sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
-                        onChange={(token) => setCaptchaToken(token)}
-                        onErrored={() => setCaptchaToken("dev-bypass-token")}
-                      />
-                    </div>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className={`w-full ${inputHeightClass} ${inputRadiusClass} bg-[#0B5D3B] hover:bg-[#08482d] hover:-translate-y-0.5 hover:shadow-lg transition-all duration-300 text-sm font-semibold text-white flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:bg-slate-300`}
-                  >
-                    {loading ? <Loader2 size={16} className="animate-spin" /> : null}
-                    {loading ? "Signing in..." : "Login Securely"}
-                  </button>
-                </form>
-                <div className="flex items-center justify-between pt-1">
-                  {/* Dedicated Resident Portal Badge */}
-                  <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-[#0B5D3B] border border-emerald-200/80 rounded-full text-[11px] font-black shrink-0">
-                    <UserCheck size={13} className="text-[#0B5D3B]" />
-                    <span>Resident Portal</span>
-                  </div>
-                  <button 
-                    type="button" 
-                    onClick={() => { setError(null); setNotice(null); setModalStep("resident_forgot_phone"); }} 
-                    className="text-[12px] font-bold text-[#0B5D3B] hover:underline"
-                  >
-                    Forgot Password?
-                  </button>
-                </div>
-                <div className="text-center pt-3 border-t border-slate-100 text-xs text-slate-500">
-                  Don't have an account?{" "}
-                  <button
-                    onClick={() => {
-                      setResidentAuthMode("register");
-                      setRegistrationStep(1);
-                      setModalStep("resident_register");
-                      setError(null);
-                    }}
-                    className="font-semibold text-[#0B5D3B] hover:underline"
-                  >
-                    Register Here
-                  </button>
-                </div>
+              <div className="text-left">
+                <h1 className="text-base sm:text-lg md:text-xl font-black text-[#0B5D3B] leading-tight tracking-tight">
+                  KaagapAI
+                </h1>
+                <p className="text-[11.5px] sm:text-xs text-slate-500 font-semibold leading-tight mt-0.5">
+                  Barangay Upper Mingading, Aleosan, Cotabato
+                </p>
               </div>
-            )}
+            </div>
 
-            {modalStep === "admin_login" && (
-              <div className="space-y-5">
-                {error && (
-                  <div className="flex items-start gap-2.5 rounded-2xl bg-rose-50 border border-rose-100 p-4 text-xs font-semibold text-rose-700">
-                    <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-600" />
-                    <span>{error}</span>
-                  </div>
-                )}
-                <form onSubmit={handleSubmit} className="space-y-3.5">
-                  <div className="relative">
-                    <User className="absolute left-[16px] top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input
-                      type="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      placeholder="Enter administrative username/email"
-                      className={`w-full ${inputHeightClass} ${inputRadiusClass} ${inputBgClass} pl-[44px] pr-4 outline-none text-xs text-slate-900 placeholder-slate-400 transition-all duration-200 font-semibold`}
-                      required
-                    />
-                  </div>
-                  <div className="relative">
-                    <Lock className="absolute left-[16px] top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      name="password"
-                      value={formData.password}
-                      onChange={handleInputChange}
-                      placeholder="Enter administrative password"
-                      className={`w-full ${inputHeightClass} ${inputRadiusClass} ${inputBgClass} pl-[44px] pr-[44px] outline-none text-xs text-slate-900 placeholder-slate-400 transition-all duration-200 font-semibold`}
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-[16px] top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-655 transition"
-                    >
-                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                    </button>
-                  </div>
-                  {isRecaptchaConfigured() && showRecaptcha && (
-                    <div className="flex justify-center py-1 transition-all duration-300">
-                      <ReCAPTCHA
-                        ref={adminCaptchaRef}
-                        sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
-                        onChange={(token) => setCaptchaToken(token)}
-                        onErrored={() => setCaptchaToken("dev-bypass-token")}
-                      />
-                    </div>
-                  )}
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className={`w-full ${inputHeightClass} ${inputRadiusClass} bg-[#0B5D3B] hover:bg-[#08482d] hover:-translate-y-0.5 hover:shadow-lg transition-all duration-300 text-sm font-semibold text-white flex items-center justify-center gap-2 mt-2 cursor-pointer disabled:bg-slate-300`}
-                  >
-                    {loading ? <Loader2 size={16} className="animate-spin" /> : null}
-                    {loading ? "Authenticating..." : "Login Securely"}
-                  </button>
-                </form>
-                <div className="flex items-center justify-between pt-1">
-                  {/* Dedicated Staff & Admin Portal Badge */}
-                  <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-100 text-slate-800 border border-slate-200 rounded-full text-[11px] font-black shrink-0">
-                    <ShieldCheck size={13} className="text-[#0B5D3B]" />
-                    <span>Staff & Admin Portal</span>
-                  </div>
-                  <button 
-                    type="button" 
-                    onClick={() => { setError(null); setNotice(null); setModalStep("admin_forgot_password"); }} 
-                    className="text-[12px] font-bold text-[#0B5D3B] hover:underline"
-                  >
-                    Forgot Password?
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {modalStep === "resident_register" && (
-              <div className="space-y-4">
-                <button
-                  onClick={() => setModalStep("resident_login")}
-                  className="flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-slate-950 transition"
-                >
-                  <ChevronLeft size={16} /> Back to Sign In
-                </button>
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">Online Registration</h2>
-                    <p className="text-[11px] text-slate-400 font-semibold mt-0.5">Step {registrationStep} of 6: {stepHeaders[registrationStep - 1].label}</p>
-                  </div>
-                </div>
-                <div className="flex justify-between items-center relative my-3 px-1">
-                  <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0.5 bg-slate-100 -z-10" />
-                  <div
-                    className="absolute left-0 top-1/2 -translate-y-1/2 h-0.5 bg-[#0B5D3B] transition-all duration-300 -z-10"
-                    style={{ width: `${((registrationStep - 1) / 5) * 100}%` }}
-                  />
-                  {stepHeaders.map((step, idx) => {
-                    const StepIcon = step.icon;
-                    const stepNumber = idx + 1;
-                    const active = registrationStep === idx + 1;
-                    const completed = registrationStep > idx + 1;
-                    const canOpenStep = stepNumber <= registrationStep;
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        disabled={!canOpenStep}
-                        onClick={() => goToRegistrationStep(stepNumber)}
-                        className={`h-7 w-7 rounded-full flex items-center justify-center transition duration-200 text-[10px] font-bold ${
-                          active
-                            ? "bg-[#0B5D3B] text-white ring-4 ring-emerald-100 scale-110"
-                            : completed
-                            ? "bg-[#0B5D3B] text-white"
-                            : "bg-white border border-slate-200 text-slate-400"
-                        }`}
-                      >
-                        {completed ? <CheckCircle2 size={12} /> : <StepIcon size={12} />}
-                      </button>
-                    );
-                  })}
-                </div>
-                {error && (
-                  <div className="flex items-start gap-2 rounded-xl bg-rose-50 border border-rose-100 p-3 text-xs font-semibold text-rose-700">
-                    <AlertCircle size={15} className="mt-0.5 shrink-0 text-rose-600" />
-                    <span>{error}</span>
-                  </div>
-                )}
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  <div className="max-h-[320px] overflow-y-auto pr-1">
-                    {registrationStep === 1 && renderStep1Fields()}
-                    {registrationStep === 2 && renderStep2Fields()}
-                    {registrationStep === 3 && renderStep3Fields()}
-                    {registrationStep === 4 && renderStep4Fields()}
-                    {registrationStep === 5 && renderStep5Fields()}
-                    {registrationStep === 6 && (
-                      <div className="space-y-4 text-left">
-                        <div className="flex items-center gap-2 text-[#0B5D3B] font-bold text-xs border-b border-slate-100 pb-2 mb-2">
-                          <FileCheck2 size={14} className="text-[#0B5D3B]" />
-                          <span>Confirm Information Details</span>
-                        </div>
-                        <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50/50 p-4 text-xs">
-                          {[
-                            { label: "Full Name", val: residentRegistrationFullName },
-                            { label: "Birth Date", val: formData.birthday },
-                            { label: "Age", val: `${residentRegistrationAge} years old` },
-                            { label: "Gender", val: formData.sex },
-                            { label: "Civil Status", val: formData.civil_status },
-                            { label: "Purok Area", val: formatPurok(formData.purok) },
-                            { label: "Household No", val: formData.householdNo },
-                            { label: "House No", val: formData.house_no },
-                            { label: "Contact Phone", val: formData.phone },
-                            { label: "Account Email", val: formData.gmail || formData.email || "Not specified" },
-                            {
-                              label: "Sectors Status",
-                              val: [
-                                formData.is_pwd ? `PWD (${formData.pwd_type || "Yes"})` : "",
-                                formData.is_solo_parent ? "Solo Parent" : "",
-                                formData.is_4ps_member ? "4Ps Beneficiary" : "",
-                              ].filter(Boolean).join(", ") || "No sectors checked",
-                            },
-                            { label: "ID Verification File", val: registrationProof?.name, highlight: true },
-                          ].map((item, idx) => (
-                            <div key={idx} className="flex justify-between items-start gap-4 border-b border-slate-200/50 pb-2 last:border-0 last:pb-0">
-                              <span className="font-bold text-slate-400 uppercase text-[9px] tracking-wider mt-0.5 shrink-0">{item.label}</span>
-                              <span className={`text-right font-bold text-xs truncate max-w-[240px] ${item.highlight ? "text-[#0B5D3B]" : "text-slate-800"}`}>
-                                {item.val}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                        <label className="flex items-start gap-3 cursor-pointer pt-2">
-                          <input
-                            type="checkbox"
-                            checked={agreeTerms}
-                            onChange={(e) => setAgreeTerms(e.target.checked)}
-                            className="h-4 w-4 rounded border-slate-300 text-[#0B5D3B] focus:ring-emerald-500 mt-0.5"
-                          />
-                          <span className="text-xs text-slate-600 font-semibold leading-normal">
-                            I agree to the <span onClick={() => setShowTermsModal(true)} className="font-semibold text-[#0B5D3B] hover:underline cursor-pointer">Privacy Policy and Terms of Service</span> of Barangay Upper Mingading.
-                          </span>
-                        </label>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex gap-3 pt-3 border-t border-slate-100">
-                    {registrationStep > 1 && (
-                      <button
-                        type="button"
-                        onClick={prevStep}
-                        className="flex h-11 items-center justify-center gap-1.5 px-4 rounded-xl border border-slate-200 text-slate-500 font-bold hover:bg-slate-50 text-xs transition"
-                      >
-                        <ChevronLeft size={16} /> Back
-                      </button>
-                    )}
-                    <button
-                      type="submit"
-                      disabled={loading}
-                      className="flex-1 flex h-11 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#0B5D3B] to-emerald-600 text-xs font-bold text-white shadow-md hover:shadow-lg transition duration-200 disabled:bg-slate-300"
-                    >
-                      {loading ? <Loader2 size={16} className="animate-spin" /> : registrationStep === 6 ? <FileCheck2 size={16} /> : <ChevronRight size={16} />}
-                      {loading ? "Registering..." : registrationStep === 6 ? "Submit Application" : "Continue"}
-                    </button>
-                  </div>
-                </form>
-                <div className="text-center pt-2 text-xs text-slate-500 font-semibold">
-                  Already registered?{" "}
-                  <button
-                    onClick={() => setModalStep("resident_login")}
-                    className="font-bold text-[#0B5D3B] hover:underline"
-                  >
-                    Login Here
-                  </button>
-                </div>
-              </div>
-            )}
-
-              {(modalStep === "admin_forgot_password" || modalStep === "resident_forgot_phone") && (
-              <div className="space-y-5">
-                <button
-                  onClick={() => setModalStep(accessMode === "Admin" ? "admin_login" : "resident_login")}
-                  className="flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-slate-900 transition mb-2"
-                >
-                  <ChevronLeft size={16} /> Back to Sign In
-                </button>
-                <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                  <div className="h-12 w-12 rounded-2xl bg-emerald-500/10 text-[#0B5D3B] flex items-center justify-center shrink-0 border border-emerald-500/20">
-                    <Phone size={22} />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">Forgot Password Recovery</h2>
-                    <p className="text-xs text-slate-500">Enter your registered SMS mobile number to receive TextBee OTP</p>
-                  </div>
-                </div>
-                {error && (
-                  <div className="flex items-start gap-2.5 rounded-2xl bg-rose-50 border border-rose-100 p-4 text-xs font-semibold text-rose-700">
-                    <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-600" />
-                    <span>{error}</span>
-                  </div>
-                )}
-                <form onSubmit={handleResidentForgotSendOTP} className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
-                      Registered Mobile / Hotline Number *
-                    </label>
-                    <div className="relative">
-                      <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                      <input
-                        type="text"
-                        value={forgotPhone}
-                        onChange={(e) => setForgotPhone(e.target.value)}
-                        placeholder="e.g. 09306259795"
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-12 pr-4 py-3.5 text-xs text-slate-900 outline-none focus:border-[#0B5D3B] focus:bg-white focus:ring-4 focus:ring-emerald-50 transition font-medium"
-                        required
-                      />
-                    </div>
-                    <p className="text-[10px] text-slate-400 font-semibold mt-1">
-                      A 6-digit OTP verification code will be sent via TextBee SMS gateway to this number.
-                    </p>
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0B5D3B] hover:bg-[#08482d] text-xs font-bold text-white shadow-md hover:shadow-lg transition duration-200 disabled:bg-slate-350"
-                  >
-                    {loading ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
-                    {loading ? "Sending OTP SMS..." : "Send Verification Code"}
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {modalStep === "resident_otp_verify" && (
-              <div className="space-y-5">
-                <button
-                  onClick={() => setModalStep("resident_forgot_phone")}
-                  className="flex items-center gap-1 text-xs font-bold text-slate-500 hover:text-slate-900 transition mb-2"
-                >
-                  <ChevronLeft size={16} /> Back to Phone Input
-                </button>
-                <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                  <div className="h-12 w-12 rounded-2xl bg-emerald-500/10 text-[#0B5D3B] flex items-center justify-center shrink-0 border border-emerald-500/20">
-                    <Lock size={22} />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">Enter Verification Code</h2>
-                    <p className="text-xs text-slate-500">Provide the 6-digit SMS OTP code sent to your mobile number</p>
-                  </div>
-                </div>
-                {error && (
-                  <div className="flex items-start gap-2.5 rounded-2xl bg-rose-50 border border-rose-100 p-4 text-xs font-semibold text-rose-700">
-                    <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-600" />
-                    <span>{error}</span>
-                  </div>
-                )}
-                <form onSubmit={handleResidentForgotVerifyOTP} className="space-y-4">
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                    <input
-                      type="text"
-                      maxLength={6}
-                      value={forgotOTP}
-                      onChange={(e) => setForgotOTP(e.target.value.replace(/\D/g, ""))}
-                      placeholder="Enter 6-digit code"
-                      className="w-full text-center tracking-[0.5em] rounded-xl border border-slate-200 bg-slate-50 py-3.5 text-sm text-slate-900 outline-none focus:border-[#0B5D3B] focus:bg-white focus:ring-4 focus:ring-emerald-50 transition font-bold"
-                      required
-                      autoFocus
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={loading || forgotOTP.length !== 6}
-                    className="w-full flex h-12 items-center justify-center gap-2 rounded-xl bg-[#0B5D3B] hover:bg-[#08482d] text-xs font-bold text-white shadow-md hover:shadow-lg transition duration-200 disabled:bg-slate-350"
-                  >
-                    {loading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                    {loading ? "Verifying..." : "Verify OTP Code"}
-                  </button>
-                </form>
-                <div className="text-center pt-2 text-xs text-slate-550 font-medium">
-                  {otpCooldown > 0 ? (
-                    <span>Resend code in <strong className="text-slate-800">{otpCooldown}s</strong></span>
-                  ) : (
-                    <button
-                      onClick={handleResidentForgotSendOTP}
-                      className="font-bold text-[#0B5D3B] hover:underline"
-                    >
-                      Resend Verification Code
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {modalStep === "resident_forgot_newpass" && (
-              <div className="space-y-5">
-                <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                  <div className="h-12 w-12 rounded-2xl bg-emerald-500/10 text-[#0B5D3B] flex items-center justify-center shrink-0 border border-emerald-500/20">
-                    <Lock size={22} />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-bold text-slate-900">Set New Password</h2>
-                    <p className="text-xs text-slate-500">Create and confirm your new account password</p>
-                  </div>
-                </div>
-                {error && (
-                  <div className="flex items-start gap-2.5 rounded-2xl bg-rose-50 border border-rose-100 p-4 text-xs font-semibold text-rose-700">
-                    <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-600" />
-                    <span>{error}</span>
-                  </div>
-                )}
-                <form onSubmit={handleResidentForgotResetPassword} className="space-y-4">
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">New Password *</label>
-                    <div className="relative">
-                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                      <input
-                        type="password"
-                        value={forgotNewPassword}
-                        onChange={(e) => setForgotNewPassword(e.target.value)}
-                        placeholder="Min 6 characters"
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-12 pr-4 py-3.5 text-xs text-slate-900 outline-none focus:border-[#0B5D3B] focus:bg-white focus:ring-4 focus:ring-emerald-50 transition font-medium"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Confirm New Password *</label>
-                    <div className="relative">
-                      <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                      <input
-                        type="password"
-                        value={forgotConfirmPassword}
-                        onChange={(e) => setForgotConfirmPassword(e.target.value)}
-                        placeholder="Re-enter new password"
-                        className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-12 pr-4 py-3.5 text-xs text-slate-900 outline-none focus:border-[#0B5D3B] focus:bg-white focus:ring-4 focus:ring-emerald-50 transition font-medium"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#0B5D3B] to-emerald-700 text-xs font-bold text-white shadow-lg hover:shadow-xl transition duration-200 disabled:bg-slate-350"
-                  >
-                    {loading ? <Loader2 size={16} className="animate-spin" /> : <FileCheck2 size={16} />}
-                    {loading ? "Resetting password..." : "Update Password"}
-                  </button>
-                </form>
-              </div>
-            )}
-
-            {/* Terms and Conditions Modal */}
-            <FloatingModal
-              open={showTermsModal}
-              title="Terms and Conditions & Privacy Policy"
-              eyebrow="Barangay Upper Mingading Portal Agreement"
-              description="Please review our terms and privacy policy before accessing or registering on the platform."
-              onClose={() => setShowTermsModal(false)}
-              footer={
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAgreeTerms(true);
-                    setShowTermsModal(false);
-                  }}
-                  className="rounded-xl bg-[#0B5D3B] hover:bg-[#08452b] text-white px-5 py-2 text-xs font-bold transition shadow-sm animate-fadeIn"
-                >
-                  Accept Terms
-                </button>
-              }
+            {/* Direct "About Us" Action Button (Top Right) */}
+            <button
+              type="button"
+              onClick={() => setShowAboutModal(true)}
+              className="shrink-0 whitespace-nowrap px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl border border-[#0B5D3B] sm:border-2 hover:border-emerald-800 bg-white hover:bg-emerald-50 text-[#0B5D3B] text-[11px] sm:text-xs font-black shadow-2xs hover:shadow-xs transition-all duration-200 cursor-pointer flex items-center gap-1.5 active:scale-95 group"
             >
-              <div className="space-y-4 text-xs leading-relaxed text-slate-600 font-medium">
-                <p className="font-bold text-slate-800">Welcome to KaagapAI — the official administrative and community portal of Barangay Upper Mingading.</p>
-                <p>By signing in or registering, you agree to comply with and be bound by the following Terms of Service and Privacy Policy. If you do not accept these terms, you may not use the services.</p>
-                
-                <section className="space-y-1.5">
-                  <h3 className="font-extrabold text-slate-800 text-xs uppercase text-[#0B5D3B] tracking-wide">1. Eligibility & Registration</h3>
-                  <p>Access to this portal is limited to verified residents and local authorities of Barangay Upper Mingading. Registrants are required to submit accurate proof of residency. False submissions or impersonation are subject to immediate termination of portal access and local council restrictions.</p>
-                </section>
+              <Users size={14} className="text-[#0B5D3B] group-hover:scale-110 transition-transform shrink-0" />
+              <span className="leading-none whitespace-nowrap">About Us</span>
+            </button>
+          </div>
+        </header>
 
-                <section className="space-y-1.5">
-                  <h3 className="font-extrabold text-slate-800 text-xs uppercase text-[#0B5D3B] tracking-wide">2. Confidentiality & Security</h3>
-                  <p>You are responsible for keeping your login credentials (username and password) confidential. Any actions performed using your credentials will be deemed as your actions. If you suspect unauthorized access, contact the barangay administrators immediately.</p>
-                </section>
+        {/* 2. MAIN CONTENT (CAROUSEL, LOGIN BUTTON, MISSION, VISION & GOALS) */}
+        <main className="w-full flex-1 flex flex-col items-center justify-start pt-2 sm:pt-3 pb-6 px-3 sm:px-6">
+          <div className="w-full max-w-2xl sm:max-w-3xl lg:max-w-4xl mx-auto flex justify-center">
+            <div className="w-full overflow-hidden">
+              <BarangayCarousel autoPlayInterval={3500} />
+            </div>
+          </div>
 
-                <section className="space-y-1.5">
-                  <h3 className="font-extrabold text-slate-800 text-xs uppercase text-[#0B5D3B] tracking-wide">3. Privacy Policy (Republic Act No. 10173)</h3>
-                  <p>We respect your data privacy in accordance with the <strong>Data Privacy Act of 2012 (R.A. 10173)</strong>. All details entered during registration (full name, Purok address, age, phone number, and ID attachments) will be encrypted and processed solely for barangay administration, identity verification, and document request verification. We will never share your personal data with third parties without your explicit consent.</p>
-                </section>
+          {/* 3. SEPARATE "LOG IN NOW" BUTTON SECTION */}
+          <div className="w-full flex justify-center pt-2.5 sm:pt-3.5 pb-3 px-4">
+            <div className="relative group">
+              {/* Pulsing ambient glow aura behind button */}
+              <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-emerald-600/30 via-teal-500/30 to-emerald-600/30 blur-md opacity-70 group-hover:opacity-100 transition-all duration-500 animate-pulse pointer-events-none" />
 
-                <section className="space-y-1.5">
-                  <h3 className="font-extrabold text-slate-800 text-xs uppercase text-[#0B5D3B] tracking-wide">4. Acceptable Portal Use</h3>
-                  <p>You agree not to use the portal for fraudulent purposes, including submitting false document applications, posting misleading job opportunities/applications, or attempting to breach portal security. Violators will face suspension and report to the local law enforcement officers.</p>
-                </section>
+              <motion.button
+                type="button"
+                whileHover={{ scale: 1.04, y: -2 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => openLoginView(isTargetAdmin ? "admin_login" : "resident_login")}
+                className="relative w-full min-w-[220px] sm:min-w-[260px] max-w-[300px] py-3 px-6 rounded-2xl bg-gradient-to-r from-[#0B5D3B] via-[#0D7349] to-[#08452B] hover:brightness-110 text-white font-black text-xs sm:text-sm tracking-wider shadow-lg hover:shadow-emerald-900/30 transition-all duration-300 active:scale-95 cursor-pointer text-center flex items-center justify-center gap-2 overflow-hidden border border-emerald-400/40"
+              >
+                {/* Continuous light sheen sweep on hover */}
+                <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/25 to-transparent -skew-x-12 -translate-x-full group-hover:translate-x-[300%] transition-transform duration-1000 ease-out pointer-events-none" />
 
-                <section className="space-y-1.5">
-                  <h3 className="font-extrabold text-slate-800 text-xs uppercase text-[#0B5D3B] tracking-wide">5. Disclaimer & Limit of Liability</h3>
-                  <p>Barangay Upper Mingading strives to keep the portal available and secure. However, we are not liable for any temporary service disruptions or data transmission failures caused by factors beyond our control (such as network issues). All document requests are reviewed manually by barangay officials before releasing.</p>
-                </section>
+                <LogIn size={16} className="text-emerald-300 group-hover:-translate-x-0.5 transition-transform" />
+                <span>LOG IN NOW</span>
+                <ArrowRight size={16} className="text-emerald-300 group-hover:translate-x-1.5 transition-transform duration-200" />
+              </motion.button>
+            </div>
+          </div>
+
+          {/* 4. MISSION, VISION & GOALS SECTION (3-COLUMN DYNAMIC GRID) */}
+          <section className="w-full max-w-5xl mx-auto px-1 sm:px-4 pt-1 pb-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 items-stretch text-center sm:text-left">
+              
+              {/* MISSION */}
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: 0.05 }}
+                whileHover={{ y: -3 }}
+                className="group relative rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-2xs hover:shadow-lg hover:border-emerald-300 transition-all duration-300 overflow-hidden h-full flex flex-col justify-start"
+              >
+                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-emerald-500/10 via-teal-500/5 to-transparent rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+
+                <h2 className="text-xs sm:text-sm font-black text-[#0B5D3B] uppercase tracking-wider mb-2 flex items-center justify-center sm:justify-start gap-2">
+                  <span className="h-7 w-7 rounded-lg bg-emerald-50 text-[#0B5D3B] flex items-center justify-center border border-emerald-200 shadow-2xs group-hover:bg-[#0B5D3B] group-hover:text-white group-hover:rotate-45 transition-all duration-500 shrink-0">
+                    <Compass size={15} />
+                  </span>
+                  <span>Our Mission</span>
+                </h2>
+                <p className="text-[11.5px] sm:text-xs text-slate-600 leading-relaxed font-medium group-hover:text-slate-800 transition-colors">
+                  To attain healthy, peaceful and progressive Barangay Upper Mingading through improved delivery of basic services with access to health programs and quality education, people empowerment for peaceful community and sustainable environment, enhancement of infrastructure facilities and promotion of economic activities and livelihood opportunities that is supportive to the development of socio-economic condition of the populace.
+                </p>
+              </motion.div>
+
+              {/* VISION */}
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: 0.1 }}
+                whileHover={{ y: -3 }}
+                className="group relative rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-2xs hover:shadow-lg hover:border-emerald-300 transition-all duration-300 overflow-hidden h-full flex flex-col justify-start"
+              >
+                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-emerald-500/10 via-teal-500/5 to-transparent rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+
+                <h2 className="text-xs sm:text-sm font-black text-[#0B5D3B] uppercase tracking-wider mb-2 flex items-center justify-center sm:justify-start gap-2">
+                  <span className="h-7 w-7 rounded-lg bg-emerald-50 text-[#0B5D3B] flex items-center justify-center border border-emerald-200 shadow-2xs group-hover:bg-[#0B5D3B] group-hover:text-white group-hover:scale-110 transition-all duration-300 shrink-0">
+                    <Target size={15} />
+                  </span>
+                  <span>Our Vision</span>
+                </h2>
+                <p className="text-[11.5px] sm:text-xs text-slate-600 leading-relaxed font-medium group-hover:text-slate-800 transition-colors">
+                  Barangay Upper Mingading envision a balance and agricultural progressive community where people enjoy a safe environment educated and healthy constituents supported with adequate infrastructure through good governance and transparent leadership.
+                </p>
+              </motion.div>
+
+              {/* GOALS */}
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35, delay: 0.15 }}
+                whileHover={{ y: -3 }}
+                className="group relative rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-2xs hover:shadow-lg hover:border-emerald-300 transition-all duration-300 overflow-hidden h-full flex flex-col justify-start"
+              >
+                <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-emerald-500/10 via-teal-500/5 to-transparent rounded-bl-full opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+
+                <h2 className="text-xs sm:text-sm font-black text-[#0B5D3B] uppercase tracking-wider mb-2 flex items-center justify-center sm:justify-start gap-2">
+                  <span className="h-7 w-7 rounded-lg bg-emerald-50 text-[#0B5D3B] flex items-center justify-center border border-emerald-200 shadow-2xs group-hover:bg-[#0B5D3B] group-hover:text-white group-hover:rotate-12 transition-all duration-500 shrink-0">
+                    <Award size={15} />
+                  </span>
+                  <span>Our Goals</span>
+                </h2>
+                <p className="text-[11.5px] sm:text-xs text-slate-600 leading-relaxed font-medium group-hover:text-slate-800 transition-colors">
+                  To effectively escalate the community awareness and disaster preparedness, focus on proactive measures like community engagement, education, and practical training.
+                </p>
+              </motion.div>
+
+            </div>
+          </section>
+        </main>
+
+        {/* 5. SLIM FOOTER WITH FB LINK (SCROLLABLE AT NATURAL BOTTOM) */}
+        <footer className="w-full bg-[#0B5D3B] text-white py-2.5 sm:py-3 px-4 text-center text-xs font-medium border-t border-emerald-800/40 mt-auto">
+          <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+            <p className="text-white font-medium text-xs sm:text-[13px]">
+              © {new Date().getFullYear()} Barangay Upper Mingading, Aleosan, Cotabato • KaagapAI Portal
+            </p>
+
+            {/* Facebook 'f' Logo Button */}
+            <div className="flex items-center gap-2">
+              <a
+                href="https://www.facebook.com/profile.php/?id=61568631073581"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-7 h-7 rounded-full bg-[#1877F2] hover:bg-[#166FE5] text-white flex items-center justify-center font-black text-sm shadow-md transition-transform hover:scale-110 active:scale-95 border border-white/30 cursor-pointer"
+                title="Barangay Upper Mingading Official Facebook Page"
+                aria-label="Barangay Upper Mingading Facebook Page"
+              >
+                <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                </svg>
+              </a>
+            </div>
+          </div>
+        </footer>
+
+        {/* ABOUT KAAGAPAI MODAL */}
+        <FloatingModal
+          open={showAboutModal}
+          title="ABOUT KAAGAPAI"
+          eyebrow="Barangay Information Management System"
+          description="Empowering Barangay Services Through Technology"
+          maxWidth="max-w-xl"
+          onClose={() => setShowAboutModal(false)}
+          footer={
+            <div className="flex items-center justify-between gap-3 w-full">
+              <span className="text-[10.5px] sm:text-[11px] font-bold text-slate-500 truncate">
+                KaagapAI v1.0 • AY 2026
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowAboutModal(false)}
+                className="px-5 py-2 text-xs font-black text-white bg-[#0B5D3B] hover:bg-[#08452B] rounded-xl transition cursor-pointer shadow-md active:scale-95"
+              >
+                Close
+              </button>
+            </div>
+          }
+        >
+          <div className="space-y-4 sm:space-y-5 text-xs text-slate-700 py-1 text-left">
+            
+            {/* 1. ABOUT THE SYSTEM */}
+            <div className="rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-50 via-teal-50/60 to-emerald-50/30 border border-emerald-200/90 p-3.5 sm:p-4 shadow-2xs">
+              <h3 className="font-black text-[11px] sm:text-xs uppercase tracking-wider text-[#0B5D3B] mb-1.5 flex items-center gap-1.5">
+                <Sparkles size={14} className="text-emerald-700 shrink-0" />
+                <span>ABOUT THE SYSTEM</span>
+              </h3>
+              <p className="text-[11.5px] sm:text-xs text-slate-700 leading-relaxed font-medium">
+                <strong>KaagapAI</strong> is an intelligent Web-based Barangay Information and Resident Services Management System developed for <strong>Barangay Upper Mingading, Aleosan, Cotabato</strong>. Designed as an academic capstone research initiative, the platform modernizes and streamlines local governance through digital resident profiling, verified document issuance, real-time demographic analytics, multi-channel SMS notifications, and AI-powered knowledge assistance.
+              </p>
+            </div>
+
+            {/* 2. RESEARCH & DEVELOPMENT TEAM */}
+            <div>
+              <h3 className="font-black text-[11px] sm:text-xs uppercase tracking-wider text-[#0B5D3B] mb-2.5 flex items-center gap-1.5">
+                <Users size={14} className="text-emerald-700 shrink-0" />
+                <span>RESEARCH & DEVELOPMENT TEAM</span>
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+                {/* Researcher 1: Russel Jay Calamba */}
+                <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-emerald-500 hover:shadow-md transition-all duration-200 flex flex-col items-center text-center group">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-gradient-to-br from-[#0B5D3B] to-[#10B981] text-white flex flex-col items-center justify-center font-black text-base sm:text-lg shadow-md mb-2 ring-2 ring-emerald-100 group-hover:scale-105 transition-transform">
+                    <span>RC</span>
+                    <span className="text-[8px] uppercase tracking-widest opacity-75 font-semibold">Lead Dev</span>
+                  </div>
+                  <h4 className="font-black text-xs sm:text-[13px] text-slate-900 leading-tight">
+                    Russel Jay Calamba
+                  </h4>
+                  <p className="text-[10px] sm:text-[10.5px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full mt-1.5 border border-emerald-300">
+                    Researcher & Developer
+                  </p>
+                </div>
+
+                {/* Researcher 2: Krizel Claire Condez */}
+                <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-emerald-500 hover:shadow-md transition-all duration-200 flex flex-col items-center text-center group">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-gradient-to-br from-teal-700 to-emerald-500 text-white flex flex-col items-center justify-center font-black text-base sm:text-lg shadow-md mb-2 ring-2 ring-emerald-100 group-hover:scale-105 transition-transform">
+                    <span>KC</span>
+                    <span className="text-[8px] uppercase tracking-widest opacity-75 font-semibold">Docs</span>
+                  </div>
+                  <h4 className="font-black text-xs sm:text-[13px] text-slate-900 leading-tight">
+                    Krizel Claire Condez
+                  </h4>
+                  <p className="text-[10px] sm:text-[10.5px] font-bold text-teal-800 bg-teal-100/80 px-2 py-0.5 rounded-full mt-1.5 border border-teal-300">
+                    Researcher & Documentation
+                  </p>
+                </div>
+
+                {/* Researcher 3: Adrianne Dave Esler */}
+                <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-emerald-500 hover:shadow-md transition-all duration-200 flex flex-col items-center text-center group">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-800 to-teal-600 text-white flex flex-col items-center justify-center font-black text-base sm:text-lg shadow-md mb-2 ring-2 ring-emerald-100 group-hover:scale-105 transition-transform">
+                    <span>AE</span>
+                    <span className="text-[8px] uppercase tracking-widest opacity-75 font-semibold">Docs</span>
+                  </div>
+                  <h4 className="font-black text-xs sm:text-[13px] text-slate-900 leading-tight">
+                    Adrianne Dave Esler
+                  </h4>
+                  <p className="text-[10px] sm:text-[10.5px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full mt-1.5 border border-emerald-300">
+                    Researcher & Documentation
+                  </p>
+                </div>
               </div>
-            </FloatingModal>
+            </div>
 
-            {/* Footer Text */}
-            <div className="text-center text-[12px] text-slate-450 mt-3 pt-2 border-t border-slate-100/60">
-              By signing in, you agree to our <span onClick={() => setShowTermsModal(true)} className="font-semibold text-[#0B5D3B] hover:underline cursor-pointer">Terms and Conditions</span>.
+            {/* 3. RESEARCH INFORMATION */}
+            <div className="rounded-xl sm:rounded-2xl bg-slate-50 border border-slate-200 p-3 sm:p-4">
+              <h3 className="font-black text-[11px] sm:text-xs uppercase tracking-wider text-slate-700 mb-2 flex items-center gap-1.5">
+                <Info size={14} className="text-emerald-700 shrink-0" />
+                <span>RESEARCH INFORMATION</span>
+              </h3>
+
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="p-2 sm:p-2.5 bg-white rounded-lg sm:rounded-xl border border-slate-200 text-center sm:text-left">
+                  <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Project Type</p>
+                  <p className="font-bold text-slate-800 mt-0.5 text-[11px] sm:text-xs">Capstone Project</p>
+                </div>
+                <div className="p-2 sm:p-2.5 bg-white rounded-lg sm:rounded-xl border border-slate-200 text-center sm:text-left">
+                  <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Academic Year</p>
+                  <p className="font-bold text-slate-800 mt-0.5 text-[11px] sm:text-xs">2026</p>
+                </div>
+                <div className="p-2 sm:p-2.5 bg-white rounded-lg sm:rounded-xl border border-slate-200 text-center sm:text-left">
+                  <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Researchers</p>
+                  <p className="font-bold text-slate-800 mt-0.5 text-[11px] sm:text-xs">3 Members</p>
+                </div>
+              </div>
             </div>
 
           </div>
+        </FloatingModal>
 
-        </div>
       </div>
     );
-  };
+  }
+
+  // ═════════════════════════════════════════════════════════════════
+  // VIEW 2: ORIGINAL LOGIN PAGE (MATCHING THE EXACT USER DESIGN IMAGE 3)
+  // ═════════════════════════════════════════════════════════════════
+  return (
+    <div className="min-h-screen w-full font-sans antialiased text-white flex items-center justify-center p-4 relative overflow-hidden bg-gradient-to-br from-[#01160E] via-[#022B1D] to-[#01110A] select-none">
+      
+      {/* Background Seal & Barangay Building Photo */}
+      <div
+        className="absolute inset-0 bg-cover bg-center opacity-15 pointer-events-none"
+        style={{ backgroundImage: 'url("/new%20barangay.pmg.png")' }}
+      />
+
+      {/* Floating Radiant Ambient Color Orbs */}
+      <div className="absolute -top-32 -left-32 w-96 h-96 rounded-full bg-emerald-500/25 blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full bg-teal-500/25 blur-3xl pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-b from-[#01160E]/70 via-transparent to-[#01110A]/85 pointer-events-none" />
+
+      {/* Giant Clear Watermark Barangay Seal Logo in Background */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-0">
+        <img
+          src="/logo.png"
+          alt="Barangay Upper Mingading Seal Watermark"
+          className="w-[680px] sm:w-[840px] md:w-[980px] max-w-none opacity-20 filter drop-shadow-[0_0_120px_rgba(16,185,129,0.35)] brightness-110 pointer-events-none"
+        />
+      </div>
+
+      {/* Back to Home Button (Top Left) */}
+      <button
+        type="button"
+        onClick={goToLanding}
+        className="absolute top-4 left-4 z-30 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 backdrop-blur-md transition cursor-pointer shadow-md"
+      >
+        <ArrowLeft size={14} />
+        <span>Back to Home</span>
+      </button>
+
+      {/* Pure Frosted Emerald Glass Card Container (Matching Image 3) */}
+      <div className="relative z-10 w-full max-w-[460px] bg-gradient-to-b from-[rgba(2,43,29,0.92)] via-[rgba(3,62,43,0.85)] to-[rgba(1,28,19,0.95)] backdrop-blur-2xl rounded-[32px] p-6 sm:p-8 shadow-[0_30px_100px_rgba(1,20,13,0.85)] border border-emerald-400/35 flex flex-col items-center text-center my-auto transition-all duration-300 text-white overflow-hidden">
+        
+        {/* Top subtle sheen light line */}
+        <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent" />
+        
+        {/* Subtle Glass Sheen Reflection Light Ray */}
+        <div className="absolute -left-28 -top-28 h-56 w-96 rotate-45 bg-gradient-to-r from-transparent via-white/15 to-transparent pointer-events-none" />
+
+        {/* Close Button */}
+        <button
+          type="button"
+          onClick={goToLanding}
+          className="absolute top-4 right-4 p-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white/80 hover:text-white border border-white/20 transition cursor-pointer z-20"
+          title="Back to Home"
+        >
+          <X size={16} />
+        </button>
+
+        {/* Centered 3D Visual & Logo Badge */}
+        {modalStep !== "resident_register" && (
+          <div className="flex flex-col items-center mb-5 relative z-10 w-full">
+            {/* Dual 3D Avatar & Seal Presentation */}
+            <div className="relative flex items-center justify-center mb-3">
+              <div className="relative h-20 w-20 sm:h-22 sm:w-22 rounded-2xl border-2 border-emerald-400/50 bg-gradient-to-b from-emerald-900/70 to-emerald-950/90 p-1 shadow-xl shadow-emerald-950/60 overflow-hidden ring-4 ring-emerald-500/20">
+                <img
+                  src={modalStep === "admin_login" ? "/admin-3d-avatar.png" : "/logo.png"}
+                  alt="Portal Avatar"
+                  className="h-full w-full object-cover object-top rounded-xl brightness-105"
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = "/logo.png";
+                  }}
+                />
+              </div>
+              <div className="-ml-4 -mt-6 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-emerald-400/60 bg-[#011C13] p-1 shadow-lg ring-2 ring-emerald-500/30">
+                <img src="/logo.png" alt="Barangay Seal" className="h-full w-full object-contain" />
+              </div>
+            </div>
+
+            {/* Role / Portal Status Badge */}
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-900/70 border border-emerald-400/40 backdrop-blur-md shadow-xs mb-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[9px] font-black uppercase tracking-wider text-emerald-200">
+                {modalStep === "admin_login" ? "Official Admin Portal" : "Citizen Services Portal"}
+              </span>
+            </div>
+
+            <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight drop-shadow-md">
+              Kaagap<span className="text-[#FFD700]">AI</span>
+            </h1>
+            <p className="text-xs font-semibold text-emerald-100/90 mt-0.5 flex items-center justify-center gap-1 drop-shadow-xs">
+              <MapPin size={12} className="text-emerald-300" />
+              Barangay Upper Mingading • Aleosan, Cotabato
+            </p>
+          </div>
+        )}
+
+        {/* ─── DYNAMIC FORM STEPS (MATCHING IMAGE 3) ─── */}
+        {(modalStep === "admin_login" || modalStep === "resident_login") && (
+          <div className="w-full space-y-4 relative z-10">
+            {error && (
+              <div className="flex items-start gap-2.5 rounded-2xl bg-rose-950/90 border border-rose-500/50 p-3.5 text-xs font-semibold text-rose-200 text-left backdrop-blur-md shadow-lg shadow-rose-950/40">
+                <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-400" />
+                <span>{error}</span>
+              </div>
+            )}
+            {notice && (
+              <div className="flex items-start gap-2.5 rounded-2xl bg-emerald-950/90 border border-emerald-500/50 p-3.5 text-xs font-semibold text-emerald-200 text-left backdrop-blur-md shadow-lg shadow-emerald-950/40">
+                <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-emerald-400" />
+                <span>{notice.text}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="w-full space-y-3.5">
+              <div className="relative">
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300" size={18} />
+                <input
+                  type="text"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleInputChange}
+                  placeholder={
+                    modalStep === "admin_login"
+                      ? "Enter admin username (e.g. kaagapai)"
+                      : "Enter your mobile phone or username"
+                  }
+                  className="w-full h-12 rounded-xl bg-black/35 border border-emerald-400/30 pl-11 pr-4 outline-none text-xs font-semibold text-white placeholder-emerald-200/60 focus:border-emerald-400 focus:bg-black/50 focus:ring-2 focus:ring-emerald-400/30 transition-all duration-200 backdrop-blur-md"
+                  required
+                  autoComplete={modalStep === "admin_login" ? "username" : "tel"}
+                />
+              </div>
+
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300" size={18} />
+                <input
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  value={formData.password}
+                  onChange={handleInputChange}
+                  placeholder={
+                    modalStep === "admin_login"
+                      ? "Enter admin password"
+                      : "Enter your password"
+                  }
+                  className="w-full h-12 rounded-xl bg-black/35 border border-emerald-400/30 pl-11 pr-11 outline-none text-xs font-semibold text-white placeholder-emerald-200/60 focus:border-emerald-400 focus:bg-black/50 focus:ring-2 focus:ring-emerald-400/30 transition-all duration-200 backdrop-blur-md"
+                  required
+                  autoComplete="current-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-emerald-300/80 hover:text-white transition cursor-pointer"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
+
+              {isRecaptchaConfigured() && showRecaptcha && (
+                <div className="flex justify-center py-1 transition-all duration-300">
+                  <ReCAPTCHA
+                    ref={modalStep === "admin_login" ? adminCaptchaRef : residentCaptchaRef}
+                    sitekey={import.meta.env.VITE_RECAPTCHA_SITE_KEY}
+                    onChange={(token) => setCaptchaToken(token)}
+                    onErrored={() => setCaptchaToken("dev-bypass-token")}
+                  />
+                </div>
+              )}
+
+              {/* GLOSSY HIGH-DEFINITION EMERALD LOGIN BUTTON */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full h-12 rounded-xl bg-gradient-to-r from-[#059669] via-[#10B981] to-[#0D9488] hover:from-[#047857] hover:via-[#059669] hover:to-[#0F766E] text-sm font-black text-white transition-all duration-200 active:scale-[0.98] shadow-lg shadow-emerald-950/60 cursor-pointer disabled:opacity-50 mt-2 flex items-center justify-center gap-2 border border-emerald-300/40"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={17} />}
+                {loading ? "Signing in..." : "Login Securely"}
+              </button>
+            </form>
+
+            <div className="w-full flex items-center justify-end pt-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setNotice(null);
+                  setModalStep(
+                    modalStep === "admin_login"
+                      ? "admin_forgot_password"
+                      : "resident_forgot_phone"
+                  );
+                }}
+                className="font-black text-emerald-300 hover:text-white hover:underline transition cursor-pointer"
+              >
+                Forgot Password?
+              </button>
+            </div>
+
+            {modalStep === "resident_login" && (
+              <div className="pt-3 border-t border-white/15">
+                <p className="text-xs text-emerald-200/90 font-medium">
+                  New resident of Barangay Upper Mingading?{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalStep("resident_register");
+                      setRegistrationStep(1);
+                      setError(null);
+                    }}
+                    className="font-black text-amber-300 hover:text-white hover:underline transition cursor-pointer"
+                  >
+                    Register Account Online
+                  </button>
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ─── RESIDENT REGISTRATION ─── */}
+        {modalStep === "resident_register" && (
+          <div className="w-full space-y-4 text-left">
+            <button
+              onClick={() => setModalStep("resident_login")}
+              className="flex items-center gap-1 text-xs font-bold text-slate-300 hover:text-white transition cursor-pointer"
+            >
+              <ChevronLeft size={16} /> Back to Sign In
+            </button>
+            <div className="flex items-center justify-between border-b border-emerald-500/20 pb-3">
+              <div>
+                <h3 className="text-xl font-bold text-white">Online Registration</h3>
+                <p className="text-[11px] text-emerald-300/80 font-semibold mt-0.5">
+                  Step {registrationStep} of 6: {stepHeaders[registrationStep - 1].label}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center relative my-3 px-1">
+              <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0.5 bg-emerald-950 -z-10" />
+              <div
+                className="absolute left-0 top-1/2 -translate-y-1/2 h-0.5 bg-[#10B981] transition-all duration-300 -z-10"
+                style={{ width: `${((registrationStep - 1) / 5) * 100}%` }}
+              />
+              {stepHeaders.map((step, idx) => {
+                const StepIcon = step.icon;
+                const stepNumber = idx + 1;
+                const active = registrationStep === idx + 1;
+                const completed = registrationStep > idx + 1;
+                const canOpenStep = stepNumber <= registrationStep;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    disabled={!canOpenStep}
+                    onClick={() => goToRegistrationStep(stepNumber)}
+                    className={`h-7 w-7 rounded-full flex items-center justify-center transition duration-200 text-[10px] font-bold ${
+                      active
+                        ? "bg-emerald-400 text-slate-950 ring-4 ring-emerald-300/30 scale-110"
+                        : completed
+                        ? "bg-[#0B5D3B] text-white"
+                        : "bg-black/40 border border-emerald-500/30 text-emerald-300/50"
+                    }`}
+                  >
+                    {completed ? <CheckCircle2 size={12} /> : <StepIcon size={12} />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {error && (
+              <div className="flex items-start gap-2 rounded-xl bg-rose-950/80 border border-rose-500/50 p-3 text-xs font-semibold text-rose-200">
+                <AlertCircle size={15} className="mt-0.5 shrink-0 text-rose-400" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="max-h-[320px] overflow-y-auto pr-1">
+                {registrationStep === 1 && renderStep1Fields()}
+                {registrationStep === 2 && renderStep2Fields()}
+                {registrationStep === 3 && renderStep3Fields()}
+                {registrationStep === 4 && renderStep4Fields()}
+                {registrationStep === 5 && renderStep5Fields()}
+                {registrationStep === 6 && renderStep6Fields()}
+              </div>
+
+              <div className="flex gap-3 pt-3 border-t border-emerald-500/20">
+                {registrationStep > 1 && (
+                  <button
+                    type="button"
+                    onClick={prevStep}
+                    className="flex h-11 items-center justify-center gap-1.5 px-4 rounded-xl border border-white/20 text-white/80 font-bold hover:bg-white/10 text-xs transition cursor-pointer"
+                  >
+                    <ChevronLeft size={16} /> Back
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 flex h-11 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-xs font-bold text-white shadow-md hover:shadow-lg transition duration-200 disabled:opacity-50 cursor-pointer"
+                >
+                  {loading ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : registrationStep === 6 ? (
+                    <FileCheck2 size={16} />
+                  ) : (
+                    <ChevronRight size={16} />
+                  )}
+                  {loading
+                    ? "Registering..."
+                    : registrationStep === 6
+                    ? "Submit Application"
+                    : "Continue"}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* ─── FORGOT PASSWORD FLOW ─── */}
+        {(modalStep === "admin_forgot_password" || modalStep === "resident_forgot_phone") && (
+          <div className="w-full space-y-4 text-left">
+            <button
+              onClick={() =>
+                setModalStep(accessMode === "Admin" ? "admin_login" : "resident_login")
+              }
+              className="flex items-center gap-1 text-xs font-bold text-emerald-300 hover:text-white transition mb-2 cursor-pointer"
+            >
+              <ChevronLeft size={16} /> Back to Sign In
+            </button>
+            <div className="flex items-center gap-3 border-b border-emerald-500/20 pb-3">
+              <div className="h-11 w-11 rounded-2xl bg-emerald-900/60 text-emerald-300 flex items-center justify-center shrink-0 border border-emerald-400/40">
+                <Phone size={20} />
+              </div>
+              <div>
+                <h4 className="text-base font-extrabold text-white">Password Recovery</h4>
+                <p className="text-[11px] text-emerald-200/80 font-medium">
+                  Enter registered SMS mobile number for TextBee OTP
+                </p>
+              </div>
+            </div>
+            {error && (
+              <div className="flex items-start gap-2.5 rounded-2xl bg-rose-950/80 border border-rose-500/50 p-3.5 text-xs font-semibold text-rose-200">
+                <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-400" />
+                <span>{error}</span>
+              </div>
+            )}
+            <form onSubmit={handleResidentForgotSendOTP} className="space-y-3.5">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-emerald-300/80 uppercase tracking-wider block text-left">
+                  Registered Mobile Number *
+                </label>
+                <div className="relative">
+                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300" size={16} />
+                  <input
+                    type="text"
+                    value={forgotPhone}
+                    onChange={(e) => setForgotPhone(e.target.value)}
+                    placeholder="e.g. 09306259795"
+                    className="w-full rounded-xl border border-emerald-400/30 bg-black/40 pl-12 pr-4 py-3 text-xs text-white outline-none focus:border-emerald-400 focus:bg-black/60 transition font-medium"
+                    required
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-extrabold text-white shadow-md transition duration-200 disabled:opacity-50 cursor-pointer"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
+                {loading ? "Sending OTP SMS..." : "Send Verification Code"}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {modalStep === "resident_otp_verify" && (
+          <div className="w-full space-y-4 text-left">
+            <button
+              onClick={() => setModalStep("resident_forgot_phone")}
+              className="flex items-center gap-1 text-xs font-bold text-emerald-300 hover:text-white transition mb-2 cursor-pointer"
+            >
+              <ChevronLeft size={16} /> Back to Phone Input
+            </button>
+            <div className="flex items-center gap-3 border-b border-emerald-500/20 pb-3">
+              <div className="h-11 w-11 rounded-2xl bg-emerald-900/60 text-emerald-300 flex items-center justify-center shrink-0 border border-emerald-400/40">
+                <Lock size={20} />
+              </div>
+              <div>
+                <h4 className="text-base font-extrabold text-white">Enter Verification Code</h4>
+                <p className="text-[11px] text-emerald-200/80 font-medium">
+                  Provide 6-digit SMS OTP code sent to your number
+                </p>
+              </div>
+            </div>
+            {error && (
+              <div className="flex items-start gap-2.5 rounded-2xl bg-rose-950/80 border border-rose-500/50 p-3.5 text-xs font-semibold text-rose-200">
+                <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-400" />
+                <span>{error}</span>
+              </div>
+            )}
+            <form onSubmit={handleResidentForgotVerifyOTP} className="space-y-3.5">
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300" size={16} />
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={forgotOTP}
+                  onChange={(e) => setForgotOTP(e.target.value.replace(/\D/g, ""))}
+                  placeholder="Enter 6-digit code"
+                  className="w-full text-center tracking-[0.5em] rounded-xl border border-emerald-400/30 bg-black/40 py-3 text-sm text-white outline-none focus:border-emerald-400 focus:bg-black/60 transition font-bold"
+                  required
+                  autoFocus
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading || forgotOTP.length !== 6}
+                className="w-full flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-xs font-extrabold text-white shadow-md transition duration-200 disabled:opacity-50 cursor-pointer"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                {loading ? "Verifying..." : "Verify OTP Code"}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {modalStep === "resident_forgot_newpass" && (
+          <div className="w-full space-y-4 text-left">
+            <div className="flex items-center gap-3 border-b border-emerald-500/20 pb-3">
+              <div className="h-11 w-11 rounded-2xl bg-emerald-900/60 text-emerald-300 flex items-center justify-center shrink-0 border border-emerald-400/40">
+                <Lock size={20} />
+              </div>
+              <div>
+                <h4 className="text-base font-extrabold text-white">Set New Password</h4>
+                <p className="text-[11px] text-emerald-200/80 font-medium">
+                  Create and confirm your new account password
+                </p>
+              </div>
+            </div>
+            {error && (
+              <div className="flex items-start gap-2.5 rounded-2xl bg-rose-950/80 border border-rose-500/50 p-3.5 text-xs font-semibold text-rose-200">
+                <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-400" />
+                <span>{error}</span>
+              </div>
+            )}
+            <form onSubmit={handleResidentForgotResetPassword} className="space-y-3.5">
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-emerald-300/80 uppercase tracking-wider block text-left">
+                  New Password *
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300" size={16} />
+                  <input
+                    type="password"
+                    value={forgotNewPassword}
+                    onChange={(e) => setForgotNewPassword(e.target.value)}
+                    placeholder="Min 6 characters"
+                    className="w-full rounded-xl border border-emerald-400/30 bg-black/40 pl-12 pr-4 py-3 text-xs text-white outline-none focus:border-emerald-400 focus:bg-black/60 transition font-medium"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-emerald-300/80 uppercase tracking-wider block text-left">
+                  Confirm New Password *
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300" size={16} />
+                  <input
+                    type="password"
+                    value={forgotConfirmPassword}
+                    onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                    className="w-full rounded-xl border border-emerald-400/30 bg-black/40 pl-12 pr-4 py-3 text-xs text-white outline-none focus:border-emerald-400 focus:bg-black/60 transition font-medium"
+                    required
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-xs font-extrabold text-white shadow-md transition duration-200 disabled:opacity-50 cursor-pointer"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <FileCheck2 size={16} />}
+                {loading ? "Resetting password..." : "Update Password"}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* Modal Footer Text */}
+        <div className="w-full text-center text-xs text-white/90 font-medium mt-6 pt-4 border-t border-white/20">
+          By signing in, you agree to our{" "}
+          <span
+            onClick={() => setShowTermsModal(true)}
+            className="font-extrabold text-[#FFB800] hover:text-white underline underline-offset-2 decoration-[#FFB800]/80 cursor-pointer transition"
+          >
+            Terms and Conditions
+          </span>
+          .
+        </div>
+
+      </div>
+
+      {/* Terms and Conditions Modal */}
+      <FloatingModal
+        open={showTermsModal}
+        title="Terms of Service & Privacy Policy"
+        eyebrow="Official Barangay Agreement"
+        description="Barangay Upper Mingading • Republic of the Philippines"
+        maxWidth="max-w-lg"
+        onClose={() => setShowTermsModal(false)}
+        footer={
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full">
+            <span className="text-[11px] font-semibold text-slate-500">
+              Republic Act No. 10173 (Data Privacy Act of 2012)
+            </span>
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={() => setShowTermsModal(false)}
+                className="w-full sm:w-auto px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer border border-slate-200"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAgreeTerms(true);
+                  setShowTermsModal(false);
+                }}
+                className="w-full sm:w-auto rounded-xl bg-gradient-to-r from-[#0B5D3B] via-[#0D7349] to-[#08452B] hover:brightness-110 text-white px-5 py-2 text-xs font-black transition shadow-md cursor-pointer active:scale-95 flex items-center justify-center gap-1.5"
+              >
+                <Check size={14} className="text-emerald-300" />
+                <span>I Accept & Agree</span>
+              </button>
+            </div>
+          </div>
+        }
+      >
+        <div className="space-y-3.5 text-xs text-slate-700 py-1 font-medium">
+          <div className="p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-200/90 text-emerald-950 space-y-1">
+            <p className="font-extrabold text-xs text-emerald-900 leading-snug">
+              Welcome to KaagapAI — Official Administrative & Resident Portal of Barangay Upper Mingading.
+            </p>
+            <p className="text-[11.5px] text-emerald-800/90 leading-relaxed">
+              By accessing, registering, or signing into this portal, you agree to comply with the terms and privacy regulations set forth by the Sangguniang Barangay.
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-1.5 hover:border-emerald-300 transition">
+            <h4 className="font-black text-xs uppercase tracking-wider text-[#0B5D3B] flex items-center gap-1.5">
+              <span>🏛️ 1. Eligibility & Verified Residency</span>
+            </h4>
+            <p className="text-[11.5px] leading-relaxed text-slate-600">
+              Access is strictly authorized for verified residents, household heads, and officials of Barangay Upper Mingading.
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-2xs space-y-1.5 hover:border-emerald-300 transition">
+            <h4 className="font-black text-xs uppercase tracking-wider text-[#0B5D3B] flex items-center gap-1.5">
+              <span>🔐 2. Account Confidentiality & Security</span>
+            </h4>
+            <p className="text-[11.5px] leading-relaxed text-slate-600">
+              You are solely responsible for maintaining the confidentiality of your username and password.
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200 shadow-2xs space-y-1.5 hover:border-emerald-300 transition">
+            <h4 className="font-black text-xs uppercase tracking-wider text-blue-900 flex items-center gap-1.5">
+              <span>🛡️ 3. Privacy Policy & Data Privacy Act (R.A. 10173)</span>
+            </h4>
+            <p className="text-[11.5px] leading-relaxed text-slate-700">
+              In strict compliance with the <strong>Data Privacy Act of 2012 (Republic Act No. 10173)</strong>, all personal data is encrypted and processed exclusively for official barangay registry and clearance generation.
+            </p>
+          </div>
+        </div>
+      </FloatingModal>
+
+    </div>
+  );
+};
 
 export default Login;

@@ -1,7 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const DEFAULT_SUPABASE_URL = "https://gknygquumtlhasfsiusn.supabase.co";
+const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrbnlncXV1bXRsaGFzZnNpdXNuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk0OTYxNzksImV4cCI6MjA5NTA3MjE3OX0.EDe5Pr8FKO6FEU3pIuHP2ze_TiwuZfWtbravbNmkIso";
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY;
 const SUPABASE_REQUEST_TIMEOUT_MS = 20000;
 
 const fetchWithTimeout = async (input, init = {}) => {

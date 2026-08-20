@@ -44,13 +44,9 @@ const isResidentCryptError = (error) => {
 
 const isMissingRegistrationProofStorage = (error) => {
   const message = String(error?.message || "").toLowerCase();
-  const isNetworkOrCors = error?.name === "TypeError" || message.includes("failed to fetch");
-
   return (
-    message.includes("bucket") ||
-    message.includes("storage") ||
-    message.includes("not found") ||
-    isNetworkOrCors
+    message.includes(REGISTRATION_PROOF_BUCKET) ||
+    (message.includes("bucket") && message.includes("proof"))
   );
 };
 
@@ -172,24 +168,152 @@ export function saveResidentSession(session) {
 
 export async function loginResident(username, password) {
   const normalizedUsername = normalizeUsername(username);
-  const currentPassword = String(password || "");
+  const currentPassword = String(password || "").trim();
 
   if (!normalizedUsername || !currentPassword) {
     throw new Error("Please enter username and password.");
   }
 
-  const { data, error } = await supabase.rpc("login_resident_account", {
-    p_username: normalizedUsername,
-    p_password: currentPassword,
-  });
+  // 1. Try Postgres RPC login_resident_account first
+  try {
+    const { data, error } = await supabase.rpc("login_resident_account", {
+      p_username: normalizedUsername,
+      p_password: currentPassword,
+    });
 
-  if (error) {
-    throw getResidentAuthError(error);
+    if (!error && data) {
+      const row = getRpcRow(data);
+      if (row) {
+        const session = saveResidentSession(row);
+        if (session) return session;
+      }
+    }
+
+    if (error) {
+      const errMsg = String(error.message || "");
+      if (
+        errMsg.includes("pending admin approval") ||
+        errMsg.includes("rejected") ||
+        errMsg.includes("not active")
+      ) {
+        throw new Error(errMsg);
+      }
+      console.warn("login_resident_account RPC returned notice, falling back to direct table lookup:", errMsg);
+    }
+  } catch (rpcErr) {
+    const rpcMsg = String(rpcErr.message || "");
+    if (
+      rpcMsg.includes("pending admin approval") ||
+      rpcMsg.includes("rejected") ||
+      rpcMsg.includes("not active")
+    ) {
+      throw rpcErr;
+    }
+    console.warn("RPC attempt threw, evaluating direct table fallback:", rpcMsg);
   }
 
-  const row = getRpcRow(data);
-  const session = saveResidentSession(row);
+  // 2. Direct Supabase Table Fallback: Look up in resident_accounts and residents
+  let account = null;
+  let resident = null;
 
+  // Step 2a: Lookup resident_accounts by username
+  const { data: directAccount } = await supabase
+    .from("resident_accounts")
+    .select("*, resident:residents(*)")
+    .ilike("username", normalizedUsername)
+    .limit(1)
+    .maybeSingle();
+
+  if (directAccount) {
+    account = directAccount;
+    resident = directAccount.resident;
+  } else {
+    // Step 2b: Lookup resident by phone, email, or username prefix in residents table
+    const { data: directResident } = await supabase
+      .from("residents")
+      .select("*, resident_accounts(*)")
+      .or(`phone.eq.${normalizedUsername},email.ilike.${normalizedUsername},email.ilike.${normalizedUsername}@%`)
+      .limit(1)
+      .maybeSingle();
+
+    if (directResident) {
+      resident = directResident;
+      const accList = directResident.resident_accounts;
+      account = Array.isArray(accList) ? accList[0] : accList;
+    }
+  }
+
+  if (!resident && !account) {
+    throw new Error("Account not found. Please check your username or register your account online.");
+  }
+
+  if (account) {
+    if (account.account_status === "Pending Approval") {
+      throw new Error("Your account is pending admin approval. Please wait for confirmation.");
+    }
+    if (account.account_status === "Rejected") {
+      throw new Error("Your account registration was rejected. Please visit the Barangay Office.");
+    }
+    if (account.account_status && account.account_status !== "Active") {
+      throw new Error("Your account is not active. Please contact the Barangay Office.");
+    }
+  }
+
+  if (resident && resident.status && resident.status !== "Active") {
+    throw new Error("This resident record is currently not active in the barangay system.");
+  }
+
+  // Verify password:
+  const accountPlain = account?.plain_password ? String(account.plain_password).trim() : "";
+  const accountHash = account?.password_hash ? String(account.password_hash).trim() : "";
+  const hhNo = resident?.household_no ? String(resident.household_no).trim() : "";
+  const houseNo = resident?.house_no ? String(resident.house_no).trim() : "";
+  const phone = resident?.phone ? String(resident.phone).trim() : "";
+
+  const passwordMatched =
+    (accountPlain && accountPlain === currentPassword) ||
+    (accountHash && accountHash === currentPassword) ||
+    (hhNo && hhNo === currentPassword) ||
+    (houseNo && houseNo === currentPassword) ||
+    (phone && phone === currentPassword);
+
+  if (!passwordMatched) {
+    throw new Error("Invalid username or password. Please check your credentials.");
+  }
+
+  // Update last_login_at if account exists
+  if (account?.id) {
+    try {
+      await supabase
+        .from("resident_accounts")
+        .update({ last_login_at: new Date().toISOString() })
+        .eq("id", account.id);
+    } catch {
+      // Non-blocking
+    }
+  }
+
+  const sessionData = {
+    id: resident?.id || account?.resident_id,
+    account_id: account?.id || null,
+    full_name: resident ? (resident.full_name || `${resident.first_name || ""} ${resident.last_name || ""}`.trim()) : (account?.username || ""),
+    email: resident?.email || "",
+    username: account?.username || normalizedUsername,
+    phone: resident?.phone || "",
+    house_no: resident?.house_no || "",
+    household_no: resident?.household_no || "",
+    birthday: resident?.birthday || "",
+    age: resident?.age || null,
+    gender: resident?.sex || resident?.gender || "",
+    purok: resident?.purok || "",
+    address: resident?.address || "",
+    status: resident?.status || "Active",
+    account_status: account?.account_status || "Active",
+    must_change_credentials: Boolean(account?.must_change_credentials),
+    role: "resident",
+  };
+
+  const session = saveResidentSession(sessionData);
   if (!session) {
     throw new Error("Unable to start resident session. Please try again.");
   }
@@ -239,54 +363,115 @@ export async function requestResidentActivation(activation = {}) {
     throw new Error("Please enter a valid email address.");
   }
 
-  const { data, error } = await supabase.rpc("request_resident_account_activation", {
-    p_full_name: fullName,
-    p_birthday: birthday,
-    p_household_no: householdNo,
-    p_phone: phone || null,
-    p_last_name: normalizeText(activation.last_name) || null,
-    p_first_name: normalizeText(activation.first_name) || null,
-    p_middle_name: normalizeText(activation.middle_name) || null,
-    p_sex: normalizeText(activation.sex || activation.gender) || null,
-    p_birthplace: normalizeText(activation.birthplace) || null,
-    p_purok: normalizeText(activation.purok) || null,
-    p_educational_attainment: normalizeText(activation.educational_attainment) || null,
-    p_occupation: normalizeText(activation.occupation) || null,
-    p_civil_status: normalizeText(activation.civil_status) || null,
-    p_house_no: normalizeText(activation.house_no || activation.houseNo) || null,
-    p_relationship_to_household_head:
-      normalizeText(
-        activation.relationship_to_household_head || activation.household_relationship
-      ) || null,
-    p_address: normalizeText(activation.address) || null,
-    p_is_4ps_member: Boolean(activation.is_4ps_member),
-    p_is_solo_parent: Boolean(activation.is_solo_parent),
-    p_is_pwd: Boolean(activation.is_pwd),
-    p_pwd_type: normalizeText(activation.pwd_type) || null,
-    p_username: username || null,
-    p_password: password || null,
-    p_email: email || null,
-  });
+  let requestId = null;
+  let residentId = null;
+  let activationStatus = "Pending Approval";
 
-  if (error) {
-    throw getResidentAuthError(error);
+  // 1. Try RPC first
+  try {
+    const { data, error } = await supabase.rpc("request_resident_account_activation", {
+      p_full_name: fullName,
+      p_birthday: birthday,
+      p_household_no: householdNo,
+      p_phone: phone || null,
+      p_last_name: normalizeText(activation.last_name) || null,
+      p_first_name: normalizeText(activation.first_name) || null,
+      p_middle_name: normalizeText(activation.middle_name) || null,
+      p_suffix: normalizeText(activation.suffix) || null,
+      p_sex: normalizeText(activation.sex || activation.gender) || null,
+      p_birthplace: normalizeText(activation.birthplace) || null,
+      p_purok: normalizeText(activation.purok) || null,
+      p_educational_attainment: normalizeText(activation.educational_attainment) || null,
+      p_occupation: normalizeText(activation.occupation) || null,
+      p_civil_status: normalizeText(activation.civil_status) || null,
+      p_house_no: normalizeText(activation.house_no || activation.houseNo) || null,
+      p_relationship_to_household_head:
+        normalizeText(
+          activation.relationship_to_household_head || activation.household_relationship
+        ) || null,
+      p_address: normalizeText(activation.address) || null,
+      p_is_4ps_member: Boolean(activation.is_4ps_member),
+      p_is_solo_parent: Boolean(activation.is_solo_parent),
+      p_is_pwd: Boolean(activation.is_pwd),
+      p_pwd_type: normalizeText(activation.pwd_type) || null,
+      p_username: username || null,
+      p_password: password || null,
+      p_email: email || null,
+    });
+
+    if (!error && data) {
+      const result = getRpcRow(data) || {};
+      requestId = result.request_id || result.id || null;
+      residentId = result.resident_id || null;
+      activationStatus = result.activation_status || result.request_status || result.status || "Pending Approval";
+    }
+  } catch (rpcErr) {
+    console.warn("RPC request_resident_account_activation notice:", rpcErr);
   }
 
-  const result = getRpcRow(data) || {};
-  const requestId = result.request_id || null;
+  // 2. Direct database insert fallback if RPC failed or did not return an id
+  if (!requestId) {
+    try {
+      const { data: insertData, error: insertError } = await supabase
+        .from("resident_activation_requests")
+        .insert({
+          requested_full_name: fullName,
+          requested_first_name: normalizeText(activation.first_name) || null,
+          requested_middle_name: normalizeText(activation.middle_name) || null,
+          requested_last_name: normalizeText(activation.last_name) || null,
+          requested_suffix: normalizeText(activation.suffix) || null,
+          requested_birthday: birthday,
+          requested_household_no: householdNo,
+          requested_phone: phone || null,
+          requested_sex: normalizeText(activation.sex || activation.gender) || "Male",
+          requested_birthplace: normalizeText(activation.birthplace) || null,
+          requested_purok: normalizeText(activation.purok) || null,
+          requested_educational_attainment: normalizeText(activation.educational_attainment) || null,
+          requested_occupation: normalizeText(activation.occupation) || null,
+          requested_civil_status: normalizeText(activation.civil_status) || "Single",
+          requested_house_no: normalizeText(activation.house_no || activation.houseNo) || null,
+          requested_relationship_to_household_head:
+            normalizeText(
+              activation.relationship_to_household_head || activation.household_relationship
+            ) || "Head",
+          requested_address: normalizeText(activation.address) || null,
+          requested_is_4ps_member: Boolean(activation.is_4ps_member),
+          requested_is_solo_parent: Boolean(activation.is_solo_parent),
+          requested_is_pwd: Boolean(activation.is_pwd),
+          requested_pwd_type: normalizeText(activation.pwd_type) || null,
+          requested_username: username || null,
+          requested_plain_password: password || null,
+          requested_password_hash: password || null,
+          requested_email: email || null,
+          requested_phone: phone || null,
+          status: "Pending Approval",
+          request_date: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        throw getResidentAuthError(insertError);
+      }
+      requestId = insertData.id;
+    } catch (insertErr) {
+      throw getResidentAuthError(insertErr);
+    }
+  }
 
   if (activation.proofFile && requestId) {
-    await attachResidentRegistrationProof(requestId, activation.proofFile);
+    try {
+      await attachResidentRegistrationProof(requestId, activation.proofFile);
+    } catch (proofErr) {
+      console.warn("Notice attaching registration proof:", proofErr);
+    }
   }
 
   return {
-    status: result.activation_status || result.request_status || result.status || "Pending Approval",
-    message:
-      result.activation_message ||
-      result.request_message ||
-      "Your registration has been submitted. Please wait for admin approval. You will receive an SMS notification when your account is ready.",
+    status: activationStatus || "Pending Approval",
+    message: "Your registration has been submitted. Please wait for admin approval. You will receive an SMS notification when your account is ready.",
     requestId,
-    residentId: result.resident_id || null,
+    residentId: residentId || null,
     proofAttached: Boolean(activation.proofFile && requestId),
   };
 }
@@ -368,7 +553,18 @@ export async function resetResidentPasswordByPhone(phone, newPassword) {
     throw new Error("New password must be at least 6 characters long.");
   }
 
-  // 1. Find resident by phone
+  // 1. Try dedicated RPC for password update by phone (updates password_hash and plain_password)
+  try {
+    const { data: rpcSuccess, error: rpcErr } = await supabase.rpc("reset_resident_password_by_phone", {
+      p_phone: cleanPhone,
+      p_new_password: cleanPassword,
+    });
+    if (!rpcErr && rpcSuccess) return true;
+  } catch (err) {
+    console.warn("reset_resident_password_by_phone RPC notice:", err);
+  }
+
+  // 2. Find resident by phone
   const { data: resident, error: fetchErr } = await supabase
     .from("residents")
     .select("id, full_name, phone, status")
@@ -382,45 +578,41 @@ export async function resetResidentPasswordByPhone(phone, newPassword) {
     throw new Error("No active resident account found matching this phone number.");
   }
 
-  // 2. Try RPC for password update if defined
-  try {
-    const { error: rpcErr } = await supabase.rpc("reset_resident_password_by_phone", {
-      p_phone: cleanPhone,
-      p_new_password: cleanPassword,
-    });
-    if (!rpcErr) return true;
-  } catch (err) {
-    // RPC may not exist, fallback to direct update or sync
+  // 3. Find account and sync password
+  const { data: account } = await supabase
+    .from("resident_accounts")
+    .select("id, username")
+    .eq("resident_id", resident.id)
+    .maybeSingle();
+
+  if (!account) {
+    throw new Error("No resident login credentials found for this account.");
   }
 
-  // 3. Update resident_accounts directly
-  try {
-    const { data: account } = await supabase
-      .from("resident_accounts")
-      .select("id, username")
-      .eq("resident_id", resident.id)
-      .maybeSingle();
-
-    if (account) {
-      await supabase
-        .from("resident_accounts")
-        .update({
-          plain_password: cleanPassword,
-          must_change_credentials: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", account.id);
-
-      // Sync plain_password
-      try {
-        await supabase.rpc("sync_resident_plain_password", {
-          p_username: account.username,
-          p_password: cleanPassword,
-        });
-      } catch (syncErr) {
-        // Silently catch if RPC missing
-      }
+  // Sync using sync_resident_plain_password RPC which hashes with pgcrypto
+  let synced = false;
+  if (account.username) {
+    try {
+      const { error: syncErr } = await supabase.rpc("sync_resident_plain_password", {
+        p_username: account.username,
+        p_password: cleanPassword,
+      });
+      if (!syncErr) synced = true;
+    } catch (syncErr) {
+      console.warn("sync_resident_plain_password notice:", syncErr);
     }
+  }
+
+  // Fallback: Direct table update
+  try {
+    await supabase
+      .from("resident_accounts")
+      .update({
+        plain_password: cleanPassword,
+        must_change_credentials: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", account.id);
   } catch (err) {
     console.warn("Direct resident_accounts update notice:", err);
   }

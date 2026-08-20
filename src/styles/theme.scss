@@ -242,4 +242,27 @@ body, button, input, select, textarea {
     border-radius: 6px;
     text-transform: capitalize;
   }
+
+  // Checkbox Styles
+  .MuiCheckbox-root {
+    color: #94a3b8 !important;
+    padding: 6px !important;
+
+    &.Mui-checked,
+    &.MuiCheckbox-indeterminate {
+      color: #10b981 !important;
+    }
+
+    svg {
+      font-size: 20px !important;
+    }
+  }
+
+  .MuiDataGrid-row.Mui-selected {
+    background-color: #ecfdf5 !important;
+
+    &:hover {
+      background-color: #d1fae5 !important;
+    }
+  }
 }

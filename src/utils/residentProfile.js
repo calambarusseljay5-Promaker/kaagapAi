@@ -1,6 +1,6 @@
 export const sexOptions = ["Male", "Female"];
 
-export const purokDefinitions = [
+export const defaultPurokDefinitions = [
   {
     value: "Kamonsil",
     label: "Kamonsil",
@@ -87,7 +87,209 @@ export const purokDefinitions = [
   },
 ];
 
-export const purokOptions = purokDefinitions.map((purok) => purok.value);
+const PUROK_STORAGE_KEY = "kaagapai_barangay_custom_puroks";
+
+export function getCustomPurokDefinitions() {
+  try {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(PUROK_STORAGE_KEY) : null;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const clean = parsed
+          .filter(
+            (p) =>
+              p &&
+              typeof p === "object" &&
+              p.label &&
+              p.label !== "[object Object]" &&
+              p.value &&
+              p.value !== "objectObject" &&
+              p.value !== "[object Object]"
+          )
+          .map((p, idx) => ({
+            id: p.id || `purok_${p.value || idx}_${idx}`,
+            value: String(p.value || "").trim().toLowerCase(),
+            label: String(p.label || "").trim(),
+            color: p.color || "#059669",
+            aliases: Array.isArray(p.aliases) ? p.aliases : [p.label, `Purok ${p.label}`],
+          }));
+
+        if (clean.length > 0) {
+          return clean;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to parse custom purok definitions:", e);
+  }
+  return defaultPurokDefinitions.map((p, idx) => ({
+    ...p,
+    id: p.id || `purok_default_${p.value || idx}`,
+  }));
+}
+
+export function saveCustomPurokDefinitions(definitions) {
+  try {
+    if (typeof window !== "undefined") {
+      const clean = (Array.isArray(definitions) ? definitions : [])
+        .filter(
+          (p) =>
+            p &&
+            typeof p === "object" &&
+            p.label &&
+            p.label !== "[object Object]" &&
+            p.value &&
+            p.value !== "objectObject" &&
+            p.value !== "[object Object]"
+        )
+        .map((p, idx) => ({
+          id: p.id || `purok_${p.value || idx}_${idx}`,
+          value: String(p.value || "").trim().toLowerCase(),
+          label: String(p.label || "").trim(),
+          color: p.color || "#059669",
+          aliases: Array.isArray(p.aliases) ? p.aliases : [p.label, `Purok ${p.label}`],
+        }));
+
+      localStorage.setItem(
+        PUROK_STORAGE_KEY,
+        JSON.stringify(clean.length > 0 ? clean : defaultPurokDefinitions)
+      );
+      window.dispatchEvent(new CustomEvent("kaagapai_puroks_changed", { detail: clean }));
+    }
+  } catch (e) {
+    console.error("Failed to save custom puroks:", e);
+  }
+}
+
+export function addCustomPurok(nameOrObj, color = "#059669") {
+  let name = "";
+  let purokColor = color || "#059669";
+
+  if (typeof nameOrObj === "object" && nameOrObj !== null) {
+    name = String(nameOrObj.name || nameOrObj.label || "").trim();
+    purokColor = nameOrObj.color || purokColor;
+  } else {
+    name = String(nameOrObj || "").trim();
+  }
+
+  const cleanName = name.trim();
+  if (!cleanName || cleanName === "[object Object]") {
+    throw new Error("Please provide a valid Purok name.");
+  }
+
+  const current = getCustomPurokDefinitions();
+  const value = cleanName.toLowerCase().replace(/[^a-z0-9]/g, "") || cleanName.toLowerCase();
+  if (
+    current.some(
+      (p) =>
+        String(p.value).toLowerCase() === value ||
+        String(p.label).toLowerCase() === cleanName.toLowerCase()
+    )
+  ) {
+    throw new Error(`Purok "${cleanName}" already exists.`);
+  }
+
+  const newPurok = {
+    id: `purok_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    value: value || cleanName,
+    label: cleanName,
+    color: purokColor,
+    aliases: [cleanName, `Purok ${cleanName}`, `Purok-${cleanName}`],
+  };
+
+  const updated = [...current, newPurok];
+  saveCustomPurokDefinitions(updated);
+  return updated;
+}
+
+export function updateCustomPurok(oldValueOrObj, newNameOrObj, newColor) {
+  let oldValue = "";
+  let cleanName = "";
+  let color = newColor;
+
+  if (typeof oldValueOrObj === "object" && oldValueOrObj !== null) {
+    oldValue = String(oldValueOrObj.value || oldValueOrObj.id || oldValueOrObj.label || "");
+  } else {
+    oldValue = String(oldValueOrObj || "");
+  }
+
+  if (typeof newNameOrObj === "object" && newNameOrObj !== null) {
+    cleanName = String(newNameOrObj.name || newNameOrObj.label || "").trim();
+    color = newNameOrObj.color || color;
+  } else {
+    cleanName = String(newNameOrObj || "").trim();
+  }
+
+  if (!cleanName || cleanName === "[object Object]") {
+    throw new Error("Please provide a valid Purok name.");
+  }
+
+  const current = getCustomPurokDefinitions();
+  const cleanOld = oldValue.trim().toLowerCase();
+  const newValue = cleanName.toLowerCase().replace(/[^a-z0-9]/g, "") || cleanName.toLowerCase();
+
+  const updated = current.map((p) => {
+    const isMatch =
+      String(p.id || "").toLowerCase() === cleanOld ||
+      String(p.value || "").toLowerCase() === cleanOld ||
+      String(p.label || "").toLowerCase() === cleanOld;
+
+    if (isMatch) {
+      return {
+        ...p,
+        value: newValue,
+        label: cleanName,
+        color: color || p.color || "#059669",
+        aliases: Array.from(
+          new Set([...(p.aliases || []), cleanName, `Purok ${cleanName}`, `Purok-${cleanName}`])
+        ),
+      };
+    }
+    return p;
+  });
+
+  saveCustomPurokDefinitions(updated);
+  return updated;
+}
+
+export function deleteCustomPurok(valueToDelete) {
+  const target =
+    typeof valueToDelete === "object" && valueToDelete !== null
+      ? (valueToDelete.id || valueToDelete.value || valueToDelete.label || "")
+      : String(valueToDelete || "");
+
+  const cleanTarget = String(target).trim().toLowerCase();
+  if (!cleanTarget) return getCustomPurokDefinitions();
+
+  const current = getCustomPurokDefinitions();
+  if (current.length <= 1) {
+    throw new Error("You must have at least one Purok in the barangay.");
+  }
+
+  const updated = current.filter((p) => {
+    const pVal = String(p.value || "").trim().toLowerCase();
+    const pLabel = String(p.label || "").trim().toLowerCase();
+    const pId = String(p.id || "").trim().toLowerCase();
+    return pVal !== cleanTarget && pLabel !== cleanTarget && pId !== cleanTarget;
+  });
+
+  saveCustomPurokDefinitions(updated);
+  return updated;
+}
+
+export function resetCustomPuroks() {
+  saveCustomPurokDefinitions(defaultPurokDefinitions);
+  return defaultPurokDefinitions;
+}
+
+// Proxied dynamically or current snapshot
+export const purokDefinitions = defaultPurokDefinitions;
+
+export function getPurokOptions() {
+  return getCustomPurokDefinitions().map((p) => p.value);
+}
+
+export const purokOptions = defaultPurokDefinitions.map((purok) => purok.value);
 
 export const otherPurokDefinition = {
   value: "__other__",
@@ -132,6 +334,28 @@ export const householdRelationshipOptions = [
   "Other",
 ];
 
+export const standardOccupationOptions = [
+  "Farmer",
+  "Fisherman / Fisherfolk",
+  "Vendor / Market Trader",
+  "Driver (Tricycle / Jeepney / Habal-habal / Truck)",
+  "Construction Worker / Carpenter / Laborer",
+  "Housewife / Homemaker",
+  "Self-Employed / Freelancer",
+  "Private Employee",
+  "Government Employee / Official",
+  "Barangay Tanod / Barangay Worker",
+  "Teacher / Educator",
+  "Health Worker / BHW / Nurse",
+  "Security Guard",
+  "OFW (Overseas Filipino Worker)",
+  "Business Owner / Entrepreneur",
+  "Student",
+  "Retired / Pensioner",
+  "None / Unemployed",
+  "Others (Please Specify)",
+];
+
 export const categoryFilterOptions = [
   { value: "", label: "All categories" },
   { value: "senior", label: "Senior citizens" },
@@ -161,9 +385,10 @@ export function getPurokDefinition(value) {
   const normalized = normalizePurokKey(rawStr);
   const stripped = normalized.replace(/^purok/, "");
 
+  const definitions = getCustomPurokDefinitions();
   return (
-    purokDefinitions.find((purok) =>
-      purok.aliases.some((alias) => {
+    definitions.find((purok) =>
+      (purok.aliases || []).some((alias) => {
         const normAlias = normalizePurokKey(alias);
         const strippedAlias = normAlias.replace(/^purok/, "");
         return (
@@ -172,7 +397,9 @@ export function getPurokDefinition(value) {
           (stripped && strippedAlias === stripped) ||
           (stripped && strippedAlias === normalized)
         );
-      })
+      }) ||
+      normalizePurokKey(purok.value) === normalized ||
+      normalizePurokKey(purok.label) === normalized
     ) || null
   );
 }
@@ -204,7 +431,8 @@ export function getPurokFilterAliases(value) {
 
 export function buildPurokSummary(residents = [], options = {}) {
   const { includeOther = false } = options;
-  const summary = purokDefinitions.map((purok) => ({
+  const definitions = getCustomPurokDefinitions();
+  const summary = definitions.map((purok) => ({
     ...purok,
     residents: 0,
     households: 0,
@@ -261,8 +489,8 @@ export function calculateAge(birthday, referenceDate = new Date()) {
   return age >= 0 && age <= 130 ? age : null;
 }
 
-export function buildFullName({ first_name = "", middle_name = "", last_name = "" } = {}) {
-  return [first_name, middle_name, last_name]
+export function buildFullName({ first_name = "", middle_name = "", last_name = "", suffix = "" } = {}) {
+  return [first_name, middle_name, last_name, suffix]
     .map((part) => String(part || "").trim())
     .filter(Boolean)
     .join(" ");

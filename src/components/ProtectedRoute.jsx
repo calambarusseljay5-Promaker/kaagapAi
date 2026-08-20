@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { supabase } from "../lib/supabaseClient";
 import { getResidentSession } from "../services/residentAuthService";
+import { getAdminSession } from "../services/authService";
 import { getDashboardPathForRole, roleMatches } from "../utils/authRoutes";
 
 const AUTH_CHECK_TIMEOUT_MS = 30000;
@@ -48,15 +49,35 @@ const ProtectedRoute = ({ requiredRole = null }) => {
     };
 
     const verifySession = async (session) => {
+      const isRouteForAdmin = roleMatches("admin", requiredRole);
+      const isRouteForResident = roleMatches("resident", requiredRole);
+      const adminSession = getAdminSession();
+
+      if (adminSession && adminSession.profile?.role === "admin" && isRouteForAdmin) {
+        return { isAllowed: true, redirectTo: null };
+      }
+
       if (!session) {
         const residentSession = getResidentSession();
 
-        if (residentSession && roleMatches("resident", requiredRole)) {
+        if (adminSession && isRouteForAdmin) {
           return { isAllowed: true, redirectTo: null };
+        }
+
+        if (residentSession && isRouteForResident) {
+          return { isAllowed: true, redirectTo: null };
+        }
+
+        if (isRouteForAdmin) {
+          return { isAllowed: false, redirectTo: "/admin" };
         }
 
         if (residentSession) {
           return { isAllowed: false, redirectTo: "/resident-dashboard" };
+        }
+
+        if (adminSession) {
+          return { isAllowed: false, redirectTo: "/dashboard" };
         }
 
         return { isAllowed: false, redirectTo: "/" };
@@ -74,7 +95,8 @@ const ProtectedRoute = ({ requiredRole = null }) => {
             .from("user_profiles")
             .select("role")
             .eq("id", session.user.id)
-            .single()
+            .limit(1)
+            .maybeSingle()
             .then(({ data }) => {
               if (data?.role) sessionStorage.setItem(cacheKey, data.role);
             })
@@ -86,17 +108,14 @@ const ProtectedRoute = ({ requiredRole = null }) => {
           };
         }
 
-        const { data: profileData, error } = await supabase
+        const { data: profileData } = await supabase
           .from("user_profiles")
           .select("role")
           .eq("id", session.user.id)
-          .single();
+          .limit(1)
+          .maybeSingle();
 
-        if (error || !profileData) {
-          if (error && error.code !== "PGRST116") {
-            throw error;
-          }
-
+        if (!profileData) {
           return { isAllowed: false, redirectTo: "/" };
         }
 

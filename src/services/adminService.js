@@ -141,12 +141,16 @@ const attachResidentAccounts = async (residents = []) => {
     );
     const withAccounts = residentList.map((resident) => {
       const account = accountByResidentId.get(resident.id) || null;
+      let rawUName = account?.username || resident.portal_username || resident.username || (resident.email ? resident.email.split("@")[0] : "");
+      if (rawUName && typeof rawUName === "string" && rawUName.includes("@")) {
+        rawUName = rawUName.split("@")[0];
+      }
 
       return {
         ...resident,
         resident_account: account,
-        portal_username: account?.username || "",
-        portal_password: account?.plain_password || "",
+        portal_username: rawUName ? rawUName.trim().toLowerCase() : "",
+        portal_password: account?.plain_password || resident.portal_password || "",
         portal_account_status: account?.account_status || "",
         portal_must_change_credentials: Boolean(account?.must_change_credentials),
       };
@@ -164,13 +168,20 @@ const attachResidentAccounts = async (residents = []) => {
       console.warn("Unable to load resident portal accounts:", error.message || error);
     }
 
-    const fallbackResidents = residentList.map((resident) => ({
-      ...resident,
-      resident_account: null,
-      portal_username: "",
-      portal_account_status: "",
-      portal_must_change_credentials: false,
-    }));
+    const fallbackResidents = residentList.map((resident) => {
+      let rawUName = resident.portal_username || resident.username || (resident.email ? resident.email.split("@")[0] : "");
+      if (rawUName && typeof rawUName === "string" && rawUName.includes("@")) {
+        rawUName = rawUName.split("@")[0];
+      }
+
+      return {
+        ...resident,
+        resident_account: null,
+        portal_username: rawUName ? rawUName.trim().toLowerCase() : "",
+        portal_account_status: "",
+        portal_must_change_credentials: false,
+      };
+    });
 
     return Array.isArray(residents) ? fallbackResidents : fallbackResidents[0] || residents;
   }
@@ -307,7 +318,8 @@ export async function createResident(residentData) {
       .from(RESIDENTS_TABLE)
       .insert([payload])
       .select()
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (error) throw error;
     return attachResidentAccounts(data);
@@ -331,7 +343,8 @@ export async function updateResident(resident, updates) {
       .update(payload)
       .eq("id", id)
       .select()
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (error) throw error;
     return attachResidentAccounts(data);
@@ -395,7 +408,8 @@ export async function getResidentById(id) {
       .from(RESIDENTS_TABLE)
       .select("*")
       .eq("id", id)
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (error) throw error;
     return attachResidentAccounts(data);
@@ -460,11 +474,14 @@ export async function createResidentPortalAccount(residentId, username, password
     });
 
     // Save plain_password to table so Admin can retrieve it
-    await supabase
-      .from(RESIDENT_ACCOUNTS_TABLE)
-      .update({ username: normalizedUsername, plain_password: password })
-      .eq("resident_id", residentId)
-      .catch(() => {});
+    try {
+      await supabase
+        .from(RESIDENT_ACCOUNTS_TABLE)
+        .update({ username: normalizedUsername, plain_password: password })
+        .eq("resident_id", residentId);
+    } catch {
+      // Non-blocking fallback
+    }
 
     if (error) {
       // If the RPC doesn't exist, fall back to direct insert with crypt()
@@ -516,6 +533,20 @@ export async function updateResidentPortalAccount(residentId, username, password
     if (fetchError) throw fetchError;
 
     if (existingAccount) {
+      if (normalizedUsername !== existingAccount.username) {
+        const { data: duplicateAccount, error: dupError } = await supabase
+          .from(RESIDENT_ACCOUNTS_TABLE)
+          .select("id")
+          .eq("username", normalizedUsername)
+          .neq("resident_id", residentId)
+          .maybeSingle();
+
+        if (dupError) throw dupError;
+        if (duplicateAccount) {
+          throw new Error(`Username "${normalizedUsername}" is already taken. Please choose a different username.`);
+        }
+      }
+
       const updateData = { username: normalizedUsername };
       if (password) {
         updateData.plain_password = password;
@@ -523,11 +554,14 @@ export async function updateResidentPortalAccount(residentId, username, password
       }
 
       // Update plain_password and username directly on table
-      await supabase
-        .from(RESIDENT_ACCOUNTS_TABLE)
-        .update(updateData)
-        .eq("resident_id", residentId)
-        .catch(() => {});
+      try {
+        await supabase
+          .from(RESIDENT_ACCOUNTS_TABLE)
+          .update(updateData)
+          .eq("resident_id", residentId);
+      } catch {
+        // Non-blocking fallback
+      }
 
       if (!password) {
         return { username: normalizedUsername, status: "Active", action: "updated" };

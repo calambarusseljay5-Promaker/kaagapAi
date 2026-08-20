@@ -23,8 +23,15 @@ const countBy = (items, getKey) =>
   }, {});
 
 const STATS_PAGE_SIZE = 1000;
+let cachedResidentStats = null;
+let cachedStatsTimestamp = 0;
+const STATS_CACHE_TTL_MS = 60000; // 1 minute cache
 
-export async function fetchResidentStats() {
+export async function fetchResidentStats(forceRefresh = false) {
+  if (!forceRefresh && cachedResidentStats && Date.now() - cachedStatsTimestamp < STATS_CACHE_TTL_MS) {
+    return cachedResidentStats;
+  }
+
   // Paginate to fetch ALL residents — Supabase caps each request at ~1000 rows
   const residents = [];
   let totalRecordCount = null;
@@ -101,7 +108,7 @@ export async function fetchResidentStats() {
     else ageDistribution["Seniors (60+)"]++;
   });
 
-  return {
+  const result = {
     loaded: true,
     totalRecords: totalRecordCount,
     currentResidents: currentResidents.length,
@@ -122,4 +129,9 @@ export async function fetchResidentStats() {
     ageDistribution,
     anonymousResidents,
   };
+
+  cachedResidentStats = result;
+  cachedStatsTimestamp = Date.now();
+
+  return result;
 }

@@ -5,8 +5,8 @@ const PageWrapper = ({ title, description, children, actions }) => {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-transparent">
       <Header title={title} subtitle={description} actions={actions} />
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-5 pb-36 sm:px-6 lg:px-8 custom-scrollbar">
-        <div className="gov-workspace-panel mx-auto max-w-[1600px] p-6 sm:p-8 space-y-6">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pl-2 pr-3 py-2 sm:pl-3 sm:pr-4 sm:py-3 pb-20 custom-scrollbar">
+        <div className="gov-workspace-panel w-full p-3 sm:p-4 space-y-4 min-w-0">
           {children}
         </div>
       </div>
