@@ -31,16 +31,31 @@ import { isTargetAdminPortal, isTargetResidentPortal } from "./utils/authRoutes"
 import "./App.css";
 
 const PortGuard = ({ target, children }) => {
-  const isAdmin = isTargetAdminPortal();
-  const isResident = isTargetResidentPortal();
+  if (typeof window === "undefined") return children;
 
-  // Strict Lock: Resident Port/Domain cannot open Admin routes
-  if (isResident && target === "admin") {
+  const port = window.location.port;
+  const hostname = window.location.hostname.toLowerCase();
+  const isDedicatedAdminPortOrHost =
+    port === "5173" ||
+    hostname.startsWith("admin.") ||
+    hostname.includes("-admin.") ||
+    hostname.includes("admin-") ||
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_PORTAL_TYPE === "admin");
+
+  const isDedicatedResidentPortOrHost =
+    port === "5174" ||
+    hostname.startsWith("resident.") ||
+    hostname.startsWith("portal.") ||
+    hostname.includes("-resident.") ||
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_PORTAL_TYPE === "resident");
+
+  // Strict Lock ONLY applies when explicitly on a dedicated resident port/host attempting to open admin target
+  if (isDedicatedResidentPortOrHost && target === "admin") {
     return <Navigate to="/resident-dashboard" replace />;
   }
 
-  // Strict Lock: Admin Port/Domain cannot open Resident routes
-  if (isAdmin && target === "resident") {
+  // Strict Lock ONLY applies when explicitly on a dedicated admin port/host attempting to open resident target
+  if (isDedicatedAdminPortOrHost && target === "resident") {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -57,7 +72,7 @@ const ResidentPortalGate = ({ children }) => {
 
 const RootPortal = () => {
   const isAdmin = isTargetAdminPortal();
-  return <Login portalMode={isAdmin ? "admin" : "resident"} />;
+  return <Login portalMode={isAdmin ? "admin" : null} />;
 };
 
 function App() {

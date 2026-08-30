@@ -468,14 +468,16 @@ const Login = ({ portalMode = null }) => {
     return () => clearInterval(timer);
   }, [otpCooldown, otpRemaining]);
 
-  // Session check & redirect (Strictly isolated between Admin and Resident portals)
+  // Session check & redirect (Supports both Admin and Resident portals on deployed link)
   useEffect(() => {
     const justLoggedOut = sessionStorage.getItem("just_logged_out") === "true";
     if (justLoggedOut) return;
 
+    const adminSession = getAdminSession();
+    const residentSession = getResidentSession();
+
     if (isTargetAdmin) {
       // Strictly check Admin Session on Admin Portal
-      const adminSession = getAdminSession();
       if (adminSession && adminSession.profile?.role === "admin") {
         navigate("/dashboard", { replace: true });
         return;
@@ -499,12 +501,22 @@ const Login = ({ portalMode = null }) => {
       return;
     }
 
-    // Strictly check Resident Session on Resident Portal
-    const residentSession = getResidentSession();
+    if (isExplicitResidentRoute) {
+      if (residentSession) {
+        navigate("/resident-dashboard", { replace: true });
+      }
+      return;
+    }
+
+    // On unified domain root: if already logged in as Admin or Resident, redirect appropriately
+    if (adminSession && adminSession.profile?.role === "admin") {
+      navigate("/dashboard", { replace: true });
+      return;
+    }
     if (residentSession) {
       navigate("/resident-dashboard", { replace: true });
     }
-  }, [navigate, isTargetAdmin]);
+  }, [navigate, isTargetAdmin, isExplicitResidentRoute]);
 
   const checkUsernameExists = async (usernameToCheck) => {
     const raw = (usernameToCheck || "").trim().toLowerCase();
@@ -1632,11 +1644,28 @@ const Login = ({ portalMode = null }) => {
       <div className="min-h-screen w-full bg-white flex flex-col justify-between select-none font-sans text-slate-800 antialiased overflow-x-hidden">
         
         {/* TOP SOCIAL BAR */}
-        <div className="w-full bg-[#0B5D3B] text-white py-1 px-3 sm:px-8 flex items-center justify-center sm:justify-end text-xs">
-          <div className="flex items-center gap-4 text-white/90">
+        <div className="w-full bg-[#0B5D3B] text-white py-1 px-3 sm:px-8 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2 text-white/90">
             <span className="text-[10.5px] sm:text-[11px] font-semibold tracking-wide">
               Upper Mingading Official Portal
             </span>
+          </div>
+          <div className="flex items-center gap-2.5 sm:gap-3 text-white/90">
+            <button
+              type="button"
+              onClick={() => openLoginView("resident_login")}
+              className="text-[10px] sm:text-[11px] font-bold text-emerald-200 hover:text-white underline cursor-pointer"
+            >
+              👥 Resident Portal
+            </button>
+            <span className="text-white/40">•</span>
+            <button
+              type="button"
+              onClick={() => openLoginView("admin_login")}
+              className="text-[10px] sm:text-[11px] font-bold text-amber-300 hover:text-white underline cursor-pointer"
+            >
+              🏛️ Barangay Admin
+            </button>
           </div>
         </div>
 
@@ -1683,7 +1712,7 @@ const Login = ({ portalMode = null }) => {
           </div>
 
           {/* 3. SEPARATE "LOG IN NOW" BUTTON SECTION */}
-          <div className="w-full flex justify-center pt-2.5 sm:pt-3.5 pb-3 px-4">
+          <div className="w-full flex flex-col items-center justify-center pt-2.5 sm:pt-3.5 pb-3 px-4 gap-2.5">
             <div className="relative group">
               {/* Pulsing ambient glow aura behind button */}
               <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-emerald-600/30 via-teal-500/30 to-emerald-600/30 blur-md opacity-70 group-hover:opacity-100 transition-all duration-500 animate-pulse pointer-events-none" />
@@ -1702,6 +1731,27 @@ const Login = ({ portalMode = null }) => {
                 <span>LOG IN NOW</span>
                 <ArrowRight size={16} className="text-emerald-300 group-hover:translate-x-1.5 transition-transform duration-200" />
               </motion.button>
+            </div>
+
+            {/* Quick Portal Switcher Selector */}
+            <div className="flex items-center gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => openLoginView("resident_login")}
+                className="px-3 py-1 rounded-full bg-emerald-50 hover:bg-emerald-100 text-[#0B5D3B] font-bold text-[11px] border border-emerald-200 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+              >
+                <UserRound size={12} />
+                <span>Resident Portal</span>
+              </button>
+              <span className="text-slate-300">|</span>
+              <button
+                type="button"
+                onClick={() => openLoginView("admin_login")}
+                className="px-3 py-1 rounded-full bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-[#0B5D3B] font-bold text-[11px] border border-slate-200 hover:border-emerald-300 transition cursor-pointer flex items-center gap-1 shadow-2xs"
+              >
+                <ShieldCheck size={12} />
+                <span>Barangay Admin</span>
+              </button>
             </div>
           </div>
 
@@ -1876,10 +1926,10 @@ const Login = ({ portalMode = null }) => {
 
         {/* Centered Logo Badge */}
         {modalStep !== "resident_register" && (
-          <div className="flex flex-col items-center mb-5 relative z-10 w-full">
+          <div className="flex flex-col items-center mb-4 relative z-10 w-full">
             {/* Centered Logo Presentation */}
-            <div className="relative flex items-center justify-center mb-3">
-              <div className="relative h-20 w-20 sm:h-22 sm:w-22 rounded-2xl border-2 border-emerald-400/50 bg-gradient-to-b from-emerald-900/70 to-emerald-950/90 p-2 shadow-xl shadow-emerald-950/60 overflow-hidden ring-4 ring-emerald-500/20 flex items-center justify-center">
+            <div className="relative flex items-center justify-center mb-2.5">
+              <div className="relative h-18 w-18 sm:h-20 sm:w-20 rounded-2xl border-2 border-emerald-400/50 bg-gradient-to-b from-emerald-900/70 to-emerald-950/90 p-2 shadow-xl shadow-emerald-950/60 overflow-hidden ring-4 ring-emerald-500/20 flex items-center justify-center">
                 <img
                   src="/logo.png"
                   alt="Barangay Upper Mingading Seal"
@@ -1888,21 +1938,51 @@ const Login = ({ portalMode = null }) => {
               </div>
             </div>
 
-            {/* Role / Portal Status Badge */}
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-900/70 border border-emerald-400/40 backdrop-blur-md shadow-xs mb-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[9px] font-black uppercase tracking-wider text-emerald-200">
-                {modalStep === "admin_login" ? "Official Admin Portal" : "Citizen Services Portal"}
-              </span>
-            </div>
-
-            <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight drop-shadow-md">
+            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-md">
               Kaagap<span className="text-[#FFD700]">AI</span>
             </h1>
-            <p className="text-xs font-semibold text-emerald-100/90 mt-0.5 flex items-center justify-center gap-1 drop-shadow-xs">
+            <p className="text-[11.5px] font-semibold text-emerald-100/90 mt-0.5 flex items-center justify-center gap-1 drop-shadow-xs mb-3">
               <MapPin size={12} className="text-emerald-300" />
               Barangay Upper Mingading • Aleosan, Cotabato
             </p>
+
+            {/* Interactive Portal Switcher Tabs */}
+            <div className="w-full grid grid-cols-2 p-1 rounded-2xl bg-black/40 border border-emerald-400/30 shadow-inner gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalStep("resident_login");
+                  setAccessMode("Resident");
+                  setError(null);
+                  setNotice(null);
+                }}
+                className={`py-2 px-2.5 rounded-xl text-xs font-black transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer ${
+                  modalStep === "resident_login" || accessMode === "Resident"
+                    ? "bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-950/60 border border-emerald-300/40"
+                    : "text-emerald-200/70 hover:text-white hover:bg-white/5"
+                }`}
+              >
+                <UserRound size={14} className="shrink-0" />
+                <span className="truncate">Resident Portal</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setModalStep("admin_login");
+                  setAccessMode("Admin");
+                  setError(null);
+                  setNotice(null);
+                }}
+                className={`py-2 px-2.5 rounded-xl text-xs font-black transition-all duration-200 flex items-center justify-center gap-1.5 cursor-pointer ${
+                  modalStep === "admin_login" || accessMode === "Admin"
+                    ? "bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-950/60 border border-emerald-300/40"
+                    : "text-emerald-200/70 hover:text-white hover:bg-white/5"
+                }`}
+              >
+                <ShieldCheck size={14} className="shrink-0" />
+                <span className="truncate">Barangay Admin</span>
+              </button>
+            </div>
           </div>
         )}
 
@@ -1931,13 +2011,13 @@ const Login = ({ portalMode = null }) => {
                   value={formData.email}
                   onChange={handleInputChange}
                   placeholder={
-                    modalStep === "admin_login"
+                    modalStep === "admin_login" || accessMode === "Admin"
                       ? "Enter admin username (e.g. kaagapai)"
                       : "Enter your mobile phone or username"
                   }
                   className="w-full h-12 rounded-xl bg-black/35 border border-emerald-400/30 pl-11 pr-4 outline-none text-xs font-semibold text-white placeholder-emerald-200/60 focus:border-emerald-400 focus:bg-black/50 focus:ring-2 focus:ring-emerald-400/30 transition-all duration-200 backdrop-blur-md"
                   required
-                  autoComplete={modalStep === "admin_login" ? "username" : "tel"}
+                  autoComplete={modalStep === "admin_login" || accessMode === "Admin" ? "username" : "tel"}
                 />
               </div>
 
@@ -1949,7 +2029,7 @@ const Login = ({ portalMode = null }) => {
                   value={formData.password}
                   onChange={handleInputChange}
                   placeholder={
-                    modalStep === "admin_login"
+                    modalStep === "admin_login" || accessMode === "Admin"
                       ? "Enter admin password"
                       : "Enter your password"
                   }
@@ -1995,7 +2075,7 @@ const Login = ({ portalMode = null }) => {
                   setError(null);
                   setNotice(null);
                   setModalStep(
-                    modalStep === "admin_login"
+                    modalStep === "admin_login" || accessMode === "Admin"
                       ? "admin_forgot_password"
                       : "resident_forgot_phone"
                   );
@@ -2007,7 +2087,7 @@ const Login = ({ portalMode = null }) => {
             </div>
 
             {modalStep === "resident_login" && (
-              <div className="pt-3 border-t border-white/15">
+              <div className="pt-3 border-t border-white/15 space-y-2">
                 <p className="text-xs text-emerald-200/90 font-medium">
                   New resident of Barangay Upper Mingading?{" "}
                   <button
@@ -2020,6 +2100,41 @@ const Login = ({ portalMode = null }) => {
                     className="font-black text-amber-300 hover:text-white hover:underline transition cursor-pointer"
                   >
                     Register Account Online
+                  </button>
+                </p>
+                <p className="text-[11px] text-emerald-300/80">
+                  Barangay Official or Staff?{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalStep("admin_login");
+                      setAccessMode("Admin");
+                      setError(null);
+                      setNotice(null);
+                    }}
+                    className="font-bold text-amber-300 hover:text-white hover:underline cursor-pointer"
+                  >
+                    Switch to Admin Login
+                  </button>
+                </p>
+              </div>
+            )}
+
+            {modalStep === "admin_login" && (
+              <div className="pt-3 border-t border-white/15 space-y-2">
+                <p className="text-xs text-emerald-200/90 font-medium">
+                  Resident of Barangay Upper Mingading?{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModalStep("resident_login");
+                      setAccessMode("Resident");
+                      setError(null);
+                      setNotice(null);
+                    }}
+                    className="font-black text-emerald-300 hover:text-white hover:underline transition cursor-pointer"
+                  >
+                    Switch to Resident Portal
                   </button>
                 </p>
               </div>
