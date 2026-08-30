@@ -243,8 +243,14 @@ export async function approveResidentActivationRequest(request) {
     let residentId = reqData.resident_id;
     let fullName = reqData.requested_full_name;
 
-    // If new resident without an existing resident_id, create or link resident record
-    if (!residentId) {
+    // Check if resident exists or needs to be created
+    if (residentId) {
+      // Ensure existing resident is marked active
+      await supabase
+        .from("residents")
+        .update({ status: "Active" })
+        .eq("id", residentId);
+    } else {
       // Check if resident already exists by full name and birthday
       const { data: existingResident } = await supabase
         .from("residents")
@@ -254,6 +260,12 @@ export async function approveResidentActivationRequest(request) {
         .maybeSingle();
 
       if (existingResident) {
+        residentId = existingResident.id;
+        await supabase
+          .from("residents")
+          .update({ status: "Active" })
+          .eq("id", residentId);
+      } else {
         // Calculate age
         let calcAge = null;
         if (reqData.requested_birthday) {
@@ -309,31 +321,36 @@ export async function approveResidentActivationRequest(request) {
 
     // Create or activate resident account with exact chosen credentials
     const username = reqData.requested_username || reqData.username || `resident_${String(residentId).slice(0, 8)}`;
-    const plainPassword = reqData.requested_plain_password || reqData.requested_household_no || reqData.requested_phone || "kaagapai123";
-    const passwordHash = reqData.requested_password_hash || plainPassword;
+    const plainPassword = reqData.requested_plain_password || reqData.requested_password_hash || reqData.requested_password || reqData.password || "";
     const phone = reqData.requested_phone || reqData.phone || null;
     const email = reqData.requested_email || reqData.email || null;
     
     // Check existing account
     const { data: existingAccount } = await supabase
       .from("resident_accounts")
-      .select("id")
+      .select("id, plain_password")
       .eq("resident_id", residentId)
       .maybeSingle();
 
+    const finalPlainPassword = plainPassword || existingAccount?.plain_password || "";
+    const passwordHash = finalPlainPassword || reqData.requested_password_hash || "kaagapai123";
+
     if (existingAccount) {
+      const updatePayload = {
+        username: username,
+        phone: phone,
+        email: email,
+        account_status: "Active",
+        must_change_credentials: false,
+        updated_at: new Date().toISOString(),
+      };
+      if (finalPlainPassword) {
+        updatePayload.plain_password = finalPlainPassword;
+        updatePayload.password_hash = passwordHash;
+      }
       await supabase
         .from("resident_accounts")
-        .update({
-          username: username,
-          plain_password: plainPassword,
-          password_hash: passwordHash,
-          phone: phone,
-          email: email,
-          account_status: "Active",
-          must_change_credentials: false,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq("resident_id", residentId);
     } else {
       await supabase
@@ -341,7 +358,7 @@ export async function approveResidentActivationRequest(request) {
         .insert({
           resident_id: residentId,
           username: username,
-          plain_password: plainPassword,
+          plain_password: finalPlainPassword || null,
           password_hash: passwordHash,
           phone: phone,
           email: email,
@@ -392,6 +409,8 @@ export async function approveResidentActivationRequest(request) {
       resident_id: residentId,
       full_name: fullName,
       username: username,
+      phone: phone,
+      email: email,
       account_status: "Active",
     };
   } catch (err) {
@@ -471,6 +490,171 @@ export async function rejectResidentActivationRequest(request, reason = "Rejecte
     };
   } catch (err) {
     throw getActivationError(err);
+  }
+}
+
+/**
+ * Automatically sync and recover any approved online registration requests
+ * ensuring that every approved registrant has an active row in the `residents` table
+ * and a linked account in `resident_accounts`.
+let lastSyncTime = 0;
+const SYNC_THROTTLE_MS = 10 * 60 * 1000; // 10 minutes
+
+/**
+ * Recovers approved online registrations that might be missing in residents table.
+ * Throttled to prevent overhead on page loads.
+ */
+export async function syncApprovedOnlineRegistrations(force = false) {
+  const now = Date.now();
+  if (!force && now - lastSyncTime < SYNC_THROTTLE_MS) {
+    return 0;
+  }
+  lastSyncTime = now;
+
+  try {
+    const { data: approvedRequests, error } = await supabase
+      .from("resident_activation_requests")
+      .select("*")
+      .eq("status", "Approved")
+      .is("resident_id", null);
+
+    if (error || !approvedRequests || approvedRequests.length === 0) {
+      return 0;
+    }
+
+    let syncedCount = 0;
+
+    for (const req of approvedRequests) {
+      const fullName = req.requested_full_name;
+      if (!fullName) continue;
+
+        // Check if resident exists by full name and birthday
+        let targetResidentId = null;
+        let query = supabase.from("residents").select("id").ilike("full_name", fullName);
+        if (req.requested_birthday) {
+          query = query.eq("birthday", req.requested_birthday);
+        }
+        const { data: matchedRes } = await query.maybeSingle();
+
+        if (matchedRes) {
+          targetResidentId = matchedRes.id;
+          await supabase
+            .from("residents")
+            .update({ status: "Active" })
+            .eq("id", targetResidentId);
+        } else {
+          // Calculate age
+          let calcAge = null;
+          if (req.requested_birthday) {
+            const birthDate = new Date(req.requested_birthday);
+            const today = new Date();
+            let age = today.getFullYear() - birthDate.getFullYear();
+            const m = today.getMonth() - birthDate.getMonth();
+            if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+              age--;
+            }
+            calcAge = age >= 0 && age <= 130 ? age : null;
+          }
+
+          const { data: createdRes, error: createErr } = await supabase
+            .from("residents")
+            .insert({
+              full_name: fullName,
+              first_name: req.requested_first_name || null,
+              middle_name: req.requested_middle_name || null,
+              last_name: req.requested_last_name || null,
+              suffix: req.requested_suffix || null,
+              phone: req.requested_phone || null,
+              email: req.requested_email || null,
+              house_no: req.requested_house_no || null,
+              household_no: req.requested_household_no || null,
+              relationship_to_household_head: req.requested_relationship_to_household_head || "Head",
+              birthday: req.requested_birthday || null,
+              age: calcAge,
+              sex: req.requested_sex || "Male",
+              gender: req.requested_sex || "Male",
+              birthplace: req.requested_birthplace || "",
+              purok: req.requested_purok || "",
+              educational_attainment: req.requested_educational_attainment || "",
+              occupation: req.requested_occupation || "",
+              civil_status: req.requested_civil_status || "Single",
+              address: req.requested_address || "",
+              is_4ps_member: Boolean(req.requested_is_4ps_member),
+              is_solo_parent: Boolean(req.requested_is_solo_parent),
+              is_pwd: Boolean(req.requested_is_pwd),
+              pwd_type: req.requested_pwd_type || null,
+              status: "Active",
+            })
+            .select()
+            .single();
+
+          if (!createErr && createdRes) {
+            targetResidentId = createdRes.id;
+          }
+        }
+
+        if (targetResidentId) {
+          // Link activation request
+          await supabase
+            .from("resident_activation_requests")
+            .update({ resident_id: targetResidentId })
+            .eq("id", req.id);
+
+          // Create or update resident_accounts
+          const username = req.requested_username || `resident_${String(targetResidentId).slice(0, 8)}`;
+          const plainPassword = req.requested_plain_password || req.requested_password_hash || req.requested_password || req.password || "";
+          const phone = req.requested_phone || null;
+          const email = req.requested_email || null;
+
+          const { data: existingAccount } = await supabase
+            .from("resident_accounts")
+            .select("id, plain_password")
+            .eq("resident_id", targetResidentId)
+            .maybeSingle();
+
+          const finalPlainPassword = plainPassword || existingAccount?.plain_password || "";
+          const passwordHash = finalPlainPassword || req.requested_password_hash || "kaagapai123";
+
+          if (existingAccount) {
+            const updatePayload = {
+              username,
+              phone,
+              email,
+              account_status: "Active",
+              must_change_credentials: false,
+              updated_at: new Date().toISOString(),
+            };
+            if (finalPlainPassword) {
+              updatePayload.plain_password = finalPlainPassword;
+              updatePayload.password_hash = passwordHash;
+            }
+            await supabase
+              .from("resident_accounts")
+              .update(updatePayload)
+              .eq("resident_id", targetResidentId);
+          } else {
+            await supabase
+              .from("resident_accounts")
+              .insert({
+                resident_id: targetResidentId,
+                username,
+                plain_password: finalPlainPassword || null,
+                password_hash: passwordHash,
+                phone,
+                email,
+                account_status: "Active",
+                must_change_credentials: false,
+              });
+          }
+
+          syncedCount++;
+        }
+      }
+
+    return syncedCount;
+  } catch (err) {
+    console.warn("syncApprovedOnlineRegistrations notice:", err);
+    return 0;
   }
 }
 

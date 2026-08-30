@@ -1,29 +1,37 @@
 import { useCallback, useEffect, useState, useMemo } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { createPortal } from "react-dom";
-import { Bell, User, ChevronDown, X, CheckCheck, Loader2, RefreshCw, LogOut, Shield, Settings } from "lucide-react";
+import { Bell, User, ChevronDown, X, CheckCheck, Loader2, RefreshCw, LogOut, Shield, Settings, Trash2, AlertCircle, CheckCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useConfirm } from "../context/ConfirmContext";
 import {
   getCurrentUserWithProfile,
   logoutUser,
   PROFILE_UPDATED_EVENT,
+  getAdminCredentials,
 } from "../services/authService";
 import { getSystemSettings } from "../services/adminActivityService";
 import {
   fetchAdminNotifications,
   markAdminNotificationRead,
   markAllAdminNotificationsRead,
+  deleteAdminNotification,
+  deleteAllAdminNotifications,
   subscribeAdminNotificationChanges,
 } from "../services/adminNotificationService";
+import MyAccountModal from "./modals/MyAccountModal";
+import AccountSecurityModal from "./modals/AccountSecurityModal";
+import SystemSettingsModal from "./modals/SystemSettingsModal";
 
-const getDisplayName = (user) =>
+const getDisplayName = (user, account) =>
+  account?.profile?.full_name ||
   user?.user_metadata?.full_name ||
-  user?.user_metadata?.name ||
+  getAdminCredentials().fullName ||
+  getSystemSettings().adminFullName ||
   user?.user_metadata?.username ||
+  getAdminCredentials().username ||
   getSystemSettings().adminUsername ||
-  user?.email?.split("@")[0] ||
-  "Admin User";
+  "Barangay Administrator";
 
 const getRelativeTime = (value) => {
   const time = new Date(value || 0).getTime();
@@ -73,21 +81,64 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
   const [account, setAccount] = useState(null);
+  const [activeAdminModal, setActiveAdminModal] = useState(null); // "my-account" | "account-security" | "system-settings" | null
   const [notifications, setNotifications] = useState([]);
   const [notificationsLoading, setNotificationsLoading] = useState(true);
   const [notificationError, setNotificationError] = useState("");
+  const [toastMessage, setToastMessage] = useState(null);
+
+  useEffect(() => {
+    const handleOpenModal = (event) => {
+      const modalType = event?.detail || event?.data;
+      if (modalType === "my-account" || modalType === "account-security" || modalType === "system-settings") {
+        setActiveAdminModal(modalType);
+      }
+    };
+
+    window.addEventListener("kaagapai:open_admin_modal", handleOpenModal);
+    return () => {
+      window.removeEventListener("kaagapai:open_admin_modal", handleOpenModal);
+    };
+  }, []);
+
+  useEffect(() => {
+    let timer;
+    const handleToast = (event) => {
+      if (event.detail) {
+        setToastMessage(event.detail);
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          setToastMessage(null);
+        }, 5500);
+      }
+    };
+
+    window.addEventListener("admin_system_toast", handleToast);
+    return () => {
+      window.removeEventListener("admin_system_toast", handleToast);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   const unreadCount = notifications.filter((notification) => !notification.is_read).length;
-  const displayName = getDisplayName(account?.user);
-  const displayEmail = getSystemSettings().officeEmail || account?.user?.email || "uppermingading@gmail.com";
+  const displayName = getDisplayName(account?.user, account);
+  const displayEmail = getAdminCredentials().email || getSystemSettings().officeEmail || account?.user?.email || "uppermingading@gmail.com";
   const displayRole = account?.profile?.role || "Administrator";
   const savedPhoto = typeof window !== "undefined" ? localStorage.getItem("kaagapai_admin_profile_photo") : null;
-  const profilePhotoUrl = account?.profile?.profile_photo_url || account?.user?.user_metadata?.avatar_url || savedPhoto || null;
+  const profilePhotoUrl = account?.profile?.profile_photo_url || account?.user?.user_metadata?.avatar_url || getAdminCredentials().profilePhotoUrl || savedPhoto || null;
 
   const messages = useMemo(() => {
+    if (title) {
+      return [
+        {
+          title,
+          subtitle: subtitle || ""
+        }
+      ];
+    }
     return [
       {
-        title: title || "Good Evening, Admin! 👋",
+        title: "Good Evening, Admin! 👋",
         subtitle: subtitle || "Welcome back to Barangay Upper Mingading"
       },
       {
@@ -104,13 +155,18 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
   const [msgIdx, setMsgIdx] = useState(0);
 
   useEffect(() => {
+    if (messages.length <= 1) {
+      setMsgIdx(0);
+      return undefined;
+    }
     const timer = setInterval(() => {
       setMsgIdx((prev) => (prev + 1) % messages.length);
     }, 6000);
     return () => clearInterval(timer);
   }, [messages]);
 
-  const currentMsg = messages[msgIdx];
+  const currentMsg = messages[msgIdx] || { title: title || "", subtitle: subtitle || "" };
+  const isSteady = messages.length <= 1;
 
   const loadNotifications = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -214,6 +270,27 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
     );
   };
 
+  const handleDeleteNotification = (e, notificationId) => {
+    e.stopPropagation();
+    deleteAdminNotification(notificationId);
+    setNotifications((currentNotifications) =>
+      currentNotifications.filter((n) => n.id !== notificationId)
+    );
+  };
+
+  const handleDeleteAllNotifications = async () => {
+    const ok = await confirm({
+      title: "Delete All Notifications?",
+      message: "Are you sure you want to remove all notifications from your admin feed?",
+      confirmText: "Delete All",
+      cancelText: "Cancel",
+      variant: "danger",
+    });
+    if (!ok) return;
+    deleteAllAdminNotifications(notifications.map((n) => n.id));
+    setNotifications([]);
+  };
+
   const confirmSignOut = () => {
     setShowSignOutConfirm(false);
     setShowProfile(false);
@@ -253,8 +330,9 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
   };
 
   return (
-    <header
-      className={`z-[9990] w-full ${
+    <>
+      <header
+        className={`z-[9990] w-full ${
         transparent
           ? "bg-transparent border-b-0 shadow-none relative"
           : "sticky top-0 border-b border-emerald-400/20 bg-gradient-to-r from-[rgba(2,43,29,0.85)] via-[rgba(3,62,43,0.78)] to-[rgba(2,35,23,0.85)] text-white shadow-xl backdrop-blur-xl relative transition-all"
@@ -264,21 +342,14 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
         <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/10 pointer-events-none z-0 overflow-hidden" />
       )}
 
-      <div className={`relative z-10 flex min-h-[82px] w-full items-center justify-between gap-4 py-3 ${
-        transparent ? "px-0" : "px-4 sm:px-6 lg:px-8"
-      }`}>
+      <div className={`relative z-10 flex ${
+        transparent ? "min-h-[56px] sm:min-h-[62px] py-1 px-0" : "min-h-[82px] py-3 px-4 sm:px-6 lg:px-8"
+      } w-full items-center justify-between gap-4`}>
         <div className="flex items-center gap-4 min-w-0 flex-1 lg:flex-none overflow-hidden">
-          {/* Animated Slide Out Right / Slide In Left Title & Subtitle Container */}
-          <div className="min-w-0 flex-1 relative overflow-hidden min-h-[48px] flex flex-col justify-center">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={msgIdx}
-                initial={{ opacity: 0, x: -45 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 45 }}
-                transition={{ duration: 0.5, ease: "easeInOut" }}
-                className="space-y-0.5"
-              >
+          {/* Steady / Animated Header Title & Subtitle Container */}
+          <div className="min-w-0 flex-1 relative overflow-hidden min-h-[42px] flex flex-col justify-center">
+            {isSteady ? (
+              <div className="space-y-0.5">
                 <h1
                   className={`truncate font-black tracking-tight ${
                     transparent
@@ -288,7 +359,7 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                 >
                   {currentMsg.title}
                 </h1>
-                {currentMsg.subtitle && (
+                {currentMsg.subtitle ? (
                   <p
                     className={`truncate font-medium ${
                       transparent
@@ -298,9 +369,41 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                   >
                     {currentMsg.subtitle}
                   </p>
-                )}
-              </motion.div>
-            </AnimatePresence>
+                ) : null}
+              </div>
+            ) : (
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={msgIdx}
+                  initial={{ opacity: 0, x: -45 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 45 }}
+                  transition={{ duration: 0.5, ease: "easeInOut" }}
+                  className="space-y-0.5"
+                >
+                  <h1
+                    className={`truncate font-black tracking-tight ${
+                      transparent
+                        ? "text-2xl sm:text-3xl text-white font-sans drop-shadow-md"
+                        : "text-xl sm:text-2xl lg:text-3xl text-white font-sans tracking-tight drop-shadow-md"
+                    }`}
+                  >
+                    {currentMsg.title}
+                  </h1>
+                  {currentMsg.subtitle && (
+                    <p
+                      className={`truncate font-medium ${
+                        transparent
+                          ? "text-xs sm:text-sm text-emerald-100 font-semibold drop-shadow-sm"
+                          : "text-xs sm:text-sm text-emerald-100/90 drop-shadow-xs"
+                      }`}
+                    >
+                      {currentMsg.subtitle}
+                    </p>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            )}
           </div>
         </div>
 
@@ -402,7 +505,7 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                           aria-label="Refresh notifications"
                           title="Refresh"
                         >
-                          <RefreshCw size={15} className={notificationsLoading ? "animate-spin" : ""} />
+                          <RefreshCw size={14} className={notificationsLoading ? "animate-spin" : ""} />
                         </button>
                         <button
                           type="button"
@@ -412,14 +515,25 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                           aria-label="Mark all notifications as read"
                           title="Mark all read"
                         >
-                          <CheckCheck size={15} />
+                          <CheckCheck size={14} />
                         </button>
+                        {notifications.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleDeleteAllNotifications}
+                            className="rounded-md p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                            aria-label="Delete all notifications"
+                            title="Clear / Delete all"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                         <button
                           onClick={() => setShowNotifications(false)}
                           className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                           aria-label="Close notifications"
                         >
-                          <X size={16} />
+                          <X size={15} />
                         </button>
                       </div>
                     </div>
@@ -443,44 +557,54 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                       ) : (
                         <div className="space-y-2">
                           {notifications.map((notification) => (
-                            <button
+                            <div
                               key={notification.id}
-                              type="button"
                               onClick={() => handleNotificationOpen(notification)}
-                              className={`w-full rounded-lg border p-3 text-left transition hover:border-blue-200 hover:bg-blue-50/60 ${notification.is_read
+                              className={`group relative w-full rounded-xl border p-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50/40 cursor-pointer ${
+                                notification.is_read
                                   ? "border-slate-200/70 bg-white/70"
-                                  : "border-blue-100 bg-blue-50/40"
-                                }`}
+                                  : "border-emerald-200 bg-emerald-50/50 shadow-2xs"
+                              }`}
                             >
                               <div className="flex items-start gap-3">
                                 <span
-                                  className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${getNotificationAccent(
+                                  className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${getNotificationAccent(
                                     notification.tone
                                   )}`}
                                 >
                                   <Bell size={14} />
                                 </span>
                                 <span className="min-w-0 flex-1">
-                                  <span className="flex items-start justify-between gap-3">
-                                    <span className="min-w-0">
-                                      <span className="block truncate text-sm font-semibold text-slate-900">
+                                  <span className="flex items-start justify-between gap-2">
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block truncate text-xs font-bold text-slate-900">
                                         {notification.title}
                                       </span>
-                                      <span className="mt-1 block text-sm leading-5 text-slate-600">
+                                      <span className="mt-0.5 block text-xs leading-relaxed text-slate-600">
                                         {notification.message}
                                       </span>
                                     </span>
-                                    {!notification.is_read ? (
-                                      <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-rose-500" />
-                                    ) : null}
+                                    <span className="flex items-center gap-1.5 shrink-0">
+                                      {!notification.is_read && (
+                                        <span className="h-2 w-2 rounded-full bg-rose-500" />
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleDeleteNotification(e, notification.id)}
+                                        className="rounded-md p-1 text-slate-400 opacity-0 group-hover:opacity-100 hover:bg-rose-100 hover:text-rose-700 transition"
+                                        title="Delete notification"
+                                      >
+                                        <Trash2 size={13} />
+                                      </button>
+                                    </span>
                                   </span>
-                                  <span className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-400">
+                                  <span className="mt-2 flex items-center justify-between gap-2 text-[10px] font-semibold text-slate-400">
                                     <span className="truncate">{notification.source}</span>
                                     <span className="shrink-0">{getRelativeTime(notification.created_at)}</span>
                                   </span>
                                 </span>
                               </div>
-                            </button>
+                            </div>
                           ))}
                         </div>
                       )}
@@ -549,36 +673,45 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                       </div>
                     </div>
                     <div className="mt-2 space-y-1 text-slate-900">
-                      <Link
-                        to="/my-account"
-                        onClick={() => setShowProfile(false)}
-                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-black text-slate-800 transition hover:bg-[#00552E]/10 hover:text-[#00552E] bg-slate-50 border border-slate-200/80"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowProfile(false);
+                          setActiveAdminModal("my-account");
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-black text-slate-800 transition hover:bg-[#00552E]/10 hover:text-[#00552E] bg-slate-50 border border-slate-200/80 cursor-pointer"
                       >
                         <User size={17} className="text-[#00552E] shrink-0" />
                         <span className="text-slate-900 font-extrabold">My Account</span>
-                      </Link>
-                      <Link
-                        to="/account-security"
-                        onClick={() => setShowProfile(false)}
-                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-[#00552E]/10 hover:text-[#00552E]"
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowProfile(false);
+                          setActiveAdminModal("account-security");
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-bold text-slate-800 transition hover:bg-[#00552E]/10 hover:text-[#00552E] cursor-pointer"
                       >
                         <Shield size={17} className="text-[#00552E] shrink-0" />
                         <span className="text-slate-900 font-bold">Account Security</span>
-                      </Link>
-                      <Link
-                        to="/system-settings"
-                        onClick={() => setShowProfile(false)}
-                        className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-800 transition hover:bg-[#00552E]/10 hover:text-[#00552E]"
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowProfile(false);
+                          setActiveAdminModal("system-settings");
+                        }}
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-bold text-slate-800 transition hover:bg-[#00552E]/10 hover:text-[#00552E] cursor-pointer"
                       >
                         <Settings size={17} className="text-[#00552E] shrink-0" />
                         <span className="text-slate-900 font-bold">System Settings</span>
-                      </Link>
+                      </button>
                       <div className="my-1.5 border-t border-slate-100" />
                       <button
                         type="button"
                         onClick={handleSignOut}
                         disabled={isSigningOut}
-                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-bold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-bold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
                       >
                         <LogOut size={17} className="text-rose-600 shrink-0" />
                         <span className="text-rose-600 font-black">{isSigningOut ? "Signing out..." : "Sign Out"}</span>
@@ -591,6 +724,70 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
             </div>
           </div>
         </header>
+
+        {/* ─── Floating Interactive Admin Modals ─── */}
+        <MyAccountModal
+          isOpen={activeAdminModal === "my-account"}
+          onClose={() => setActiveAdminModal(null)}
+        />
+        <AccountSecurityModal
+          isOpen={activeAdminModal === "account-security"}
+          onClose={() => setActiveAdminModal(null)}
+        />
+        <SystemSettingsModal
+          isOpen={activeAdminModal === "system-settings"}
+          onClose={() => setActiveAdminModal(null)}
+        />
+
+        {/* ─── Top Floating System Notification Toast ─── */}
+        <AnimatePresence>
+          {toastMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: -30, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -30, scale: 0.96 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              className={`fixed top-4 left-1/2 -translate-x-1/2 z-[9999999] flex items-center gap-3.5 rounded-2xl px-5 py-3.5 shadow-2xl backdrop-blur-2xl border max-w-xl w-[94%] sm:w-auto min-w-[340px] ${
+                toastMessage.type === "error"
+                  ? "bg-rose-900/95 text-white border-rose-400/50 shadow-rose-950/40"
+                  : "bg-[#064e3b]/95 text-white border-emerald-400/50 shadow-emerald-950/40"
+              }`}
+            >
+              <div
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                  toastMessage.type === "error" ? "bg-rose-500/20 text-rose-200" : "bg-emerald-400/20 text-emerald-200"
+                }`}
+              >
+                {toastMessage.type === "error" ? (
+                  <AlertCircle size={22} className="text-rose-300" />
+                ) : (
+                  <CheckCircle size={22} className="text-emerald-300" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p
+                  className={`text-[10px] font-black uppercase tracking-wider leading-none mb-1 ${
+                    toastMessage.type === "error" ? "text-rose-200" : "text-emerald-300"
+                  }`}
+                >
+                  {toastMessage.title || (toastMessage.type === "error" ? "System Alert" : "System Notification")}
+                </p>
+                <p className="text-xs font-bold text-white leading-relaxed break-words">
+                  {toastMessage.text}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setToastMessage(null)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-white/70 hover:text-white hover:bg-white/15 transition cursor-pointer shrink-0 ml-1"
+                title="Dismiss notification"
+              >
+                <X size={16} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </>
   );
 };
 

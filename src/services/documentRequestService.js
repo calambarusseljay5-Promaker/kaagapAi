@@ -110,11 +110,75 @@ const getPreparedDocuments = () => {
 
   try {
     const parsed = JSON.parse(storage.getItem(PREPARED_DOCUMENTS_KEY) || "{}");
-    return parsed && typeof parsed === "object" ? parsed : {};
+    if (parsed && typeof parsed === "object") {
+      let modified = false;
+      Object.keys(parsed).forEach((key) => {
+        if (parsed[key]?.fields?.orNumber === "2578557") {
+          parsed[key].fields.orNumber = "";
+          modified = true;
+        }
+      });
+      if (modified) {
+        storage.setItem(PREPARED_DOCUMENTS_KEY, JSON.stringify(parsed));
+      }
+      return parsed;
+    }
+    return {};
   } catch {
     return {};
   }
 };
+
+let lastCleanupTime = 0;
+const CLEANUP_THROTTLE_MS = 60 * 60 * 1000; // 1 hour
+
+/**
+ * Automatically moves completed, released, rejected or cancelled document requests
+ * older than the retention period (default 14 days) into the Recycle Bin to save admin space.
+ */
+export async function cleanupExpiredDocumentRequests(retentionDays = 14, force = false) {
+  const now = Date.now();
+  if (!force && now - lastCleanupTime < CLEANUP_THROTTLE_MS) {
+    return 0;
+  }
+  lastCleanupTime = now;
+
+  try {
+    const cutoffTime = Date.now() - retentionDays * 86400000;
+    const { data: requests, error } = await supabase
+      .from(DOCUMENT_REQUESTS_TABLE)
+      .select("*, residents(full_name)")
+      .in("status", ["Completed", "Released", "Rejected", "Cancelled"]);
+
+    if (error || !Array.isArray(requests) || requests.length === 0) return 0;
+
+    const expiredRequests = requests.filter((req) => {
+      const dateToCheck = req.updated_at || req.created_at;
+      if (!dateToCheck) return false;
+      const time = new Date(dateToCheck).getTime();
+      return !isNaN(time) && time < cutoffTime;
+    });
+
+    if (expiredRequests.length === 0) return 0;
+
+    for (const req of expiredRequests) {
+      try {
+        moveToRecycleBin(DOCUMENT_REQUESTS_TABLE, req.id, req, "Auto-archived completed/released request");
+        deletePreparedDocument(req.id);
+      } catch (err) {
+        console.warn("Failed to archive single document request to recycle bin:", err);
+      }
+    }
+
+    const idsToDelete = expiredRequests.map((r) => r.id);
+    await supabase.from(DOCUMENT_REQUESTS_TABLE).delete().in("id", idsToDelete);
+
+    return expiredRequests.length;
+  } catch (err) {
+    console.warn("Notice during document request auto-cleanup:", err);
+    return 0;
+  }
+}
 
 /**
  * Fetch document requests.
@@ -126,6 +190,9 @@ const getPreparedDocuments = () => {
  * @param {number} [params.limit] - limit number of results
  */
 export async function fetchDocumentRequests({ status = "", search = "", limit = 50 } = {}) {
+  // Non-blocking background cleanup for old requests
+  cleanupExpiredDocumentRequests().catch(() => {});
+
   let query = supabase
     .from(DOCUMENT_REQUESTS_TABLE)
     .select(DOCUMENT_REQUEST_WITH_RESIDENT_COLUMNS, { count: "exact" })
@@ -479,6 +546,7 @@ export async function createResidentNotification({
  * Mark a notification as read in the resident dashboard
  */
 export async function markResidentNotificationRead(id) {
+  if (!id) return null;
   const { data, error } = await supabase
     .from(RESIDENT_NOTIFICATIONS_TABLE)
     .update({ is_read: true })
@@ -486,6 +554,49 @@ export async function markResidentNotificationRead(id) {
     .select()
     .limit(1)
     .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Mark all notifications as read for a resident
+ */
+export async function markAllResidentNotificationsRead(residentId) {
+  if (!residentId) return [];
+  const { data, error } = await supabase
+    .from(RESIDENT_NOTIFICATIONS_TABLE)
+    .update({ is_read: true })
+    .eq("resident_id", residentId)
+    .select();
+
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Delete a single resident notification
+ */
+export async function deleteResidentNotification(id) {
+  if (!id) return null;
+  const { data, error } = await supabase
+    .from(RESIDENT_NOTIFICATIONS_TABLE)
+    .delete()
+    .eq("id", id);
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Clear all notifications for a resident
+ */
+export async function clearAllResidentNotifications(residentId) {
+  if (!residentId) return null;
+  const { data, error } = await supabase
+    .from(RESIDENT_NOTIFICATIONS_TABLE)
+    .delete()
+    .eq("resident_id", residentId);
 
   if (error) throw error;
   return data;

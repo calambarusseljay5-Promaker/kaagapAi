@@ -15,6 +15,7 @@ import {
   RotateCcw,
   Sparkles,
   User,
+  Eye,
   X,
   AlertTriangle,
 } from "lucide-react";
@@ -92,171 +93,126 @@ const compressOfficialPhoto = async (file) => {
   return canvas.toDataURL("image/jpeg", 0.84);
 };
 
-const Avatar = ({ official, size = "md", borderTheme = "gold" }) => {
-  const isCaptain = official?.level === "captain";
-  const dimensionClass =
-    size === "lg"
-      ? "h-[120px] w-[120px]"
-      : size === "md"
-      ? "h-[84px] w-[84px]"
-      : size === "sm"
-      ? "h-[64px] w-[64px]"
-      : "h-[50px] w-[50px]";
-  const textClass = size === "lg" ? "text-3xl" : size === "md" ? "text-xl" : "text-sm";
-
-  const ringClass =
-    borderTheme === "gold"
-      ? "ring-4 ring-amber-400 shadow-amber-500/30"
-      : borderTheme === "blue"
-      ? "ring-4 ring-cyan-400 shadow-cyan-500/30"
-      : borderTheme === "purple"
-      ? "ring-4 ring-fuchsia-400 shadow-purple-500/30"
-      : "ring-4 ring-lime-400 shadow-lime-500/30";
-
-  if (official?.photoUrl) {
-    return (
-      <span
-        className={`relative block shrink-0 overflow-hidden rounded-full border-2 border-white shadow-lg mx-auto bg-slate-900 ${ringClass} ${dimensionClass}`}
-      >
-        <img src={official.photoUrl} alt={official.name || "Official"} className="h-full w-full object-cover" />
-      </span>
-    );
-  }
+const Avatar = ({ official, size = "md", className = "" }) => {
+  const isCaptain = official?.id === "captain" || official?.level === "captain";
+  const sizeClasses = {
+    sm: "h-14 w-12 rounded-xl",
+    md: "h-20 w-16 rounded-xl",
+    lg: "h-32 w-28 rounded-2xl",
+    xl: "h-40 w-32 rounded-2xl",
+  }[size] || "h-32 w-28 rounded-2xl";
 
   return (
-    <span
-      className={`relative flex shrink-0 items-center justify-center rounded-full font-black shadow-lg mx-auto border-2 border-white bg-gradient-to-br from-slate-800 to-slate-950 text-white ${ringClass} ${textClass} ${dimensionClass}`}
+    <div
+      className={`relative shrink-0 overflow-hidden border-2 border-[#166534] bg-slate-100 shadow-md ${sizeClasses} ${className}`}
     >
-      {isCaptain ? (
-        <Crown size={size === "lg" ? 44 : size === "md" ? 30 : 22} className="text-amber-400" />
+      {official?.photoUrl ? (
+        <img
+          src={official.photoUrl}
+          alt={official?.name || "Official"}
+          className="h-full w-full object-cover"
+        />
       ) : (
-        <User size={size === "lg" ? 40 : size === "md" ? 28 : 20} className="text-slate-300" />
+        <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xl">
+          {isCaptain ? (
+            <Crown size={32} className="text-amber-400" />
+          ) : (
+            <User size={28} className="text-slate-300" />
+          )}
+        </div>
       )}
-    </span>
+    </div>
   );
 };
 
-/* ─── Level 1: Captain Card ─── */
-const CaptainCard = ({ official, onClick }) => {
+const FlowchartOfficialCard = ({
+  official,
+  onClick,
+  isCaptain = false,
+  isSK = false,
+  isStaff = false,
+  className = "",
+}) => {
   if (!official) return null;
 
   return (
     <div
       onClick={() => onClick(official)}
-      className="group relative cursor-pointer transition-all duration-300 hover:scale-[1.03] active:scale-[0.99] select-none z-10"
+      className={`group relative flex items-center gap-3 rounded-2xl bg-white border-2 border-[#166534] p-3 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left ${
+        isCaptain
+          ? "w-full max-w-[300px] sm:max-w-[350px] ring-2 ring-emerald-400/30"
+          : isStaff
+          ? "w-[225px] sm:w-[255px]"
+          : "w-[210px] sm:w-[240px]"
+      } ${className}`}
+      title={`Click to view profile of ${official.name}`}
     >
-      <div className="flex items-center gap-4 rounded-3xl border-2 border-amber-400 bg-gradient-to-r from-emerald-950/95 via-emerald-900/90 to-slate-950/95 p-3 pr-7 shadow-2xl shadow-emerald-950/80 backdrop-blur-xl ring-2 ring-amber-300/30">
-        <div className="relative">
-          <Avatar official={official} size="md" borderTheme="gold" />
-          <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-amber-400 text-slate-950 ring-2 ring-white shadow">
-            <Crown size={13} className="fill-slate-950" />
+      {/* Photo with matching green border */}
+      <div
+        className={`relative shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs ${
+          isCaptain
+            ? "h-14 w-12 sm:h-16 sm:w-14"
+            : "h-14 w-12 sm:h-16 sm:w-14"
+        }`}
+      >
+        {official.photoUrl ? (
+          <img
+            src={official.photoUrl}
+            alt={official.name}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-sm">
+            {isCaptain ? (
+              <Crown size={22} className="text-amber-400" />
+            ) : (
+              <User size={18} className="text-slate-300" />
+            )}
           </div>
-        </div>
+        )}
 
-        <div className="flex flex-col text-left">
-          <div className="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-blue-700 via-blue-600 to-cyan-600 px-6 py-1 text-xs font-black uppercase tracking-[0.16em] text-white shadow-md border border-blue-300/40">
-            CAPTAIN
-          </div>
-          <div className="mt-1.5 rounded-lg bg-white/95 px-3 py-1 text-center shadow-sm">
-            <div className="text-[9px] font-black uppercase tracking-wider text-slate-600">
-              Barangay Captain
-            </div>
-            <div className="text-xs font-black text-slate-950 truncate max-w-[210px]">
-              {official.name}
-            </div>
-          </div>
+        {/* Quick subtle hover indicator */}
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+          <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow">
+            <Eye size={9} />
+            <span>Details</span>
+          </span>
         </div>
       </div>
-    </div>
-  );
-};
 
-/* ─── Level 2: Kagawad Card ─── */
-const KagawadCard = ({ official, index, onClick }) => {
-  const kagawadNumber = index + 1;
+      {/* Official Credentials */}
+      <div className="flex flex-col min-w-0 flex-1">
+        {/* Role Badge Pill */}
+        <span
+          className={`inline-flex items-center gap-1 text-[8.5px] sm:text-[9px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border ${
+            isCaptain
+              ? "bg-amber-100 text-amber-900 border-amber-300"
+              : isSK
+              ? "bg-sky-100 text-sky-900 border-sky-300"
+              : "bg-emerald-100 text-emerald-900 border-emerald-300"
+          }`}
+        >
+          {isCaptain && <Crown size={10} className="text-amber-600" />}
+          <span>{official.position || "OFFICIAL"}</span>
+        </span>
 
-  return (
-    <div
-      onClick={() => onClick(official)}
-      className="group relative flex flex-col items-center cursor-pointer transition-all duration-300 hover:-translate-y-1.5 hover:scale-105 active:scale-95 select-none w-full"
-    >
-      <div className="relative flex flex-col items-center w-full rounded-2xl border border-lime-400/50 bg-gradient-to-b from-emerald-950/90 via-emerald-900/90 to-slate-950/95 p-2.5 pt-3.5 shadow-xl shadow-emerald-950/70 backdrop-blur-md">
-        <Avatar official={official} size="sm" borderTheme="lime" />
+        {/* Full Name */}
+        <h4
+          className={`font-black text-slate-900 leading-tight truncate ${
+            isCaptain ? "text-xs sm:text-[13.5px]" : "text-[11px] sm:text-xs"
+          }`}
+          title={official.name}
+        >
+          {official.name}
+        </h4>
 
-        <div className="mt-2 w-full text-center px-1">
-          <p className="text-[10.5px] font-black text-white truncate group-hover:text-amber-300 transition-colors" title={official.name}>
-            {official.name}
-          </p>
-        </div>
-
-        <div className="mt-2 w-full">
-          <div className="rounded-lg bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 py-1 px-1 text-center shadow border border-yellow-200">
-            <div className="text-[9px] font-black uppercase tracking-wider text-slate-950 flex items-center justify-center gap-0.5">
-              <span>★</span>
-              <span>KAGAWAD {kagawadNumber}</span>
-              <span>★</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-/* ─── Level 3: Bottom Officers ─── */
-const OfficerCard = ({ official, roleType, onClick }) => {
-  if (!official) return null;
-
-  const themeConfig = {
-    secretary: {
-      title: "SECRETARY",
-      subTitle: "Barangay Secretary",
-      gradient: "from-amber-500 via-yellow-400 to-amber-500",
-      border: "border-amber-400",
-      avatarTheme: "gold",
-    },
-    treasurer: {
-      title: "TREASURER",
-      subTitle: "Barangay Treasurer",
-      gradient: "from-blue-600 via-cyan-500 to-blue-600",
-      border: "border-cyan-400",
-      avatarTheme: "blue",
-    },
-    sk: {
-      title: "SK CHAIRMAN",
-      subTitle: "SK Chairman",
-      gradient: "from-purple-600 via-fuchsia-500 to-purple-600",
-      border: "border-fuchsia-400",
-      avatarTheme: "purple",
-    },
-  };
-
-  const theme = themeConfig[roleType] || themeConfig.secretary;
-
-  return (
-    <div
-      onClick={() => onClick(official)}
-      className="group relative flex flex-col items-center cursor-pointer transition-all duration-300 hover:-translate-y-1.5 hover:scale-105 active:scale-95 select-none w-full"
-    >
-      <div className={`relative flex flex-col items-center w-full rounded-2xl border ${theme.border} bg-gradient-to-b from-slate-950/95 via-emerald-950/90 to-black/95 p-3 shadow-xl backdrop-blur-md`}>
-        <Avatar official={official} size="sm" borderTheme={theme.avatarTheme} />
-
-        <div className="mt-2 w-full">
-          <div className={`rounded-lg bg-gradient-to-r ${theme.gradient} py-1 px-2 text-center shadow border border-white/40`}>
-            <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-950">
-              {theme.title}
-            </span>
-          </div>
-        </div>
-
-        <div className="mt-1.5 w-full rounded-lg bg-white/95 py-1 px-2 text-center shadow-inner">
-          <p className="text-[9px] font-extrabold uppercase text-slate-600">
-            {theme.subTitle}
-          </p>
-          <p className="text-[11px] font-black text-slate-950 truncate max-w-[160px]" title={official.name}>
-            {official.name}
-          </p>
-        </div>
+        {/* Subtitle / Focus Area */}
+        <p
+          className="text-[8.5px] sm:text-[9px] text-slate-500 font-semibold leading-tight mt-0.5 truncate"
+          title={official.committee || official.focusArea}
+        >
+          {official.committee || (isCaptain ? "Executive Leadership" : "Council Member")}
+        </p>
       </div>
     </div>
   );
@@ -267,89 +223,429 @@ const findOfficialById = (officials, officialId) =>
   DEFAULT_ORGANIZATION_OFFICIALS.find((official) => official.id === officialId) ||
   null;
 
-const printAvatarMarkup = (official) => {
-  if (official.photoUrl) {
-    return `<img class="avatar" src="${escapeAttribute(official.photoUrl)}" alt="" />`;
-  }
-
-  return `<div class="avatar initials">${official.level === "captain" ? "PB" : escapeHtml(initialsFromName(official.name))}</div>`;
-};
-
-const printOfficialCard = (official, modifier = "") => `
-  <article class="official-card ${modifier}">
-    ${printAvatarMarkup(official)}
-    <div>
-      <h3>${escapeHtml(official.name)}</h3>
-      <p class="position">${escapeHtml(official.position)}</p>
-      <p class="committee">${escapeHtml(official.committee)}</p>
-      <p class="focus">${escapeHtml(official.focusArea)}</p>
+const printCardMarkup = (official, isCaptain = false, isSK = false, isStaff = false) => `
+  <div class="print-node ${isCaptain ? "captain" : ""} ${isSK ? "sk" : ""} ${isStaff ? "staff" : ""}">
+    <div class="photo">
+      ${
+        official?.photoUrl
+          ? `<img src="${escapeAttribute(official.photoUrl)}" />`
+          : `<div class="initials">${isCaptain ? "PB" : "O"}</div>`
+      }
     </div>
-  </article>
+    <div class="details">
+      <div class="pill ${isCaptain ? "capt-pill" : isSK ? "sk-pill" : "std-pill"}">${escapeHtml(
+        official?.position || "OFFICIAL"
+      )}</div>
+      <div class="name">${escapeHtml(official?.name || "")}</div>
+      <div class="comm">${escapeHtml(
+        official?.committee || (isCaptain ? "Executive Leadership" : isStaff ? "Barangay Appointee" : "Council Member")
+      )}</div>
+    </div>
+  </div>
 `;
 
 const getPrintMarkup = (officials) => {
-  const captain = officials.find((official) => official.level === "captain") || officials[0];
-  const staff = officials.filter((official) => official.level === "staff");
-  const skOfficials = officials.filter((official) => official.level === "sk");
-  const supportOfficials = [...staff, ...skOfficials];
-  const kagawads = officials.filter((official) => official.level === "kagawad");
+  const captain = findOfficialById(officials, "captain") || officials.find((o) => o.level === "captain");
+  const kagawadWilson = findOfficialById(officials, "kagawad-wilson-boy-capon-pon") || officials[4];
+  const kagawadGarry = findOfficialById(officials, "kagawad-garry-bernal") || officials[5];
+  const kagawadJudy = findOfficialById(officials, "kagawad-judy-c-cabaya") || officials[8];
+  const kagawadRuben = findOfficialById(officials, "kagawad-kobi-gandawali") || officials[9];
+  const kagawadJuanito = findOfficialById(officials, "kagawad-juanito-c-talaman") || officials[6];
+  const kagawadLoreto = findOfficialById(officials, "kagawad-loreto-c-calamba") || officials[7];
+  const secretary = findOfficialById(officials, "secretary-jovelyn-c-cabaya") || officials[1];
+  const treasurer = findOfficialById(officials, "treasurer-rosalie-c-calamba") || officials[2];
+  const kagawadMercy = findOfficialById(officials, "kagawad-mercy-joy-c-calamba") || officials[10];
+  const skChairman = findOfficialById(officials, "sk-chairman-chrystophyr-b-trance") || officials[3];
 
   return `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Barangay Upper Mingading - Organizational Chart</title>
+  <title>BARANGAY UPPER MINGADING - Official Organizational Chart</title>
   <style>
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; background: #fff; color: #111827; font-family: Arial, sans-serif; }
-    body { padding: 0.35in; }
-    .page { width: 100%; min-height: 100%; }
-    .header { display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px; align-items: center; gap: 24px; border-bottom: 2px solid #111827; padding-bottom: 16px; }
-    .header-title { text-align: center; }
-    .logo-slot { display: flex; min-height: 72px; align-items: center; justify-content: center; }
-    .eyebrow { margin: 0 0 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #0f766e; }
-    h1 { margin: 0; font-size: 26px; letter-spacing: 0.02em; }
-    .meta { margin: 5px 0 0; font-size: 12px; color: #475569; }
-    .seal { width: 72px; height: 72px; object-fit: contain; }
-    .section-label { margin: 18px 0 9px; font-size: 11px; font-weight: 800; letter-spacing: 0.13em; text-transform: uppercase; color: #334155; }
-    .captain { max-width: 480px; margin: 18px auto 0; border-color: #92400e; background: #fffbeb; }
-    .support-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-    .kagawad-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
-    .official-card { min-height: 106px; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px; display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 10px; break-inside: avoid; }
-    .avatar { width: 54px; height: 54px; border-radius: 9px; object-fit: cover; background: #0f172a; color: #ecfeff; display: grid; place-items: center; font-weight: 800; }
-    .initials { font-size: 14px; }
-    h3 { margin: 0; font-size: 13px; line-height: 1.25; }
-    .position { margin: 3px 0 0; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #0f766e; }
-    .committee { margin: 7px 0 0; font-size: 11px; font-weight: 700; color: #334155; }
-    .focus { margin: 4px 0 0; font-size: 10.5px; line-height: 1.35; color: #475569; }
-    @page { size: letter landscape; margin: 0; }
-    @media print { body { padding: 0.35in; } }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: #ffffff;
+      color: #0f172a;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    body {
+      padding: 0.15in;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .chart-container {
+      background: linear-gradient(180deg, #e0f2fe 0%, #f0f9ff 45%, #ffffff 100%);
+      border: 2.5px solid #38bdf8;
+      border-radius: 20px;
+      padding: 16px 20px;
+      width: 100%;
+      max-width: 1060px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .header {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-bottom: 8px;
+      border-bottom: 1.5px solid #bae6fd;
+    }
+    .seal {
+      width: 66px;
+      height: 66px;
+      object-fit: contain;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+    }
+    .header-text {
+      text-align: center;
+      flex: 1;
+      line-height: 1.2;
+    }
+    .header-text .gov-sub {
+      font-size: 8.5px;
+      font-weight: 700;
+      color: #047857;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 1px;
+    }
+    .header-text h1 {
+      font-size: 22px;
+      font-weight: 900;
+      color: #064e3b;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .header-text h2 {
+      font-size: 11px;
+      font-weight: 900;
+      color: #16a34a;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      margin-top: 1px;
+    }
+    
+    .tree {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .stem-v {
+      width: 2.5px;
+      background: #166534;
+    }
+    
+    .print-node {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      background: #ffffff;
+      border: 2px solid #166534;
+      border-radius: 12px;
+      padding: 6px 10px;
+      width: 200px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.06);
+    }
+    .print-node.captain {
+      width: 280px;
+      padding: 7px 14px;
+      border-width: 2.5px;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.08);
+    }
+    .print-node.sk {
+      border-color: #166534;
+    }
+    .print-node.staff {
+      width: 215px;
+    }
+    .print-node .photo {
+      width: 44px;
+      height: 52px;
+      border-radius: 9px;
+      border: 1.5px solid #166534;
+      overflow: hidden;
+      background: #f1f5f9;
+      flex-shrink: 0;
+    }
+    .print-node.captain .photo {
+      width: 52px;
+      height: 62px;
+    }
+    .print-node .photo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .print-node .photo .initials {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: bold;
+      background: #166534;
+      color: #fff;
+    }
+    
+    .print-node .details {
+      flex: 1;
+      min-width: 0;
+    }
+    .pill {
+      font-size: 7.5px;
+      font-weight: 900;
+      text-transform: uppercase;
+      padding: 2px 5px;
+      border-radius: 5px;
+      display: inline-block;
+      margin-bottom: 2px;
+      line-height: 1;
+    }
+    .std-pill {
+      background: #dcfce7 !important;
+      color: #166534 !important;
+      border: 1px solid #86efac;
+    }
+    .capt-pill {
+      background: #fef3c7 !important;
+      color: #78350f !important;
+      border: 1px solid #fde68a;
+    }
+    .sk-pill {
+      background: #e0f2fe !important;
+      color: #0369a1 !important;
+      border: 1px solid #7dd3fc;
+    }
+    .print-node .name {
+      font-size: 10.5px;
+      font-weight: 900;
+      color: #0f172a;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.2;
+    }
+    .print-node.captain .name {
+      font-size: 12.5px;
+    }
+    .print-node .comm {
+      font-size: 8px;
+      font-weight: 600;
+      color: #475569;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .council-tree-wrapper {
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      position: relative;
+      width: 100%;
+    }
+    .council-wing {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      position: relative;
+    }
+    .left-wing-bus {
+      position: absolute;
+      top: 0;
+      left: 100px;
+      right: 0;
+      height: 2.5px;
+      background: #166534;
+    }
+    .right-wing-bus {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 100px;
+      height: 2.5px;
+      background: #166534;
+    }
+    .council-center-aisle {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      position: relative;
+      padding: 0 18px;
+      align-self: stretch;
+      min-width: 40px;
+    }
+    .center-bridge {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2.5px;
+      background: #166534;
+    }
+    .center-trunk {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2.5px;
+      background: #166534;
+    }
+    .council-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 200px;
+    }
+    .col-drop {
+      width: 2.5px;
+      height: 12px;
+      background: #166534;
+    }
+    .inter-row-v {
+      width: 2.5px;
+      height: 10px;
+      background: #166534;
+    }
+
+    .staff-tree-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+      width: 100%;
+    }
+    .staff-row {
+      display: flex;
+      justify-content: center;
+      gap: 48px;
+      position: relative;
+    }
+    .staff-bus {
+      position: absolute;
+      top: 0;
+      left: 107.5px;
+      right: 107.5px;
+      height: 2.5px;
+      background: #166534;
+    }
+    .staff-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 215px;
+    }
+
+    @page {
+      size: landscape;
+      margin: 4mm 6mm;
+    }
+    @media print {
+      body {
+        padding: 0 !important;
+        margin: 0 !important;
+        background: #ffffff !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      .chart-container {
+        border-width: 2px !important;
+        padding: 12px 16px !important;
+      }
+    }
   </style>
 </head>
 <body>
-  <main class="page">
-    <header class="header">
-      <div class="logo-slot">
-        <img class="seal" src="${BARANGAY_LOGO_SRC}" alt="Barangay Upper Mingading seal" />
+  <div class="chart-container">
+    <div class="header">
+      <img class="seal" src="${ALEOSAN_LOGO_SRC}" alt="Aleosan Seal" />
+      <div class="header-text">
+        <div class="gov-sub">Republic of the Philippines • Province of Cotabato • Municipality of Aleosan</div>
+        <h1>BARANGAY UPPER MINGADING</h1>
+        <h2>— OFFICIAL ORGANIZATIONAL CHART —</h2>
       </div>
-      <div class="header-title">
-        <p class="eyebrow">BARANGAY UPPER MINGADING</p>
-        <h1>Organizational Chart</h1>
-        <p class="meta">Printed ${escapeHtml(new Date().toLocaleDateString())} for official barangay reference.</p>
+      <img class="seal" src="${BARANGAY_LOGO_SRC}" alt="Upper Mingading Seal" />
+    </div>
+
+    <div class="tree">
+      ${printCardMarkup(captain, true)}
+      <div class="stem-v" style="height: 12px;"></div>
+      
+      <div class="council-tree-wrapper">
+        <!-- Left Wing: Col 1 (Wilson->Juanito) & Col 2 (Garry->Loreto) -->
+        <div class="council-wing">
+          <div class="left-wing-bus"></div>
+          <div class="council-col">
+            <div class="col-drop"></div>
+            ${printCardMarkup(kagawadWilson)}
+            <div class="inter-row-v"></div>
+            ${printCardMarkup(kagawadJuanito)}
+          </div>
+          <div class="council-col">
+            <div class="col-drop"></div>
+            ${printCardMarkup(kagawadGarry)}
+            <div class="inter-row-v"></div>
+            ${printCardMarkup(kagawadLoreto)}
+          </div>
+        </div>
+
+        <!-- Center Aisle with Continuous Trunk -->
+        <div class="council-center-aisle">
+          <div class="center-bridge"></div>
+          <div class="center-trunk"></div>
+        </div>
+
+        <!-- Right Wing: Col 3 (Judy->Mercy) & Col 4 (Ruben->SK) -->
+        <div class="council-wing">
+          <div class="right-wing-bus"></div>
+          <div class="council-col">
+            <div class="col-drop"></div>
+            ${printCardMarkup(kagawadJudy)}
+            <div class="inter-row-v"></div>
+            ${printCardMarkup(kagawadMercy)}
+          </div>
+          <div class="council-col">
+            <div class="col-drop"></div>
+            ${printCardMarkup(kagawadRuben)}
+            <div class="inter-row-v"></div>
+            ${printCardMarkup(skChairman, false, true)}
+          </div>
+        </div>
       </div>
-      <div class="logo-slot">
-        <img class="seal" src="${ALEOSAN_LOGO_SRC}" alt="Municipality of Aleosan seal" />
+
+      <div class="stem-v" style="height: 12px;"></div>
+      
+      <div class="staff-tree-wrapper">
+        <div class="staff-row">
+          <div class="staff-bus"></div>
+          <div class="staff-col">
+            <div class="col-drop"></div>
+            ${printCardMarkup(secretary, false, false, true)}
+          </div>
+          <div class="staff-col">
+            <div class="col-drop"></div>
+            ${printCardMarkup(treasurer, false, false, true)}
+          </div>
+        </div>
       </div>
-    </header>
-    ${captain ? printOfficialCard(captain, "captain") : ""}
-    <p class="section-label">Barangay Kagawads</p>
-    <section class="kagawad-grid">${kagawads.map((official) => printOfficialCard(official)).join("")}</section>
-    <p class="section-label">Secretary, Treasurer, and SK Chairman</p>
-    <section class="support-grid">${supportOfficials.map((official) => printOfficialCard(official)).join("")}</section>
-  </main>
+    </div>
+  </div>
   <script>
     window.addEventListener("load", () => {
-      setTimeout(() => window.print(), 250);
+      setTimeout(() => window.print(), 300);
     });
   </script>
 </body>
@@ -395,11 +691,6 @@ const OrganizationChart = () => {
     };
   }, []);
 
-  const captain = findOfficialById(officials, "captain") || officials.find((o) => o.level === "captain");
-  const secretary = findOfficialById(officials, "secretary-jovelyn-c-cabaya") || officials.find((o) => o.position?.toLowerCase().includes("secretary"));
-  const treasurer = findOfficialById(officials, "treasurer-rosalie-c-calamba") || officials.find((o) => o.position?.toLowerCase().includes("treasurer"));
-  const skChairman = findOfficialById(officials, "sk-chairman-chrystophyr-b-trance") || officials.find((o) => o.level === "sk" || o.position?.toLowerCase().includes("sk"));
-
   const defaultKagawadIds = [
     "kagawad-wilson-boy-capon-pon",
     "kagawad-garry-bernal",
@@ -411,14 +702,46 @@ const OrganizationChart = () => {
   ];
 
   const kagawads = defaultKagawadIds.map((id, index) => {
-    return findOfficialById(officials, id) || officials.filter((o) => o.level === "kagawad")[index] || {
-      id,
-      name: `Kagawad ${index + 1}`,
-      position: `${index + 1}${index === 0 ? "st" : index === 1 ? "nd" : index === 2 ? "rd" : "th"} Barangay Kagawad`,
-      level: "kagawad",
-      status: "Active",
-    };
+    return (
+      findOfficialById(officials, id) ||
+      officials.filter((o) => o.level === "kagawad")[index] || {
+        id,
+        name: `Kagawad ${index + 1}`,
+        position: `${index + 1}${index === 0 ? "st" : index === 1 ? "nd" : index === 2 ? "rd" : "th"} Barangay Kagawad`,
+        level: "kagawad",
+        status: "Active",
+      }
+    );
   });
+
+  const captain =
+    findOfficialById(officials, "captain") ||
+    officials.find((o) => o.level === "captain");
+  const kagawadWilson =
+    findOfficialById(officials, "kagawad-wilson-boy-capon-pon") || kagawads[0];
+  const kagawadGarry =
+    findOfficialById(officials, "kagawad-garry-bernal") || kagawads[1];
+  const kagawadJuanito =
+    findOfficialById(officials, "kagawad-juanito-c-talaman") || kagawads[2];
+  const kagawadLoreto =
+    findOfficialById(officials, "kagawad-loreto-c-calamba") || kagawads[3];
+  const kagawadJudy =
+    findOfficialById(officials, "kagawad-judy-c-cabaya") || kagawads[4];
+  const kagawadRuben =
+    findOfficialById(officials, "kagawad-kobi-gandawali") || kagawads[5];
+  const kagawadMercy =
+    findOfficialById(officials, "kagawad-mercy-joy-c-calamba") || kagawads[6];
+  const skChairman =
+    findOfficialById(officials, "sk-chairman-chrystophyr-b-trance") ||
+    officials.find(
+      (o) => o.level === "sk" || o.position?.toLowerCase().includes("sk")
+    );
+  const secretary =
+    findOfficialById(officials, "secretary-jovelyn-c-cabaya") ||
+    officials.find((o) => o.position?.toLowerCase().includes("secretary"));
+  const treasurer =
+    findOfficialById(officials, "treasurer-rosalie-c-calamba") ||
+    officials.find((o) => o.position?.toLowerCase().includes("treasurer"));
 
   const openEditor = (official) => {
     setEditingId(official.id);
@@ -526,10 +849,10 @@ const OrganizationChart = () => {
     >
       <div className="mx-auto max-w-[1400px] flex flex-col pb-20 pt-2">
         {/* Top Control Bar */}
-        <div className="flex items-center justify-between rounded-2xl border border-emerald-500/20 bg-emerald-950/40 px-6 py-3.5 backdrop-blur-md mb-6 shadow-sm">
+        <div className="flex items-center justify-between rounded-2xl border border-emerald-400/40 bg-gradient-to-r from-[#023B28] via-[#035237] to-[#023B28] px-6 py-3.5 mb-6 shadow-xl text-white">
           <div className="flex items-center gap-2.5">
-            <span className="h-2.5 w-2.5 rounded-full bg-lime-400 animate-pulse" />
-            <span className="text-xs font-black uppercase tracking-wider text-emerald-200">
+            <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-xs font-black uppercase tracking-wider text-emerald-100 drop-shadow-xs">
               Barangay Leadership Hierarchy
             </span>
           </div>
@@ -537,162 +860,217 @@ const OrganizationChart = () => {
             <button
               type="button"
               onClick={handlePrint}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 text-xs font-bold transition shadow-md border border-emerald-500/30 cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-200 bg-white hover:bg-emerald-50 text-[#00552E] px-4 py-2 text-xs font-black transition shadow-md cursor-pointer hover:scale-[1.02] active:scale-95"
             >
-              <Printer size={15} />
-              Print Chart
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowResetModal(true)}
-              disabled={savingOfficial}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-400/40 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 px-3.5 py-2 text-xs font-bold transition cursor-pointer"
-              title="Reset officials data to default"
-            >
-              <RotateCcw size={14} />
-              Reset Roster
+              <Printer size={15} className="stroke-[2.5]" />
+              <span>Print</span>
             </button>
           </div>
         </div>
 
         {/* Status Message */}
         {(message || savedAt) && (
-          <div className="mb-6 rounded-2xl border border-emerald-400/40 bg-emerald-950/80 px-6 py-3 text-xs font-bold text-emerald-200 shadow-md">
+          <div className="mb-6 rounded-2xl border border-emerald-400/50 bg-[#004D2A] px-6 py-3 text-xs font-black text-emerald-100 shadow-md">
             {message || `Saved at ${savedAt}`}
           </div>
         )}
 
         {/* ─── MAIN ORGANIZATIONAL CHART CANVAS ─── */}
-        <div className="relative rounded-3xl border-2 border-emerald-500/40 bg-gradient-to-br from-[#064e3b] via-[#0b533a] to-[#022c22] p-8 sm:p-12 shadow-2xl shadow-emerald-950/90 backdrop-blur-2xl overflow-x-auto min-h-[760px]">
-          {/* Subtle Ambient Lime Lighting */}
-          <div className="pointer-events-none absolute -top-20 left-1/2 -translate-x-1/2 h-80 w-[600px] rounded-full bg-lime-400/15 blur-3xl" />
-          <div className="pointer-events-none absolute bottom-0 right-10 h-64 w-64 rounded-full bg-emerald-400/10 blur-3xl" />
+        <div className="relative rounded-3xl border-2 border-sky-300 bg-gradient-to-b from-[#e0f2fe]/90 via-[#f0f9ff] to-[#ffffff] p-6 sm:p-8 md:p-10 shadow-2xl backdrop-blur-md max-w-[1240px] w-full mx-auto">
+          {/* Subtle Grid Accent */}
+          <div className="pointer-events-none absolute inset-0 rounded-3xl bg-[radial-gradient(#93c5fd_1px,transparent_1px)] [background-size:20px_20px] opacity-35" />
 
           {loadingOfficials ? (
-            <div className="text-center py-36 text-emerald-200 font-bold">
-              Loading Barangay Organizational Chart...
+            <div className="text-center py-20 text-[#064e3b] font-bold text-sm">
+              Loading Barangay Organizational Flowchart...
             </div>
           ) : (
-            <div className="relative z-10 flex flex-col items-center min-w-[1020px] max-w-[1100px] mx-auto">
-              {/* ─── 1. CLEAN MODERN GRAND BANNER ─── */}
-              <div className="flex flex-col items-center text-center mb-8">
-                <div className="relative flex items-center justify-center">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-amber-300 bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-300 shadow-lg shadow-amber-500/30">
+            <div className="relative z-10 flex flex-col items-center w-full mx-auto text-slate-900">
+              {/* ─── 1. OFFICIAL POSTER HEADER ─── */}
+              <div className="flex items-center justify-between gap-2 sm:gap-4 w-full mb-6 sm:mb-8 pb-3 px-1 sm:px-6 border-b border-sky-200/60">
+                {/* Left: Municipality of Aleosan Seal */}
+                <div className="flex items-center shrink-0">
+                  <div className="flex h-11 w-11 sm:h-16 sm:w-16 md:h-20 md:w-20 items-center justify-center rounded-2xl bg-white/90 p-1 shadow-sm border border-sky-200">
                     <img
-                      src={BARANGAY_LOGO_SRC}
-                      alt="Barangay Seal"
-                      className="h-12 w-12 object-contain drop-shadow"
+                      src={ALEOSAN_LOGO_SRC}
+                      alt="Municipality of Aleosan Seal"
+                      className="h-full w-full object-contain drop-shadow-xs"
                       onError={(e) => {
-                        e.target.style.display = "none";
+                        e.target.src = "/aleosan logo.png";
                       }}
                     />
                   </div>
                 </div>
 
-                <div className="mt-3.5 relative flex flex-col items-center">
-                  <div className="rounded-2xl bg-gradient-to-r from-emerald-900 via-emerald-800 to-emerald-900 px-10 py-2 border-2 border-yellow-400 shadow-xl ring-2 ring-emerald-400/30">
-                    <h1 className="text-2xl font-black uppercase tracking-[0.16em] text-white drop-shadow-md">
-                      BARANGAY
-                    </h1>
-                  </div>
+                {/* Center Title */}
+                <div className="flex flex-col items-center text-center flex-1 min-w-0 px-1">
+                  <h1 className="text-sm sm:text-2xl md:text-3xl lg:text-4xl font-black uppercase tracking-normal sm:tracking-wide text-[#064e3b] leading-tight drop-shadow-2xs">
+                    BARANGAY UPPER MINGADING
+                  </h1>
+                  <h2 className="text-[9px] sm:text-xs md:text-sm font-black uppercase tracking-[0.12em] sm:tracking-[0.25em] text-[#16a34a] mt-0.5 sm:mt-1.5 flex items-center justify-center gap-1.5 sm:gap-2.5">
+                    <span className="h-0.5 w-3 sm:w-8 md:w-16 bg-[#16a34a] inline-block" />
+                    <span>OFFICIAL ORGANIZATIONAL CHART</span>
+                    <span className="h-0.5 w-3 sm:w-8 md:w-16 bg-[#16a34a] inline-block" />
+                  </h2>
+                </div>
 
-                  <div className="-mt-2 rounded-xl bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-500 px-6 py-1 border border-white shadow-md">
-                    <span className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-950 flex items-center gap-1.5">
-                      <span>★</span>
-                      <span>ORGANIZATIONAL CHART</span>
-                      <span>★</span>
+                {/* Right: Barangay Upper Mingading Seal */}
+                <div className="flex items-center shrink-0">
+                  <div className="flex h-11 w-11 sm:h-16 sm:w-16 md:h-20 md:w-20 items-center justify-center rounded-2xl bg-white/90 p-1 shadow-sm border border-sky-200">
+                    <img
+                      src={BARANGAY_LOGO_SRC}
+                      alt="Barangay Upper Mingading Seal"
+                      className="h-full w-full object-contain drop-shadow-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* ─── 2. HIERARCHICAL FLOWCHART TREE (SEAMLESS CONNECTED HIERARCHY) ─── */}
+              <div className="w-full flex flex-col items-center">
+                {/* Level 1: Punong Barangay */}
+                <div className="relative flex flex-col items-center w-full">
+                  <FlowchartOfficialCard official={captain} onClick={setViewingOfficial} isCaptain={true} />
+                </div>
+
+                {/* Central Stem Line from Captain */}
+                <div className="w-[2px] h-5 sm:h-7 bg-[#166534]" />
+
+                {/* Level 2: Sangguniang Barangay (Desktop: Connected 4-Column Tree / Mobile: Responsive Grid) */}
+                
+                {/* ─── MOBILE VIEW (< lg): Roomy Responsive Grid with Connected Stems ─── */}
+                <div className="flex lg:hidden flex-col items-center w-full max-w-[620px] px-0.5">
+                  <div className="w-full flex flex-col items-center mb-3">
+                    <span className="inline-block text-[9px] font-black uppercase tracking-wider text-emerald-900 bg-emerald-100/90 border border-emerald-300/80 px-3 py-0.5 rounded-full shadow-2xs">
+                      Sangguniang Barangay Council
                     </span>
+                    <div className="w-[2px] h-3 bg-[#166534] mt-1" />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
+                    {[kagawadWilson, kagawadGarry, kagawadJuanito, kagawadLoreto, kagawadJudy, kagawadRuben, kagawadMercy, skChairman].filter(Boolean).map((off) => {
+                      const isSK = off.id?.includes("sk") || off.level === "sk";
+                      return (
+                        <FlowchartOfficialCard
+                          key={off.id || off.name}
+                          official={off}
+                          onClick={setViewingOfficial}
+                          isSK={isSK}
+                          className="w-full!"
+                        />
+                      );
+                    })}
                   </div>
                 </div>
-              </div>
 
-              {/* ─── 2. LEVEL 1: CAPTAIN ─── */}
-              <div className="relative flex flex-col items-center w-full">
-                <CaptainCard official={captain} onClick={setViewingOfficial} />
+                {/* ─── DESKTOP VIEW (>= lg): Connected 4-Column Flowchart Tree ─── */}
+                <div className="hidden lg:flex items-start justify-center w-full">
+                  {/* LEFT WING: Col 1 (Wilson->Juanito) & Col 2 (Garry->Loreto) */}
+                  <div className="relative flex items-start gap-3 sm:gap-4">
+                    {/* Continuous Horizontal Bus from Col 1 center to Right edge of Left Wing */}
+                    <div className="absolute top-0 left-[105px] sm:left-[120px] right-0 h-[2px] bg-[#166534]" />
 
-                {/* Vertical Connector Stem from Captain */}
-                <div className="flex flex-col items-center">
-                  <div className="h-9 w-1.5 bg-gradient-to-b from-amber-400 to-yellow-300 shadow-sm" />
-                  <div className="h-3.5 w-3.5 rounded-full bg-amber-300 ring-4 ring-emerald-950 shadow-md" />
-                </div>
-              </div>
-
-              {/* ─── 3. CONNECTOR TREE (Captain -> 7 Kagawads) ─── */}
-              <div className="relative w-full my-0">
-                {/* Clean Horizontal Golden Line Spanning across the 7 Kagawads */}
-                <div className="mx-auto w-[92.8%] h-1.5 bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-400 rounded-full shadow-md" />
-
-                {/* 7 Vertical Pins dropping exactly onto each Kagawad card */}
-                <div className="grid grid-cols-7 w-full justify-items-center">
-                  {[...Array(7)].map((_, i) => (
-                    <div key={i} className="flex flex-col items-center">
-                      <div className="h-2.5 w-2.5 rounded-full bg-amber-300 -mt-1 ring-2 ring-emerald-950" />
-                      <div className="h-7 w-1 bg-gradient-to-b from-amber-300 to-lime-400" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* ─── 4. LEVEL 2: THE 7 KAGAWADS (Horizontal Grid) ─── */}
-              <div className="grid grid-cols-7 gap-3 w-full justify-items-center mb-2">
-                {kagawads.map((official, idx) => (
-                  <KagawadCard
-                    key={official.id || idx}
-                    official={official}
-                    index={idx}
-                    onClick={setViewingOfficial}
-                  />
-                ))}
-              </div>
-
-              {/* ─── 5. CONNECTOR TREE (Center Kagawad -> 3 Bottom Officers) ─── */}
-              <div className="relative flex flex-col items-center w-full my-1">
-                {/* Vertical line from center Kagawad (Kagawad 4) */}
-                <div className="h-9 w-1.5 bg-gradient-to-b from-amber-400 to-yellow-300 shadow-sm" />
-                <div className="h-3.5 w-3.5 rounded-full bg-amber-300 ring-4 ring-emerald-950 shadow-md" />
-
-                {/* Horizontal bar spanning across the 3 bottom officers */}
-                <div className="w-[620px] my-0">
-                  <div className="mx-auto w-[76%] h-1.5 bg-gradient-to-r from-amber-400 via-cyan-400 to-purple-400 rounded-full shadow-md" />
-
-                  {/* 3 Drop Pins */}
-                  <div className="grid grid-cols-3 w-full justify-items-center">
+                    {/* Column 1: Wilson Boy -> Juanito */}
                     <div className="flex flex-col items-center">
-                      <div className="h-2.5 w-2.5 rounded-full bg-amber-400 -mt-1 ring-2 ring-emerald-950" />
-                      <div className="h-7 w-1 bg-gradient-to-b from-amber-400 to-yellow-400" />
+                      <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+                      <FlowchartOfficialCard official={kagawadWilson} onClick={setViewingOfficial} />
+                      <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
+                      <FlowchartOfficialCard official={kagawadJuanito} onClick={setViewingOfficial} />
                     </div>
+
+                    {/* Column 2: Garry -> Loreto */}
                     <div className="flex flex-col items-center">
-                      <div className="h-2.5 w-2.5 rounded-full bg-cyan-400 -mt-1 ring-2 ring-emerald-950" />
-                      <div className="h-7 w-1 bg-gradient-to-b from-cyan-400 to-blue-500" />
+                      <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+                      <FlowchartOfficialCard official={kagawadGarry} onClick={setViewingOfficial} />
+                      <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
+                      <FlowchartOfficialCard official={kagawadLoreto} onClick={setViewingOfficial} />
                     </div>
+                  </div>
+
+                  {/* CENTRAL CONNECTOR AISLE */}
+                  <div className="flex flex-col items-center justify-between self-stretch px-3 sm:px-5 relative min-w-[36px] sm:min-w-[54px]">
+                    {/* Horizontal Bus Bridge across Center Aisle */}
+                    <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#166534]" />
+                    {/* Continuous Vertical Central Trunk passing all the way down */}
+                    <div className="absolute top-0 bottom-0 w-[2px] bg-[#166534]" />
+                  </div>
+
+                  {/* RIGHT WING: Col 3 (Judy->Mercy) & Col 4 (Ruben->SK) */}
+                  <div className="relative flex items-start gap-3 sm:gap-4">
+                    {/* Continuous Horizontal Bus from Left edge of Right Wing to Col 4 center */}
+                    <div className="absolute top-0 left-0 right-[105px] sm:right-[120px] h-[2px] bg-[#166534]" />
+
+                    {/* Column 3: Judy -> Mercy Joy */}
                     <div className="flex flex-col items-center">
-                      <div className="h-2.5 w-2.5 rounded-full bg-purple-400 -mt-1 ring-2 ring-emerald-950" />
-                      <div className="h-7 w-1 bg-gradient-to-b from-purple-400 to-fuchsia-500" />
+                      <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+                      <FlowchartOfficialCard official={kagawadJudy} onClick={setViewingOfficial} />
+                      <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
+                      <FlowchartOfficialCard official={kagawadMercy} onClick={setViewingOfficial} />
+                    </div>
+
+                    {/* Column 4: Ruben / Kobi -> Chrystophyr SK */}
+                    <div className="flex flex-col items-center">
+                      <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+                      <FlowchartOfficialCard official={kagawadRuben} onClick={setViewingOfficial} />
+                      <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
+                      <FlowchartOfficialCard official={skChairman} onClick={setViewingOfficial} isSK={true} />
                     </div>
                   </div>
                 </div>
-              </div>
 
-              {/* ─── 6. LEVEL 3: SECRETARY, TREASURER, SK CHAIRMAN ─── */}
-              <div className="grid grid-cols-3 gap-6 w-full max-w-[660px] justify-items-center mt-0">
-                <OfficerCard
-                  official={secretary}
-                  roleType="secretary"
-                  onClick={setViewingOfficial}
-                />
-                <OfficerCard
-                  official={treasurer}
-                  roleType="treasurer"
-                  onClick={setViewingOfficial}
-                />
-                <OfficerCard
-                  official={skChairman}
-                  roleType="sk"
-                  onClick={setViewingOfficial}
-                />
+                {/* Central Stem Line passing down to Staff */}
+                <div className="w-[2px] h-5 sm:h-7 bg-[#166534]" />
+
+                {/* Level 3: Secretary & Treasurer */}
+                
+                {/* ─── MOBILE VIEW (< lg): Responsive Staff Grid with Connected Stems ─── */}
+                <div className="flex lg:hidden flex-col items-center w-full max-w-[620px] px-0.5">
+                  <div className="w-full flex flex-col items-center mb-3">
+                    <span className="inline-block text-[9px] font-black uppercase tracking-wider text-emerald-900 bg-emerald-100/90 border border-emerald-300/80 px-3 py-0.5 rounded-full shadow-2xs">
+                      Appointed Barangay Officials
+                    </span>
+                    <div className="w-[2px] h-3 bg-[#166534] mt-1" />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
+                    <FlowchartOfficialCard official={secretary} onClick={setViewingOfficial} isStaff={true} className="w-full!" />
+                    <FlowchartOfficialCard official={treasurer} onClick={setViewingOfficial} isStaff={true} className="w-full!" />
+                  </div>
+                </div>
+
+                {/* ─── DESKTOP VIEW (>= lg): Side-by-side with Connected Branch Line ─── */}
+                <div className="hidden lg:flex flex-col items-center w-full">
+                  <div className="relative flex items-start gap-8 sm:gap-12">
+                    {/* Horizontal Bus linking Secretary center and Treasurer center */}
+                    <div className="absolute top-0 left-[112.5px] sm:left-[127.5px] right-[112.5px] sm:right-[127.5px] h-[2px] bg-[#166534]" />
+
+                    {/* Secretary Column */}
+                    <div className="flex flex-col items-center">
+                      <div className="w-[2px] h-4 sm:h-5 bg-[#166534]" />
+                      <FlowchartOfficialCard official={secretary} onClick={setViewingOfficial} isStaff={true} />
+                    </div>
+
+                    {/* Treasurer Column */}
+                    <div className="flex flex-col items-center">
+                      <div className="w-[2px] h-4 sm:h-5 bg-[#166534]" />
+                      <FlowchartOfficialCard official={treasurer} onClick={setViewingOfficial} isStaff={true} />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
+        </div>
+
+        {/* Bottom Reset Control */}
+        <div className="mt-8 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setShowResetModal(true)}
+            disabled={savingOfficial}
+            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white/90 hover:bg-white text-slate-600 hover:text-slate-900 px-4 py-2 text-xs font-bold transition shadow-xs cursor-pointer"
+          >
+            <RotateCcw size={13} />
+            Reset to Default
+          </button>
         </div>
       </div>
 

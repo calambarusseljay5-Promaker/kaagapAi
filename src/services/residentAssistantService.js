@@ -10,38 +10,45 @@ const formatDate = (value) => {
   return date.toLocaleDateString();
 };
 
+
 const includesAny = (question, terms) => {
   const lower = question.toLowerCase();
   return terms.some((term) => lower.includes(term));
 };
 
 const isTagalogQuestion = (question) => {
+  if (!question) return false;
   const normalized = normalizeText(question);
-  const words = normalized.split(" ").filter(Boolean);
+  const words = normalized.split(/\s+/).filter(Boolean);
   const wordSet = new Set(words);
+
   const tagalogWords = new Set([
-    "ano", "ba", "bakit", "ilan", "kailangan", "ko", "kuhanin", "kumuha", "mo", "po", "pwede", "pede",
-    "salamat", "dito", "diyan", "dyan", "dokumento", "gusto", "tulong", "tungkol", "kailan", "kelan", "saan",
-    "sino", "magkano", "magandang", "meron", "mayroon", "natin", "namin", "inyo", "niyo", "nyo", "pangalan",
-    "oras", "opisina", "bukas", "sarado", "sige", "kapitan", "kagawad", "sekretarya", "sekretaryo", "tesorero",
-    "anong", "paano", "paanu", "panu", "sinong", "kayo", "tayo", "kami", "ako", "ikaw", "siya", "matanda",
-    "mga", "ang", "ng", "sa", "at", "na", "o", "kay", "para", "ni", "habang", "dahil", "kasi", "noong", "nung",
-    "babae", "lalaki", "ilang", "sedula", "taga", "doon", "dun", "rito", "roon", "run", "kabuuan", "residente"
+    "ano", "anong", "ba", "bakit", "ilan", "ilang", "kailangan", "ko", "kuhanin", "kumuha", "mo", "po", "opo",
+    "pwede", "pede", "salamat", "dito", "diyan", "dyan", "dokumento", "gusto", "tulong", "tungkol", "kailan",
+    "kelan", "saan", "san", "sino", "sinong", "magkano", "magandang", "meron", "mayroon", "wala", "natin",
+    "namin", "inyo", "niyo", "nyo", "pangalan", "oras", "opisina", "bukas", "sarado", "sige", "kapitan",
+    "kagawad", "sekretarya", "sekretaryo", "tesorero", "paano", "paanu", "panu", "kayo", "tayo", "kami",
+    "ako", "ikaw", "siya", "matanda", "mga", "ang", "ng", "sa", "at", "na", "o", "kay", "para", "ni",
+    "habang", "dahil", "kasi", "noong", "nung", "babae", "lalaki", "sedula", "taga", "doon", "dun", "rito",
+    "roon", "run", "kabuuan", "residente", "pala", "naman", "nga", "din", "rin", "daw", "raw", "asawa", "bahay",
+    "kuha", "hingi", "hingin", "magkano", "magkanu", "bayad", "sertipiko", "lisensya", "pahiram", "punong", "tanong"
   ]);
-  
+
   const englishWords = new Set([
-    "what", "who", "where", "when", "why", "how", "is", "are", "do", "does", "can", "could", "would",
-    "the", "a", "an", "of", "to", "for", "in", "on", "at", "about", "your", "my", "me", "you", "he", "she", "it",
-    "hello", "hi", "thanks", "please", "document", "documents", "certificate", "clearance", "permit",
-    "many", "total", "resident", "residents", "count", "number", "breakdown", "category"
+    "what", "who", "where", "when", "why", "how", "is", "are", "do", "does", "did", "can", "could", "would", "will", "shall",
+    "the", "a", "an", "of", "to", "for", "in", "on", "at", "about", "your", "my", "me", "you", "he", "she", "it", "they", "we", "our",
+    "hello", "hi", "thanks", "thank", "please", "document", "documents", "certificate", "clearance", "permit",
+    "many", "total", "resident", "residents", "count", "number", "breakdown", "category", "population", "office", "hours",
+    "contact", "phone", "email", "address", "captain", "officials", "official", "services", "requirement", "requirements",
+    "apply", "request", "help", "information", "details", "fee", "cost", "price", "status", "announcement", "job", "jobs"
   ]);
 
-  const tagalogScore = words.filter(w => tagalogWords.has(w)).length;
-  const englishScore = words.filter(w => englishWords.has(w)).length;
+  const tagalogScore = words.filter((w) => tagalogWords.has(w)).length;
+  const englishScore = words.filter((w) => englishWords.has(w)).length;
 
+  if (wordSet.has("po") || wordSet.has("opo")) return true;
   if (englishScore > tagalogScore) return false;
   if (tagalogScore > englishScore) return true;
-  if (wordSet.has("po") || wordSet.has("opo")) return true;
   return tagalogScore > 0;
 };
 
@@ -1264,6 +1271,7 @@ const buildGenericDocumentHowToAnswer = (templates, language = "english") => {
 
 const extractGeminiText = (result) => {
   if (!result) return "";
+  if (typeof result === "string") return result.trim();
   if (typeof result.text === "string") return result.text.trim();
 
   const parts = result.candidates?.[0]?.content?.parts || [];
@@ -1670,7 +1678,7 @@ Answer directly, naturally, and warmly like a PRO using your internal knowledge:
 
     const result = await generateText(prompt, {
       systemInstruction:
-        "You are KaagapAI, a highly intelligent, friendly, and professional virtual assistant for Barangay Upper Mingading. Act like a PRO. NEVER say 'Based on AI', 'Based on admin', or 'Batay sa saved knowledge'. NEVER tell the user to 'Log in' or 'Sign in'—the resident is ALREADY logged in to their dashboard! Start instructions directly with step 1: Click 'Request Document' on your dashboard. Be extremely direct, concise, and friendly without unnecessary filler. Match the user's language (Tagalog/English) seamlessly.",
+        "You are KaagapAI, a highly intelligent, friendly, and professional virtual assistant for Barangay Upper Mingading. STRICT LANGUAGE RULE: If the user asks in English, reply 100% in English. If the user asks in Tagalog or Taglish, reply 100% in fluent, polite Tagalog. NEVER say 'Based on AI', 'Based on admin', or 'Batay sa saved knowledge'. NEVER tell the user to 'Log in' or 'Sign in'—the resident is ALREADY logged in to their dashboard! Start instructions directly with step 1: Click 'Request Document' on your dashboard. Be extremely direct, concise, and friendly.",
       temperature: 0.6,
       maxOutputTokens: 2048,
     });
@@ -2085,15 +2093,18 @@ async function buildLocalAnswer(question, context = {}) {
     : "For specific questions regarding barangay or local government services, inquiring directly with our office is recommended.\n\n" + defaultClosing;
 }
 
-export async function askResidentAssistant(question, context) {
-  const trimmedQuestion = question.trim();
+export async function askResidentAssistant(question, context = {}) {
+  const trimmedQuestion = question?.trim();
   if (!trimmedQuestion) return "";
 
-  try {
-    const freshStats = await fetchResidentStats();
-    context.residentStats = freshStats;
-  } catch (error) {
-    console.error("Failed to dynamically fetch fresh stats for AI prompt:", error);
+  // Only fetch fresh stats if not already provided in context to avoid unnecessary network delay
+  if (!context.residentStats?.loaded) {
+    try {
+      const freshStats = await fetchResidentStats();
+      context.residentStats = freshStats;
+    } catch (error) {
+      console.error("Failed to dynamically fetch fresh stats for AI prompt:", error);
+    }
   }
 
   return queryGeminiWithRichContext(trimmedQuestion, context);
@@ -2148,27 +2159,39 @@ By Purok: ${formatCounts(residentStats.purokCounts)}`
       ? JSON.stringify(residentStats.anonymousResidents) 
       : "[]";
 
-    const systemInstructionText = `You are KaagapAI, the official AI Assistant of the Barangay Upper Mingading Resident Management System.
-You serve as the Upper Mingading Virtual Assistant. Your purpose is STRICTLY to assist residents with questions related to Barangay Upper Mingading services, local government programs, public assistance, community concerns, and resident information.
+    const isTagalog = isTagalogQuestion(question);
+    const detectedLang = isTagalog ? "TAGALOG" : "ENGLISH";
+
+    const systemInstructionText = `You are KaagapAI, the official AI Virtual Assistant for Barangay Upper Mingading Resident Management System.
+Your purpose is STRICTLY to assist residents with questions related to Barangay Upper Mingading services, local government programs, public assistance, community concerns, and resident information.
+
+MANDATORY LANGUAGE MATCHING RULE (STRICT - PANEL EVALUATION CRITICAL):
+- DETECTED USER LANGUAGE: ${detectedLang}
+- YOU MUST ALWAYS REPLY 100% IN THE EXACT SAME LANGUAGE AS THE USER'S QUESTION:
+  * IF USER ASKS IN ENGLISH -> YOU MUST REPLY 100% IN CLEAR, GRAMMATICALLY SOUND, PROFESSIONAL ENGLISH. DO NOT mix or include Tagalog/Filipino words.
+  * IF USER ASKS IN TAGALOG / FILIPINO / TAGLISH -> YOU MUST REPLY 100% IN COURTEOUS, NATURAL, AND POLITE TAGALOG (use respectful words like "po" and "opo").
+  * IF USER ASKS IN BISAYA / CEBUANO -> YOU MUST REPLY IN NATURAL BISAYA/CEBUANO OR POLITE TAGALOG.
+- STRICT PROHIBITION: NEVER respond in Tagalog to an English question, and NEVER respond in English to a Tagalog question!
+
+FAST, CONCISE & ACCURATE RESPONSES:
+- Answer the user's question directly and concisely without unnecessary filler or delays.
+- Keep explanations clear and actionable.
 
 STRICT OUT-OF-SCOPE RULE:
-If the user asks about non-barangay topics such as cooking recipes (e.g. adobo, sinigang, cooking instructions), movies, video games, general programming, sports, or non-barangay trivia:
-- YOU MUST REFUSE politely and redirect them to barangay services!
-- Tagalog Refusal Example: "Pasensya na po, ako ay nakatutok lamang sa pagtulong sa mga serbisyo, dokumento, anunsyo, at mga programa ng Barangay Upper Mingading. Paano kita matutulungan sa ating barangay services ngayon?"
-- English Refusal Example: "I apologize, but I specialize exclusively in assisting with Barangay Upper Mingading services, documents, announcements, and community programs. How may I help you with our barangay services today?"
+If the user asks about non-barangay topics (such as cooking recipes, general games, movies, non-barangay coding, or global trivia):
+- Refuse politely in the matching language and redirect them to barangay services.
+- Tagalog Refusal Example: "Pasensya na po, ako ay nakatutok lamang sa pagtulong sa mga serbisyo, dokumento, anunsyo, at mga programa ng Barangay Upper Mingading. Paano ko po kayo matutulungan sa ating barangay services ngayon?"
+- English Refusal Example: "I apologize, but I specialize exclusively in assisting with Barangay Upper Mingading services, documents, announcements, and community programs. How may I assist you with our barangay services today?"
 
 MANDATORY CHART RULE FOR ALL TOTAL / COUNT INQUIRIES:
-Whenever the user asks for ANY population, purok count, senior count, PWD count, or document count (including single purok queries like "how many total of purok malipayon?" or "how many total in purok buklod?"):
-- Provide the clear count text AND ALWAYS APPEND A VALID BAR CHART TAG at the end!
-- Example for single purok: "Based on our official barangay records, **Purok Malipayon** currently has a total of **340 residents**.\n[CHART:BAR:{\"Purok Malipayon\":340,\"Other Residents\":1200}]" (Use the real numbers from context!).
+Whenever the user asks for ANY population, purok count, senior count, PWD count, or document count:
+- Provide the exact count text AND ALWAYS APPEND A VALID BAR CHART TAG at the end!
+- Example: "Based on our official barangay records, **Purok Malipayon** currently has a total of **340 residents**.\n[CHART:BAR:{\"Purok Malipayon\":340,\"Other Residents\":1200}]" (Use the real statistics from the provided data).
 
 STRICT NO "LOG IN" STEP RULE:
 - NEVER tell the user to "Log in to your account" or "Sign in"! The resident is ALREADY LOGGED IN to their dashboard. Start step 1 directly with: "1. Click 'Request Document' on your dashboard."
 
-LANGUAGE & ELOQUENT TONE RULES:
-- Always match the user's language:
-  * For Tagalog or Taglish inquiries: Respond in fluent, formal, polite, and elegant Filipino/Tagalog (using polite markers like "po" and "opo"). NEVER use street slang, balbal words, or choppy shorthand so the voice reader sounds natural, professional, and pleasant just like a courteous barangay officer.
-  * For English inquiries: Respond in clear, polite, and professional English.
+ELOQUENT TONE & NARRATION:
 - Use complete, well-formed sentences so text-to-speech voice narration sounds graceful, human, and crystal clear.`;
 
     const prompt = `System Settings:
@@ -2208,7 +2231,7 @@ ${rawDataStr}
 User Question:
 ${question}
 
-Follow the System Instructions strictly. Determine intent first. Never return dashboard summary unless explicitly requested.`;
+Follow the System Instructions strictly. Language MUST match the user question (${detectedLang}). Be direct and accurate.`;
 
     const result = await generateText(prompt, {
       systemInstruction: systemInstructionText,

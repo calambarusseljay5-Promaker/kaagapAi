@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertCircle,
@@ -9,10 +9,12 @@ import {
   Calendar,
   Check,
   CheckCircle,
+  CheckSquare,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Copy,
   Edit2,
   Eye,
   EyeOff,
@@ -24,6 +26,7 @@ import {
   Home,
   Layers,
   Loader,
+  Lock,
   MapPin,
   Plus,
   Printer,
@@ -31,6 +34,7 @@ import {
   Save,
   Search,
   Settings2,
+  ShieldCheck,
   SlidersHorizontal,
   Tag,
   Trash2,
@@ -41,6 +45,8 @@ import {
 import PageWrapper from "../components/PageWrapper";
 import FloatingModal from "../components/FloatingModal";
 import { useConfirm } from "../context/ConfirmContext";
+import { showAdminSystemToast } from "../utils/toast";
+import { supabase } from "../lib/supabaseClient";
 import { DataGrid } from "@mui/x-data-grid";
 import { getCurrentUserWithProfile } from "../services/authService";
 import {
@@ -53,6 +59,12 @@ import {
   updateResident,
   updateResidentPortalAccount,
 } from "../services/adminService";
+import {
+  fetchOrganizationOfficials,
+  getOrganizationOfficials,
+  getActiveCaptain,
+  getActiveSecretary,
+} from "../services/organizationService";
 import {
   addCustomPurok,
   buildCompleteAddress,
@@ -110,7 +122,7 @@ const initialForm = {
 
 const statusFilters = [
   { value: "Active", label: "Active" },
-  { value: "current", label: "All current" },
+  { value: "current", label: "All current (Excl. Archived)" },
   { value: "Inactive", label: "Inactive" },
   { value: "Pending", label: "Pending" },
   { value: "Archived", label: "Archived" },
@@ -252,7 +264,7 @@ const getResidentPortalPassword = (resident) => {
     resident.resident_account?.plain_password ||
     resident.plain_password ||
     resident.password ||
-    (resident.household_no ? String(resident.household_no) : (resident.house_no ? String(resident.house_no) : (resident.phone ? String(resident.phone) : "123456")))
+    ""
   );
 };
 
@@ -291,6 +303,7 @@ const getResidentFormValues = (resident) => {
     last_name: resident.last_name || "",
     first_name: resident.first_name || "",
     middle_name: resident.middle_name || "",
+    suffix: resident.suffix || "",
     birthday: resident.birthday || "",
     sex: resident.sex || resident.gender || "Male",
     birthplace: resident.birthplace || "",
@@ -409,10 +422,6 @@ const ResidentForm = memo(function ResidentForm({
             .replace(/[^a-z0-9_]/g, "");
 
           next.portal_username = generatedUsername;
-        }
-
-        if (name === "household_no" && !isPasswordEdited) {
-          next.portal_password = value.trim();
         }
       }
 
@@ -620,14 +629,14 @@ const ResidentForm = memo(function ResidentForm({
             />
           </label>
           <label className="block text-sm font-bold text-slate-800">
-            Gmail Account <span className="text-slate-400 font-normal">(optional)</span>
+            Email Address <span className="text-slate-400 font-normal">(optional)</span>
             <input
               type="email"
               name="email"
               value={formData.email || ""}
               onChange={handleInputChange}
               className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-2xs"
-              placeholder="example@gmail.com"
+              placeholder="example@email.com"
             />
           </label>
         </div>
@@ -653,7 +662,7 @@ const ResidentForm = memo(function ResidentForm({
           </label>
           <div>
             <label className="block text-sm font-bold text-slate-800">
-              Occupation / Livelihood
+              Occupation
               <select
                 value={
                   !formData.occupation
@@ -674,7 +683,7 @@ const ResidentForm = memo(function ResidentForm({
                 }}
                 className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-bold text-slate-900 outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 shadow-2xs cursor-pointer"
               >
-                <option value="">Select occupation / livelihood</option>
+                <option value="">Select Occupation</option>
                 {standardOccupationOptions.map((occ) => (
                   <option key={occ} value={occ}>
                     {occ}
@@ -691,7 +700,7 @@ const ResidentForm = memo(function ResidentForm({
                     setCustomOccupationInput(e.target.value);
                     setFormData((prev) => ({ ...prev, occupation: e.target.value }));
                   }}
-                  placeholder="Specify custom occupation / job title..."
+                  placeholder="Specify custom occupation..."
                   className="w-full rounded-xl border border-emerald-300 bg-emerald-50/40 px-3.5 py-2.5 text-sm text-emerald-950 outline-none transition focus:border-emerald-600 focus:bg-white font-bold placeholder:text-slate-400 shadow-2xs"
                 />
                 <span className="text-[11px] font-semibold text-slate-500 mt-1 block">Type your specific occupation above</span>
@@ -859,6 +868,70 @@ const ResidentForm = memo(function ResidentForm({
   );
 });
 
+const ResidentSearchBar = memo(({ value, onChange, onClear }) => {
+  const [localValue, setLocalValue] = useState(value);
+  const debounceTimerRef = useRef(null);
+
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  const handleChange = (e) => {
+    const nextVal = e.target.value;
+    setLocalValue(nextVal);
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      onChange(nextVal);
+    }, 140);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter") {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      onChange(localValue);
+    }
+  };
+
+  const handleClear = () => {
+    setLocalValue("");
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    onChange("");
+    if (onClear) onClear();
+  };
+
+  return (
+    <div className="relative flex-1 min-w-0">
+      <Search className="absolute left-3.5 top-3 text-emerald-600/70" size={17} />
+      <input
+        type="text"
+        value={localValue}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        placeholder="Search name, username, household, occupation, contact..."
+        className="w-full rounded-2xl border border-emerald-200/90 bg-white/95 py-2.5 pl-10 pr-9 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 shadow-xs"
+      />
+      {localValue && (
+        <button
+          type="button"
+          onClick={handleClear}
+          className="absolute right-3 top-2.5 p-0.5 rounded-full text-slate-400 hover:text-slate-600 transition cursor-pointer"
+          title="Clear search"
+        >
+          <X size={15} />
+        </button>
+      )}
+    </div>
+  );
+});
+
 const ResidentsManagement = () => {
   const navigate = useNavigate();
   const { confirm } = useConfirm();
@@ -872,8 +945,18 @@ const ResidentsManagement = () => {
   const [approvingId, setApprovingId] = useState(null);
   const [rejectingId, setRejectingId] = useState(null);
   const [actionResidentId, setActionResidentId] = useState(null);
-  const [message, setMessage] = useState(null);
+  const [message, _setMessage] = useState(null);
+  const setMessage = useCallback((msg) => {
+    if (msg) {
+      if (typeof msg === "string") {
+        showAdminSystemToast(msg, "success");
+      } else if (msg.text) {
+        showAdminSystemToast(msg.text, msg.type || "success", msg.title);
+      }
+    }
+  }, []);
   const [searchTerm, setSearchTerm] = useState("");
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [statusFilter, setStatusFilter] = useState("Active");
   const [sexFilter, setSexFilter] = useState("");
   const [purokFilter, setPurokFilter] = useState("");
@@ -886,6 +969,8 @@ const ResidentsManagement = () => {
   const [minAge, setMinAge] = useState("");
   const [maxAge, setMaxAge] = useState("");
   const [selectedResidentIds, setSelectedResidentIds] = useState([]);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [officials, setOfficials] = useState(() => getOrganizationOfficials());
   const [paginationModel, setPaginationModel] = useState({ page: 0, pageSize: 10 });
 
   // ─── Pro Dynamic Filter Popover & Dropdown State ───
@@ -931,6 +1016,26 @@ const ResidentsManagement = () => {
     };
   }, []);
 
+  // Sync officials with database and listen for real-time organizational chart updates
+  useEffect(() => {
+    fetchOrganizationOfficials()
+      .then((data) => {
+        if (data?.length) setOfficials(data);
+      })
+      .catch(() => {});
+
+    const handleOfficialsUpdate = (event) => {
+      if (event.detail?.length) {
+        setOfficials(event.detail);
+      }
+    };
+
+    window.addEventListener("organization_officials_updated", handleOfficialsUpdate);
+    return () => {
+      window.removeEventListener("organization_officials_updated", handleOfficialsUpdate);
+    };
+  }, []);
+
   const [residentPage, setResidentPage] = useState(1);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -957,11 +1062,9 @@ const ResidentsManagement = () => {
     setLoading(true);
 
     try {
-      // Fetch all resident records with portal accounts attached to enable instant, reactive multi-criteria AND filtering
-      const [residentData, pendingData] = await Promise.all([
-        fetchResidents("", "", { withAccounts: true }),
-        fetchResidents("", "Pending", { withAccounts: true }),
-      ]);
+      // Fetch resident records in a single optimized query
+      const residentData = await fetchResidents("", "", { withAccounts: true });
+      const pendingData = residentData.filter((r) => (r.status || "").toLowerCase() === "pending");
 
       setResidents(residentData);
       setPendingResidents(pendingData);
@@ -976,9 +1079,13 @@ const ResidentsManagement = () => {
   useEffect(() => {
     let isMounted = true;
 
-    const checkAccess = async () => {
+    const init = async () => {
       try {
-        const userData = await getCurrentUserWithProfile();
+        const [userData] = await Promise.all([
+          getCurrentUserWithProfile(),
+          loadResidents(),
+        ]);
+
         if (!isMounted) return;
 
         if (!userData || userData.profile?.role !== "admin") {
@@ -995,32 +1102,28 @@ const ResidentsManagement = () => {
       }
     };
 
-    checkAccess();
+    init();
 
     return () => {
       isMounted = false;
     };
-  }, [navigate]);
+  }, [navigate, loadResidents]);
 
-  useEffect(() => {
-    if (authorized) {
-      const run = async () => {
-        await loadResidents();
-      };
+  const optionSource = residents;
 
-      run();
-    }
-  }, [authorized, loadResidents]);
-
-  const optionSource = useMemo(
-    () => [...residents, ...pendingResidents],
-    [pendingResidents, residents]
-  );
-
-  const householdOptions = useMemo(
-    () => uniqueOptions(optionSource.map((resident) => resident.household_no || "")),
-    [optionSource]
-  );
+  const householdOptions = useMemo(() => {
+    const rawList = uniqueOptions(
+      optionSource.map((resident) => resident.household_no || resident.house_no || "").filter(Boolean)
+    );
+    return rawList.sort((a, b) => {
+      const numA = parseInt(a, 10);
+      const numB = parseInt(b, 10);
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return numA - numB;
+      }
+      return a.localeCompare(b);
+    });
+  }, [optionSource]);
 
   const relationshipOptions = useMemo(
     () =>
@@ -1059,28 +1162,122 @@ const ResidentsManagement = () => {
     [editingResident]
   );
 
+  const searchableResidents = useMemo(() => {
+    return residents.map((r) => {
+      const rawHh = String(r.household_no || r.house_no || "").trim();
+      const numHh = parseInt(rawHh, 10);
+      const isNum = !isNaN(numHh);
+      const hhVariants = isNum
+        ? [
+            rawHh,
+            String(numHh),
+            `household ${numHh}`,
+            `household ${rawHh}`,
+            `household #${numHh}`,
+            `household #${rawHh}`,
+            `hh ${numHh}`,
+            `hh ${rawHh}`,
+            `hh #${numHh}`,
+            `hh #${rawHh}`,
+            `purok ${r.purok || ""}`,
+          ]
+        : [rawHh, `household ${rawHh}`, `hh ${rawHh}`, `purok ${r.purok || ""}`];
+
+      const parts = [
+        r.full_name,
+        r.first_name,
+        r.last_name,
+        r.middle_name,
+        r.suffix,
+        r.portal_username,
+        r.phone,
+        r.email,
+        r.house_no,
+        r.household_no,
+        ...hhVariants,
+        r.relationship_to_household_head,
+        r.purok,
+        r.address,
+        r.occupation,
+        r.civil_status,
+        r.educational_attainment,
+      ];
+      const searchStr = parts.filter(Boolean).join(" ").toLowerCase();
+      const age = getResidentAge(r);
+      const purokNorm = normalizePurokValue(r.purok);
+      const statusLower = (r.status || "active").trim().toLowerCase();
+      const sexLower = (r.sex || r.gender || "").trim().toLowerCase();
+      const hhNo = rawHh.toLowerCase();
+      const relLower = String(r.relationship_to_household_head || "").trim().toLowerCase();
+      const occLower = String(r.occupation || "").trim().toLowerCase();
+      const civilLower = String(r.civil_status || "").trim().toLowerCase();
+      const eduLower = String(r.educational_attainment || "").trim().toLowerCase();
+
+      return {
+        ...r,
+        _searchStr: searchStr,
+        _age: age,
+        _purokNorm: purokNorm,
+        _statusLower: statusLower,
+        _sexLower: sexLower,
+        _hhNo: hhNo,
+        _hhNum: isNum ? numHh : null,
+        _relLower: relLower,
+        _occLower: occLower,
+        _civilLower: civilLower,
+        _eduLower: eduLower,
+      };
+    });
+  }, [residents]);
+
   const matchesCurrentResidentFilters = useCallback(
     (resident) => {
-      const status = resident.status || "";
-      const term = searchTerm.trim().toLowerCase();
+      const statusLower = resident._statusLower;
 
       // 1. Status Filter
-      if (statusFilter === "current" && status === "Archived") return false;
-      if (statusFilter && statusFilter !== "current" && status !== statusFilter) return false;
+      if (statusFilter === "current") {
+        if (statusLower === "archived") return false;
+      } else if (statusFilter === "Active") {
+        if (
+          statusLower === "archived" ||
+          statusLower === "inactive" ||
+          statusLower === "pending"
+        ) return false;
+      } else if (statusFilter) {
+        if (statusLower !== statusFilter.toLowerCase()) return false;
+      }
 
       // 2. Sex Filter
-      if (sexFilter && (resident.sex || resident.gender || "").toLowerCase() !== sexFilter.toLowerCase()) return false;
+      if (sexFilter) {
+        const targetSex = sexFilter.trim().toLowerCase();
+        if (resident._sexLower !== targetSex && !resident._sexLower.startsWith(targetSex[0])) return false;
+      }
 
       // 3. Purok Filter
-      if (purokFilter && normalizePurokValue(resident.purok) !== purokFilter) return false;
+      if (purokFilter) {
+        const filterPurok = normalizePurokValue(purokFilter);
+        if (
+          resident._purokNorm !== filterPurok &&
+          String(resident.purok || "").trim().toLowerCase() !== String(purokFilter).trim().toLowerCase()
+        ) {
+          return false;
+        }
+      }
 
       // 4. Household Filter
-      if (householdFilter && (resident.household_no || "").trim() !== householdFilter.trim()) return false;
+      if (householdFilter) {
+        const filterNum = parseInt(householdFilter, 10);
+        if (!isNaN(filterNum) && resident._hhNum !== null) {
+          if (filterNum !== resident._hhNum) return false;
+        } else if (resident._hhNo !== householdFilter.trim().toLowerCase()) {
+          return false;
+        }
+      }
 
       // 5. Relationship Filter
       if (
         relationshipFilter &&
-        (resident.relationship_to_household_head || "").trim() !== relationshipFilter.trim()
+        resident._relLower !== relationshipFilter.trim().toLowerCase()
       ) {
         return false;
       }
@@ -1088,51 +1285,51 @@ const ResidentsManagement = () => {
       // 6. Category Filter
       if (categoryFilter && !residentMatchesCategory(resident, categoryFilter)) return false;
 
-      // 7. Occupation Filter (AND logic)
+      // 7. Occupation Filter
       if (
         occupationFilter &&
-        (resident.occupation || "").trim().toLowerCase() !== occupationFilter.trim().toLowerCase()
+        resident._occLower !== occupationFilter.trim().toLowerCase()
       ) {
         return false;
       }
 
-      // 8. Civil Status Filter (AND logic)
+      // 8. Civil Status Filter
       if (
         civilStatusFilter &&
-        (resident.civil_status || "").trim().toLowerCase() !== civilStatusFilter.trim().toLowerCase()
+        resident._civilLower !== civilStatusFilter.trim().toLowerCase()
       ) {
         return false;
       }
 
-      // 9. Educational Attainment Filter (AND logic)
+      // 9. Educational Attainment Filter
       if (
         educationFilter &&
-        (resident.educational_attainment || "").trim().toLowerCase() !== educationFilter.trim().toLowerCase()
+        resident._eduLower !== educationFilter.trim().toLowerCase()
       ) {
         return false;
       }
 
-      // 10. Age Range Filter (AND logic)
-      const residentAge = getResidentAge(resident);
+      // 10. Age Range Filter
       if (minAge !== "") {
         const min = Number(minAge);
-        if (!isNaN(min) && (residentAge === null || residentAge < min)) return false;
+        if (!isNaN(min) && (resident._age === null || resident._age < min)) return false;
       }
       if (maxAge !== "") {
         const max = Number(maxAge);
-        if (!isNaN(max) && (residentAge === null || residentAge > max)) return false;
+        if (!isNaN(max) && (resident._age === null || resident._age > max)) return false;
       }
 
-      // 11. Search Term (Full Text search across all fields)
+      // 11. Search Term (Multi-word Substring Check)
+      const term = deferredSearchTerm.trim().toLowerCase();
       if (!term) return true;
 
-      return residentFilterFields.some((field) =>
-        String(resident[field] || "").toLowerCase().includes(term)
-      );
+      const words = term.split(/\s+/).filter(Boolean);
+      return words.every((word) => resident._searchStr.includes(word));
     },
     [
       categoryFilter,
       civilStatusFilter,
+      deferredSearchTerm,
       educationFilter,
       householdFilter,
       maxAge,
@@ -1140,20 +1337,27 @@ const ResidentsManagement = () => {
       occupationFilter,
       purokFilter,
       relationshipFilter,
-      searchTerm,
       sexFilter,
       statusFilter,
     ]
   );
 
   const displayedResidents = useMemo(
-    () =>
-      residents.filter(
-        (resident) =>
-          matchesCurrentResidentFilters(resident) &&
-          residentMatchesCategory(resident, categoryFilter)
-      ),
-    [categoryFilter, matchesCurrentResidentFilters, residents]
+    () => searchableResidents.filter(matchesCurrentResidentFilters),
+    [matchesCurrentResidentFilters, searchableResidents]
+  );
+
+  const displayedResidentsRef = useRef(displayedResidents);
+  displayedResidentsRef.current = displayedResidents;
+
+  const selectedResidentIdsSet = useMemo(
+    () => new Set(selectedResidentIds),
+    [selectedResidentIds]
+  );
+
+  const isAllResidentsSelected = useMemo(
+    () => displayedResidents.length > 0 && selectedResidentIds.length === displayedResidents.length,
+    [displayedResidents.length, selectedResidentIds.length]
   );
 
   // Active filter chips list for easy removal
@@ -1162,8 +1366,8 @@ const ResidentsManagement = () => {
     if (searchTerm.trim()) {
       list.push({ id: "search", label: `Search: "${searchTerm.trim()}"`, clear: () => setSearchTerm("") });
     }
-    if (statusFilter && statusFilter !== "Active") {
-      const label = statusFilters.find((s) => s.value === statusFilter)?.label || statusFilter;
+    if (statusFilter !== "Active") {
+      const label = statusFilters.find((s) => s.value === statusFilter)?.label || (statusFilter === "" ? "All records" : statusFilter);
       list.push({ id: "status", label: `Status: ${label}`, clear: () => setStatusFilter("Active") });
     }
     if (sexFilter) {
@@ -1224,12 +1428,12 @@ const ResidentsManagement = () => {
         id: "status",
         label: "Record Status",
         icon: UserCheck,
-        isActive: Boolean(statusFilter && statusFilter !== "Active"),
-        activeLabel: statusFilters.find((s) => s.value === statusFilter)?.label || statusFilter,
+        isActive: Boolean(statusFilter !== "Active"),
+        activeLabel: statusFilters.find((s) => s.value === statusFilter)?.label || (statusFilter === "" ? "All records" : statusFilter),
         options: statusFilters.map((s) => ({ value: s.value, label: s.label })),
         currentValue: statusFilter,
         onSelect: (val) => {
-          setStatusFilter(val || "Active");
+          setStatusFilter(val !== undefined ? val : "Active");
           setPaginationModel((prev) => ({ ...prev, page: 0 }));
           setFilterMenuOpen(false);
           setFilterMenuCategory(null);
@@ -1504,22 +1708,10 @@ const ResidentsManagement = () => {
     (resident) => {
       setResidents((currentResidents) => {
         const withoutResident = currentResidents.filter((item) => item.id !== resident.id);
-
-        if (!matchesCurrentResidentFilters(resident)) {
-          return withoutResident;
-        }
-
-        const previousIndex = currentResidents.findIndex((item) => item.id === resident.id);
-        if (previousIndex === -1) {
-          return [resident, ...withoutResident];
-        }
-
-        const nextResidents = [...currentResidents];
-        nextResidents[previousIndex] = resident;
-        return nextResidents.filter((item) => matchesCurrentResidentFilters(item));
+        return [resident, ...withoutResident];
       });
     },
-    [matchesCurrentResidentFilters]
+    []
   );
 
   const syncPendingResidentList = useCallback((resident) => {
@@ -1844,7 +2036,8 @@ const ResidentsManagement = () => {
     .header-container {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: center;
+      gap: 16px;
       border-bottom: 2.5px solid #00552E !important;
       padding-bottom: 8px;
       margin-bottom: 8px;
@@ -1855,17 +2048,17 @@ const ResidentsManagement = () => {
       print-color-adjust: exact !important;
     }
     .header-seal {
-      width: 66px;
-      height: 66px;
+      width: 64px;
+      height: 64px;
       object-fit: contain;
+      flex-shrink: 0;
     }
     .header-text {
       text-align: center;
-      flex: 1;
     }
     .header-text h4 {
       margin: 0;
-      font-size: 10px;
+      font-size: 9.5px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -1873,7 +2066,7 @@ const ResidentsManagement = () => {
     }
     .header-text h2 {
       margin: 2px 0 0;
-      font-size: 16.5px;
+      font-size: 16px;
       font-weight: 900;
       color: #00552E !important;
       letter-spacing: 0.04em;
@@ -1882,7 +2075,7 @@ const ResidentsManagement = () => {
     }
     .header-text h3 {
       margin: 3px 0 0;
-      font-size: 12.5px;
+      font-size: 12px;
       font-weight: 800;
       color: #0f172a;
       letter-spacing: 0.03em;
@@ -2090,7 +2283,7 @@ const ResidentsManagement = () => {
       <h2>BARANGAY UPPER MINGADING</h2>
       <h3>${reportTitle}</h3>
     </div>
-    <img class="header-seal" src="/logo.png" alt="Barangay Upper Mingading Seal" />
+    <img class="header-seal" src="/aleosan.logo.png" alt="Municipality of Aleosan Seal" />
   </div>
 
   <div class="filter-badge-box">
@@ -2110,12 +2303,12 @@ const ResidentsManagement = () => {
   <div class="signatures">
     <div class="sig-block">
       <div class="sig-line"></div>
-      <div class="sig-name">JOVY LYN C. CABAY</div>
+      <div class="sig-name">${getActiveSecretary(officials)}</div>
       <div class="sig-title">Barangay Secretary</div>
     </div>
     <div class="sig-block">
       <div class="sig-line"></div>
-      <div class="sig-name">HON. RENERIO S. CALAMBA</div>
+      <div class="sig-name">${getActiveCaptain(officials)}</div>
       <div class="sig-title">Punong Barangay</div>
     </div>
   </div>
@@ -2252,18 +2445,16 @@ const ResidentsManagement = () => {
       const savedResident = await createResident(payload);
       const savedStatus = savedResident.status || payload.status || "Active";
 
-      // If admin provided a username and password, create the portal account
+      // If admin provided a username, create the portal account
       let portalPassword = (formValues.portal_password || "").trim();
-      if (portalUsername && !portalPassword) {
-        portalPassword = (formValues.household_no || "").trim();
-      }
       let portalMessage = "";
 
-      if (portalUsername && portalPassword && savedResident.id) {
+      if (portalUsername && savedResident.id) {
         try {
-          await createResidentPortalAccount(savedResident.id, portalUsername, portalPassword);
+          const finalPass = portalPassword || "kaagapai123";
+          await createResidentPortalAccount(savedResident.id, portalUsername, finalPass);
           savedResident.portal_username = portalUsername.toLowerCase();
-          savedResident.portal_password = portalPassword;
+          savedResident.portal_password = finalPass;
           savedResident.resident_account = { username: portalUsername.toLowerCase(), account_status: "Active" };
           portalMessage = ` Portal account created with username "${portalUsername.toLowerCase()}".`;
         } catch (portalErr) {
@@ -2444,6 +2635,18 @@ const ResidentsManagement = () => {
 
     try {
       await updateResident(resident, { status: "Active" });
+      try {
+        await supabase
+          .from("resident_accounts")
+          .update({ account_status: "Active" })
+          .eq("resident_id", resident.id);
+        await supabase
+          .from("resident_activation_requests")
+          .update({ status: "Approved", approved_at: new Date().toISOString() })
+          .eq("resident_id", resident.id);
+      } catch {
+        // silent fallback
+      }
       setMessage({ type: "success", text: "Resident approved successfully." });
       await loadResidents();
       setResidentPage(1);
@@ -2489,84 +2692,112 @@ const ResidentsManagement = () => {
     setPaginationModel((prev) => ({ ...prev, page: 0 }));
   };
 
-  const columns = useMemo(
-    () => [
-      {
+  const hasActiveFilters = useMemo(() => {
+    return (
+      activeFilterPills.length > 0 ||
+      Boolean(searchTerm.trim()) ||
+      isSelectMode ||
+      selectedResidentIds.length > 0
+    );
+  }, [activeFilterPills.length, isSelectMode, searchTerm, selectedResidentIds.length]);
+
+  const columns = useMemo(() => {
+    const cols = [];
+
+    // Show selection checkboxes ONLY when filtering, searching, or when selection is active
+    if (hasActiveFilters) {
+      cols.push({
         field: "__selection__",
         headerName: "",
         width: 48,
+        minWidth: 48,
+        maxWidth: 48,
         sortable: false,
         filterable: false,
         disableColumnMenu: true,
-        renderHeader: () => (
-          <div className="flex items-center justify-center w-full">
-            <input
-              type="checkbox"
-              checked={
-                displayedResidents.length > 0 &&
-                displayedResidents.every((r) => selectedResidentIds.includes(r.id))
-              }
-              onChange={(e) => {
-                if (e.target.checked) {
-                  setSelectedResidentIds(displayedResidents.map((r) => r.id));
-                } else {
-                  setSelectedResidentIds([]);
-                }
-              }}
-              className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-              title="Select all filtered residents"
-            />
-          </div>
-        ),
-        renderCell: (params) => {
-          const isSelected = selectedResidentIds.includes(params.row.id);
+        headerAlign: "center",
+        align: "center",
+        renderHeader: () => {
+          const isPartiallySelected = selectedResidentIds.length > 0 && !isAllResidentsSelected;
           return (
-            <div className="flex items-center justify-center w-full h-full">
+            <div className="flex items-center justify-center w-full py-1" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                checked={isAllResidentsSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = isPartiallySelected;
+                }}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  if (isAllResidentsSelected || selectedResidentIds.length > 0) {
+                    setSelectedResidentIds([]);
+                    setIsSelectMode(false);
+                  } else {
+                    setIsSelectMode(true);
+                    setSelectedResidentIds(displayedResidentsRef.current.map((r) => r.id));
+                  }
+                }}
+                className="h-4 w-4 rounded border-slate-300 text-[#00552E] focus:ring-[#00552E] cursor-pointer accent-[#00552E] transition"
+                title={isAllResidentsSelected ? "Deselect all" : "Select all displayed records"}
+              />
+            </div>
+          );
+        },
+        renderCell: (params) => {
+          const isSelected = selectedResidentIdsSet.has(params.row.id);
+          return (
+            <div className="flex items-center justify-center w-full h-full" onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
                 checked={isSelected}
                 onChange={(e) => {
                   e.stopPropagation();
                   if (e.target.checked) {
+                    setIsSelectMode(true);
                     setSelectedResidentIds((prev) => [...prev, params.row.id]);
                   } else {
-                    setSelectedResidentIds((prev) =>
-                      prev.filter((id) => id !== params.row.id)
-                    );
+                    setSelectedResidentIds((prev) => {
+                      const next = prev.filter((id) => id !== params.row.id);
+                      if (next.length === 0) setIsSelectMode(false);
+                      return next;
+                    });
                   }
                 }}
-                className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                className="h-4 w-4 rounded border-slate-300 text-[#00552E] focus:ring-[#00552E] cursor-pointer accent-[#00552E] transition"
               />
             </div>
           );
         },
+      });
+    }
+
+    cols.push({
+      field: "full_name",
+      headerName: "Resident",
+      flex: 1.5,
+      renderCell: (params) => {
+        const resident = params.row;
+        return (
+          <div className="py-2 leading-tight">
+            <p className="font-semibold text-slate-900">{getResidentDisplayName(resident)}</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Born {resident.birthday ? new Date(resident.birthday).toLocaleDateString() : "-"} in {resident.birthplace || "-"}
+            </p>
+            <p className="text-xs text-slate-400 mt-0.5 truncate max-w-xs">{resident.address || "-"}</p>
+          </div>
+        );
       },
-      {
-        field: "full_name",
-        headerName: "Resident",
-        flex: 1.5,
-        renderCell: (params) => {
-          const resident = params.row;
-          return (
-            <div className="py-2 leading-tight">
-              <p className="font-semibold text-slate-900">{getResidentDisplayName(resident)}</p>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Born {resident.birthday ? new Date(resident.birthday).toLocaleDateString() : "-"} in {resident.birthplace || "-"}
-              </p>
-              <p className="text-xs text-slate-400 mt-0.5 truncate max-w-xs">{resident.address || "-"}</p>
-            </div>
-          );
-        },
-      },
+    },
       {
         field: "household_no",
         headerName: "Household",
         flex: 1.2,
         renderCell: (params) => {
           const resident = params.row;
+          const hhNumber = resident.household_no || resident.house_no || "-";
           return (
             <div className="py-2 leading-tight">
-              <p className="font-medium text-slate-700">{resident.household_no || "-"}</p>
+              <p className="font-medium text-slate-700">{hhNumber}</p>
               <p className="text-xs text-slate-500 mt-0.5">{resident.relationship_to_household_head || "-"}</p>
               <p className="text-xs text-slate-400 mt-0.5">{formatPurok(resident.purok)}</p>
             </div>
@@ -2621,7 +2852,7 @@ const ResidentsManagement = () => {
         renderCell: (params) => {
           const resident = params.row;
           const isPasswordVisible = Boolean(visiblePasswordMap[resident.id]);
-          const passVal = resident.portal_password || resident.plain_password || resident.password || (resident.household_no ? String(resident.household_no) : "");
+          const passVal = getResidentPortalPassword(resident);
 
           return (
             <div className="py-2 leading-tight space-y-0.5">
@@ -2633,7 +2864,7 @@ const ResidentsManagement = () => {
               )}
               <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
                 <span className="font-mono text-[11px] font-bold text-slate-700">
-                  {isPasswordVisible ? (passVal || "(No pass set)") : "••••••••"}
+                  {isPasswordVisible ? (passVal || "(No pass set)") : (passVal ? "••••••••" : "-")}
                 </span>
                 <button
                   type="button"
@@ -2725,10 +2956,11 @@ const ResidentsManagement = () => {
             </div>
           );
         },
-      },
-    ],
-    [actionResidentId, displayedResidents, selectedResidentIds, visiblePasswordMap]
-  );
+      }
+    );
+
+    return cols;
+  }, [actionResidentId, hasActiveFilters, isAllResidentsSelected, selectedResidentIdsSet, visiblePasswordMap]);
 
   return (
     <>
@@ -2736,32 +2968,6 @@ const ResidentsManagement = () => {
         title="Resident Management"
         description="Add, update, filter, and archive resident records"
       >
-        {message ? (
-          <div
-            className={`glass-panel mb-6 flex items-center justify-between gap-3 p-4 text-sm font-semibold shadow-soft ${message.type === "success"
-                ? "bg-emerald-50/80 text-emerald-700 border-emerald-200/50"
-                : "bg-rose-50/80 text-rose-700 border-rose-200/50"
-              }`}
-          >
-            <div className="flex items-center gap-3">
-              {message.type === "success" ? (
-                <CheckCircle className="flex-shrink-0" size={18} />
-              ) : (
-                <AlertCircle className="flex-shrink-0" size={18} />
-              )}
-              <span>{message.text}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setMessage(null)}
-              className="text-slate-400 hover:text-slate-700 transition p-1 cursor-pointer"
-              title="Dismiss message"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        ) : null}
-
         {pendingResidents.length > 0 ? (
           <section className="glass-panel mb-6 bg-gradient-to-br from-amber-50/60 to-orange-50/60 p-6 border-amber-200/40">
             <div className="mb-4 flex items-center gap-3">
@@ -2825,19 +3031,17 @@ const ResidentsManagement = () => {
           {/* Row 1: Search Bar + Buttons */}
           <div className="relative z-20 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             {/* Search Input */}
-            <div className="relative flex-1 min-w-0">
-              <Search className="absolute left-3.5 top-3 text-emerald-600/70" size={17} />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={(event) => {
-                  setSearchTerm(event.target.value);
-                  setPaginationModel((prev) => ({ ...prev, page: 0 }));
-                }}
-                placeholder="Search name, username, household, occupation, contact..."
-                className="w-full rounded-2xl border border-emerald-200/90 bg-white/95 py-2.5 pl-10 pr-3.5 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none transition focus:border-emerald-600 focus:bg-white focus:ring-2 focus:ring-emerald-500/20 shadow-xs"
-              />
-            </div>
+            <ResidentSearchBar
+              value={searchTerm}
+              onChange={(val) => {
+                setSearchTerm(val);
+                setPaginationModel((prev) => ({ ...prev, page: 0 }));
+              }}
+              onClear={() => {
+                setSearchTerm("");
+                setPaginationModel((prev) => ({ ...prev, page: 0 }));
+              }}
+            />
 
             {/* Action Buttons Group */}
             <div className="flex flex-wrap items-center gap-2">
@@ -3214,22 +3418,6 @@ const ResidentsManagement = () => {
                 )}
               </div>
 
-              {/* Print Selected (Visible when selected) */}
-              {selectedResidentIds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => handleOpenPrintModal("purok_simple")}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-100/90 hover:bg-emerald-200 px-3.5 py-2 text-xs font-bold text-emerald-950 transition cursor-pointer shadow-xs animate-in fade-in"
-                  title="Print only the selected residents"
-                >
-                  <Printer size={14} />
-                  <span>Print Selected</span>
-                  <span className="rounded-full bg-emerald-800 text-white px-1.5 py-0.2 text-[10px] font-bold">
-                    {selectedResidentIds.length}
-                  </span>
-                </button>
-              )}
-
               {/* Manage Puroks Button */}
               <button
                 type="button"
@@ -3298,64 +3486,84 @@ const ResidentsManagement = () => {
 
                     {/* Popover right under active pill to change value */}
                     {isPillOpen && (
-                      <div className="absolute left-0 top-full mt-1.5 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl z-50 animate-in fade-in duration-100">
-                        <div className="px-2 py-1 text-[11px] font-bold text-slate-500 border-b border-slate-100 mb-1 flex items-center justify-between">
-                          <span>Change {cat.label}</span>
+                      <div className="absolute left-0 top-full mt-1.5 z-40 w-64 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl animate-in fade-in zoom-in-95 duration-150">
+                        <div className="px-2.5 py-1 border-b border-slate-100 mb-1 flex items-center justify-between">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">
+                            Change {cat.label}
+                          </span>
                           <button
                             type="button"
-                            onClick={() => cat.onClear()}
-                            className="text-rose-600 hover:underline cursor-pointer"
+                            onClick={() => setActivePillMenu(null)}
+                            className="text-slate-400 hover:text-slate-700 p-0.5"
                           >
-                            Clear
+                            <X size={12} />
                           </button>
                         </div>
 
-                        {cat.id === "age" ? (
+                        {cat.isCustom ? (
                           <div className="p-1 space-y-2">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-2">
                               <input
                                 type="number"
                                 min="0"
-                                value={minAge}
-                                onChange={(e) => setMinAge(e.target.value)}
+                                max="120"
+                                value={tempMinAge}
+                                onChange={(e) => setTempMinAge(e.target.value)}
                                 placeholder="Min"
-                                className="w-full rounded-lg border border-slate-200 p-1.5 text-xs font-bold"
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-emerald-600 focus:bg-white"
                               />
-                              <span className="text-xs font-bold text-slate-400">to</span>
+                              <span className="text-xs text-slate-400 font-bold">to</span>
                               <input
                                 type="number"
                                 min="0"
-                                value={maxAge}
-                                onChange={(e) => setMaxAge(e.target.value)}
+                                max="120"
+                                value={tempMaxAge}
+                                onChange={(e) => setTempMaxAge(e.target.value)}
                                 placeholder="Max"
-                                className="w-full rounded-lg border border-slate-200 p-1.5 text-xs font-bold"
+                                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-900 outline-none focus:border-emerald-600 focus:bg-white"
                               />
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => setActivePillMenu(null)}
-                              className="w-full rounded-lg bg-emerald-800 text-white text-xs font-bold py-1.5 cursor-pointer"
-                            >
-                              Apply
-                            </button>
+                            <div className="flex items-center justify-between pt-1">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  cat.onClear();
+                                  setActivePillMenu(null);
+                                }}
+                                className="text-xs font-bold text-rose-600 hover:underline cursor-pointer"
+                              >
+                                Clear
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => cat.onSelectAge(tempMinAge, tempMaxAge)}
+                                className="rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white px-3 py-1 text-xs font-bold transition cursor-pointer"
+                              >
+                                Apply
+                              </button>
+                            </div>
                           </div>
                         ) : (
-                          <div className="space-y-0.5 max-h-56 overflow-y-auto pr-1">
-                            {cat.options.map((opt) => (
-                              <button
-                                key={opt.label}
-                                type="button"
-                                onClick={() => cat.onSelect(opt.value)}
-                                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-left text-xs font-semibold cursor-pointer ${
-                                  opt.value === cat.currentValue
-                                    ? "bg-emerald-100 text-emerald-900 font-bold"
-                                    : "text-slate-700 hover:bg-slate-50"
-                                }`}
-                              >
-                                <span>{opt.label}</span>
-                                {opt.value === cat.currentValue && <Check size={13} className="text-emerald-700" />}
-                              </button>
-                            ))}
+                          <div className="max-h-56 overflow-y-auto space-y-0.5 pr-1">
+                            {cat.options.map((opt) => {
+                              const isSelected =
+                                opt.value === cat.currentValue || (!opt.value && !cat.currentValue);
+                              return (
+                                <button
+                                  key={opt.label}
+                                  type="button"
+                                  onClick={() => cat.onSelect(opt.value)}
+                                  className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold transition cursor-pointer ${
+                                    isSelected
+                                      ? "bg-emerald-100 text-emerald-950 font-bold"
+                                      : "text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                                  }`}
+                                >
+                                  <span>{opt.label}</span>
+                                  {isSelected && <Check size={13} className="text-emerald-700 stroke-[3]" />}
+                                </button>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -3376,10 +3584,10 @@ const ResidentsManagement = () => {
         </section>
 
         {/* ─── Result Summary & Action Control Bar ─── */}
-        <div className="mt-3.5 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-xs lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-3 text-xs">
+        <div className="mt-3.5 flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-xs sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2.5 text-xs">
             <div className="flex items-center gap-2">
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#00552E]/10 text-[#00552E] font-bold">
+              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-[#00552E]/10 text-[#00552E] font-bold text-xs">
                 ✓
               </span>
               <span className="font-extrabold text-slate-800">
@@ -3388,56 +3596,54 @@ const ResidentsManagement = () => {
               <span className="text-slate-400 text-[11px]">(of {residents.length} total)</span>
             </div>
 
-            <span className="text-slate-300">•</span>
-
-            <span className={`font-extrabold px-2.5 py-1 rounded-lg text-xs ${
-              selectedResidentIds.length > 0
-                ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                : "bg-slate-100 text-slate-500"
-            }`}>
-              {selectedResidentIds.length} of {displayedResidents.length} selected
-            </span>
-
-            {/* Selection Quick Buttons */}
-            <div className="flex items-center gap-1.5 pl-1">
-              <button
-                type="button"
-                onClick={handleSelectAllFiltered}
-                disabled={displayedResidents.length === 0}
-                className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700 hover:bg-slate-100 hover:text-emerald-800 transition disabled:opacity-50 cursor-pointer"
-              >
-                Select All Filtered ({displayedResidents.length})
-              </button>
-              {selectedResidentIds.length > 0 && (
+            {selectedResidentIds.length > 0 && (
+              <>
+                <span className="text-slate-300">•</span>
+                <span className="font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded text-[11px] border border-emerald-200">
+                  {selectedResidentIds.length} selected
+                </span>
                 <button
                   type="button"
-                  onClick={handleDeselectAll}
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-100 hover:text-rose-600 transition cursor-pointer"
+                  onClick={() => setSelectedResidentIds([])}
+                  className="text-[11px] font-bold text-slate-500 hover:text-rose-600 hover:underline cursor-pointer"
                 >
-                  Deselect All
+                  Clear
                 </button>
-              )}
-            </div>
+              </>
+            )}
           </div>
 
-          {/* Show Records Per Page Dropdown */}
-          <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
-            <span>Show:</span>
-            <select
-              value={paginationModel.pageSize}
-              onChange={(e) => {
-                const size = Number(e.target.value);
-                setPaginationModel((prev) => ({ ...prev, pageSize: size, page: 0 }));
-              }}
-              className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-800 outline-none transition focus:border-[#00552E] cursor-pointer"
-            >
-              <option value={10}>10</option>
-              <option value={20}>20</option>
-              <option value={50}>50</option>
-              <option value={100}>100</option>
-              <option value={1000}>All</option>
-            </select>
-            <span className="text-slate-400 font-normal">per page</span>
+          <div className="flex items-center gap-3">
+            {selectedResidentIds.length > 0 && (
+              <button
+                type="button"
+                onClick={() => handleOpenPrintModal("purok_simple")}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#00552E] hover:bg-[#004224] px-3.5 py-1.5 text-xs font-bold text-white transition shadow-xs cursor-pointer"
+              >
+                <Printer size={13} />
+                <span>Print Selected ({selectedResidentIds.length})</span>
+              </button>
+            )}
+
+            {/* Show Records Per Page Dropdown */}
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+              <span>Show:</span>
+              <select
+                value={paginationModel.pageSize}
+                onChange={(e) => {
+                  const size = Number(e.target.value);
+                  setPaginationModel((prev) => ({ ...prev, pageSize: size, page: 0 }));
+                }}
+                className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-800 outline-none transition focus:border-[#00552E] cursor-pointer"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+                <option value={1000}>All</option>
+              </select>
+              <span className="text-slate-400 font-normal">per page</span>
+            </div>
           </div>
         </div>
 
@@ -4027,7 +4233,7 @@ const ResidentsManagement = () => {
         </div>
       </FloatingModal>
 
-      {/* ─── Professional Resident Profile View Modal ─── */}
+      {/* ─── Ultra-HD Professional Resident Profile Sheet Modal ─── */}
       <FloatingModal
         isOpen={showViewModal && Boolean(viewingResident)}
         onClose={() => {
@@ -4036,202 +4242,346 @@ const ResidentsManagement = () => {
           setViewPasswordVisible(false);
         }}
         title="Official Resident Profile Sheet"
-        icon={Eye}
-        maxWidth="max-w-2xl"
+        eyebrow="Barangay Upper Mingading • Resident Registry"
+        description="Comprehensive biometric, civil, demographic, and portal identity profile"
+        maxWidth="max-w-3xl"
       >
         {viewingResident && (
           <div className="space-y-4 text-slate-800">
-            {/* Header Identity Card */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl bg-gradient-to-br from-emerald-800 via-emerald-900 to-[#033E2B] text-white shadow-sm">
-              <div className="flex items-center gap-3.5">
-                <div className="flex h-13 w-13 items-center justify-center rounded-2xl bg-white/15 border border-white/25 text-white font-black text-lg shadow-inner">
-                  {(viewingResident.first_name?.[0] || "") + (viewingResident.last_name?.[0] || "R")}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-extrabold tracking-tight text-white">
-                      {getResidentDisplayName(viewingResident)}
-                    </h3>
-                    <span className="rounded-full bg-emerald-400/20 text-emerald-200 border border-emerald-300/30 px-2 py-0.5 text-[10px] font-bold">
-                      {viewingResident.status || "Active"}
-                    </span>
-                  </div>
-                  <p className="text-xs text-emerald-100/80 mt-0.5 font-medium">
-                    {formatPurok(viewingResident.purok)} • Household No. {viewingResident.household_no || "-"}
-                  </p>
-                </div>
-              </div>
+            {/* HD Header Identity Card */}
+            <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#003B1F] via-[#00552E] to-[#046C4E] p-5 text-white shadow-xl shadow-emerald-950/20 border border-emerald-400/20">
+              {/* Ambient Glow Effects */}
+              <div className="pointer-events-none absolute -right-12 -top-12 h-44 w-44 rounded-full bg-emerald-400/20 blur-3xl" />
+              <div className="pointer-events-none absolute -left-12 -bottom-12 h-44 w-44 rounded-full bg-emerald-300/15 blur-3xl" />
 
-              <div className="flex flex-wrap gap-1.5 sm:justify-end">
-                {getResidentCategoryTags(viewingResident).map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full bg-white/20 backdrop-blur-xs border border-white/30 text-white px-2.5 py-0.5 text-[10.5px] font-bold"
-                  >
-                    {tag}
-                  </span>
-                ))}
+              <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  {/* High-Resolution Avatar Pill */}
+                  <div className="relative flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/20 border-2 border-white/40 text-white font-black text-2xl shadow-lg backdrop-blur-md">
+                    {(viewingResident.first_name?.[0] || "") + (viewingResident.last_name?.[0] || "R")}
+                    <div
+                      className={`absolute -bottom-1 -right-1 h-5 w-5 rounded-full border-2 border-[#00552E] flex items-center justify-center ${
+                        viewingResident.status === "Inactive" || viewingResident.status === "Archived"
+                          ? "bg-rose-500"
+                          : "bg-emerald-400"
+                      }`}
+                      title={`Status: ${viewingResident.status || "Active"}`}
+                    >
+                      <div className="h-2 w-2 rounded-full bg-white animate-pulse" />
+                    </div>
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-lg sm:text-xl font-black tracking-tight text-white drop-shadow-xs">
+                        {getResidentDisplayName(viewingResident)}
+                      </h3>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white/20 backdrop-blur-md text-emerald-100 border border-white/30 px-2.5 py-0.5 text-[11px] font-extrabold">
+                        <CheckCircle size={11} className="text-emerald-300" />
+                        {viewingResident.status || "Active"}
+                      </span>
+                    </div>
+
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-emerald-100/90 font-medium">
+                      <span className="inline-flex items-center gap-1">
+                        <MapPin size={13} className="text-emerald-300 shrink-0" />
+                        Purok {formatPurok(viewingResident.purok)}
+                      </span>
+                      <span>•</span>
+                      <span className="inline-flex items-center gap-1">
+                        <Home size={13} className="text-emerald-300 shrink-0" />
+                        Household #{viewingResident.household_no || viewingResident.house_no || "-"}
+                      </span>
+                      <span>•</span>
+                      <span>
+                        {getResidentAge(viewingResident) ?? "-"} yrs old ({viewingResident.sex || viewingResident.gender || "-"})
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Category Tags Container */}
+                <div className="flex flex-wrap gap-1.5 sm:max-w-xs sm:justify-end">
+                  {getResidentCategoryTags(viewingResident).map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-xl bg-white/15 backdrop-blur-md border border-white/25 text-white px-2.5 py-1 text-[10.5px] font-black shadow-xs tracking-wide uppercase"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Structured Sections */}
-            <div className="grid gap-3.5 sm:grid-cols-2">
+            {/* Structured HD Profile Sections */}
+            <div className="grid gap-3 sm:grid-cols-2">
               {/* 1. Personal Information */}
-              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-2.5">
-                <div className="flex items-center gap-2 border-b border-slate-200/60 pb-1.5">
-                  <UserCheck size={14} className="text-emerald-700" />
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
-                    Personal Information
-                  </h4>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs hover:border-emerald-200 transition">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-800">
+                    <UserCheck size={15} />
+                  </div>
                   <div>
-                    <span className="text-[10.5px] font-bold text-slate-400 block">Age / Sex</span>
-                    <span className="font-extrabold text-slate-900">
-                      {getResidentAge(viewingResident) ?? "-"} yrs / {viewingResident.sex || viewingResident.gender || "-"}
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                      Personal Demographics
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-medium">Birth and civil identity</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-0.5">Age & Sex</span>
+                    <span className="font-black text-slate-900 text-sm">
+                      {getResidentAge(viewingResident) ?? "-"} yrs <span className="text-slate-400 font-normal">/</span> {viewingResident.sex || viewingResident.gender || "-"}
                     </span>
                   </div>
-                  <div>
-                    <span className="text-[10.5px] font-bold text-slate-400 block">Civil Status</span>
-                    <span className="font-extrabold text-slate-900">{viewingResident.civil_status || "-"}</span>
+
+                  <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-0.5">Civil Status</span>
+                    <span className="font-black text-slate-900 text-sm">{viewingResident.civil_status || "Single"}</span>
                   </div>
-                  <div>
-                    <span className="text-[10.5px] font-bold text-slate-400 block">Date of Birth</span>
-                    <span className="font-bold text-slate-800">{formatDate(viewingResident.birthday)}</span>
+
+                  <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-0.5">Date of Birth</span>
+                    <span className="font-bold text-slate-800 text-xs">
+                      {viewingResident.birthday ? new Date(viewingResident.birthday).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "-"}
+                    </span>
                   </div>
-                  <div>
-                    <span className="text-[10.5px] font-bold text-slate-400 block">Place of Birth</span>
-                    <span className="font-bold text-slate-800 truncate block" title={viewingResident.birthplace}>
+
+                  <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-0.5">Place of Birth</span>
+                    <span className="font-bold text-slate-800 text-xs truncate block" title={viewingResident.birthplace}>
                       {viewingResident.birthplace || "-"}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* 2. Household & Location */}
-              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-2.5">
-                <div className="flex items-center gap-2 border-b border-slate-200/60 pb-1.5">
-                  <Home size={14} className="text-emerald-700" />
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
-                    Household & Address
-                  </h4>
+              {/* 2. Household & Residence */}
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs hover:border-emerald-200 transition">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-800">
+                    <Home size={15} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                      Household & Residence
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-medium">Family and barangay location</p>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-[10.5px] font-bold text-slate-400 block">Household Head Rel.</span>
-                    <span className="font-extrabold text-slate-900">{viewingResident.relationship_to_household_head || "-"}</span>
+
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-0.5">Household Role</span>
+                    <span className="font-black text-slate-900 text-sm">{viewingResident.relationship_to_household_head || "Head"}</span>
                   </div>
-                  <div>
-                    <span className="text-[10.5px] font-bold text-slate-400 block">House No.</span>
-                    <span className="font-extrabold text-slate-900">{viewingResident.house_no || "-"}</span>
+
+                  <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-0.5">House / HH No.</span>
+                    <span className="font-black text-slate-900 text-sm font-mono">{viewingResident.household_no || viewingResident.house_no || "-"}</span>
                   </div>
-                  <div className="col-span-2">
-                    <span className="text-[10.5px] font-bold text-slate-400 block">Full Registered Address</span>
-                    <span className="font-bold text-slate-800">{viewingResident.address || "-"}</span>
+
+                  <div className="col-span-2 rounded-xl bg-emerald-50/60 p-2.5 border border-emerald-100">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 block mb-0.5">Complete Registered Address</span>
+                    <p className="font-extrabold text-emerald-950 text-xs leading-relaxed">
+                      {viewingResident.address || buildCompleteAddress(viewingResident.purok)}
+                    </p>
                   </div>
                 </div>
               </div>
 
-              {/* 3. Education & Work */}
-              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-2.5">
-                <div className="flex items-center gap-2 border-b border-slate-200/60 pb-1.5">
-                  <Briefcase size={14} className="text-emerald-700" />
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
-                    Education & Livelihood
-                  </h4>
-                </div>
-                <div className="space-y-1.5 text-xs">
-                  <div>
-                    <span className="text-[10.5px] font-bold text-slate-400 block">Educational Attainment</span>
-                    <span className="font-extrabold text-slate-900">{viewingResident.educational_attainment || "-"}</span>
+              {/* 3. Education & Occupation */}
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs hover:border-emerald-200 transition">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-800">
+                    <GraduationCap size={15} />
                   </div>
                   <div>
-                    <span className="text-[10.5px] font-bold text-slate-400 block">Occupation / Profession</span>
-                    <span className="font-extrabold text-slate-900">{viewingResident.occupation || "-"}</span>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                      Education & Occupation
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-medium">Academic and livelihood profile</p>
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-xs">
+                  <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-0.5">Attainment</span>
+                      <span className="font-black text-slate-900">{viewingResident.educational_attainment || "Not specified"}</span>
+                    </div>
+                    <GraduationCap size={18} className="text-slate-300 shrink-0 ml-2" />
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 p-2.5 border border-slate-100 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 block mb-0.5">Primary Occupation</span>
+                      <span className="font-black text-slate-900">{viewingResident.occupation || "None / Unemployed"}</span>
+                    </div>
+                    <Briefcase size={18} className="text-slate-300 shrink-0 ml-2" />
                   </div>
                 </div>
               </div>
 
               {/* 4. Special Sector Classifications */}
-              <div className="rounded-2xl border border-slate-200/80 bg-slate-50/70 p-3.5 space-y-2.5">
-                <div className="flex items-center gap-2 border-b border-slate-200/60 pb-1.5">
-                  <Tag size={14} className="text-emerald-700" />
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
-                    Sector Classifications
-                  </h4>
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xs hover:border-emerald-200 transition">
+                <div className="flex items-center gap-2 border-b border-slate-100 pb-2.5 mb-3">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-800">
+                    <Tag size={15} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                      Sector Classifications
+                    </h4>
+                    <p className="text-[10px] text-slate-400 font-medium">Government program qualifications</p>
+                  </div>
                 </div>
+
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-[10.5px] font-bold text-slate-400 block">Senior Citizen</span>
-                    <span className="font-extrabold text-slate-900">
-                      {getResidentAge(viewingResident) >= 60 ? "Yes" : "No"}
-                    </span>
+                  <div className={`rounded-xl p-2.5 border transition ${
+                    getResidentAge(viewingResident) >= 60
+                      ? "bg-amber-50/80 border-amber-200 text-amber-950"
+                      : "bg-slate-50 border-slate-100 text-slate-600"
+                  }`}>
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider block opacity-70 mb-0.5">Senior (60+)</span>
+                    <span className="font-black text-xs">{getResidentAge(viewingResident) >= 60 ? "Qualified" : "No"}</span>
                   </div>
-                  <div>
-                    <span className="text-[10.5px] font-bold text-slate-400 block">4Ps Beneficiary</span>
-                    <span className="font-extrabold text-slate-900">
-                      {viewingResident.is_4ps_member ? "Yes" : "No"}
-                    </span>
+
+                  <div className={`rounded-xl p-2.5 border transition ${
+                    viewingResident.is_4ps_member
+                      ? "bg-emerald-50/80 border-emerald-200 text-emerald-950"
+                      : "bg-slate-50 border-slate-100 text-slate-600"
+                  }`}>
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider block opacity-70 mb-0.5">4Ps Beneficiary</span>
+                    <span className="font-black text-xs">{viewingResident.is_4ps_member ? "Active Member" : "No"}</span>
                   </div>
-                  <div>
-                    <span className="text-[10.5px] font-bold text-slate-400 block">Solo Parent</span>
-                    <span className="font-extrabold text-slate-900">
-                      {viewingResident.is_solo_parent ? "Yes" : "No"}
-                    </span>
+
+                  <div className={`rounded-xl p-2.5 border transition ${
+                    viewingResident.is_solo_parent
+                      ? "bg-purple-50/80 border-purple-200 text-purple-950"
+                      : "bg-slate-50 border-slate-100 text-slate-600"
+                  }`}>
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider block opacity-70 mb-0.5">Solo Parent</span>
+                    <span className="font-black text-xs">{viewingResident.is_solo_parent ? "Registered" : "No"}</span>
                   </div>
-                  <div>
-                    <span className="text-[10.5px] font-bold text-slate-400 block">PWD Status</span>
-                    <span className="font-extrabold text-slate-900">
-                      {viewingResident.is_pwd ? `Yes (${viewingResident.pwd_type || "PWD"})` : "No"}
+
+                  <div className={`rounded-xl p-2.5 border transition ${
+                    viewingResident.is_pwd
+                      ? "bg-rose-50/80 border-rose-200 text-rose-950"
+                      : "bg-slate-50 border-slate-100 text-slate-600"
+                  }`}>
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider block opacity-70 mb-0.5">PWD Status</span>
+                    <span className="font-black text-xs truncate block" title={viewingResident.pwd_type}>
+                      {viewingResident.is_pwd ? (viewingResident.pwd_type || "Yes") : "No"}
                     </span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* 5. Citizen Portal Account & Contact Info */}
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-3.5 space-y-2.5">
-              <div className="flex items-center justify-between border-b border-emerald-200/60 pb-1.5">
+            {/* 5. Citizen Portal Credentials & Contact Information */}
+            <div className="rounded-2xl border border-emerald-200/90 bg-gradient-to-br from-emerald-50/80 via-emerald-50/40 to-white p-4 shadow-xs">
+              <div className="flex items-center justify-between border-b border-emerald-200/60 pb-2 mb-3">
                 <div className="flex items-center gap-2">
-                  <UserCheck size={14} className="text-emerald-800" />
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-emerald-950">
-                    Citizen Portal Credentials & Contact
-                  </h4>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-800 text-white">
+                    <UserCheck size={15} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-emerald-950">
+                      Citizen Portal Credentials & Hotline
+                    </h4>
+                    <p className="text-[10px] text-emerald-700 font-medium">Resident authentication and direct mobile contact</p>
+                  </div>
                 </div>
-                <span className="rounded-md bg-emerald-200/80 text-emerald-950 px-2 py-0.5 text-[10px] font-extrabold">
-                  {getPortalAccountStatus(viewingResident)}
+
+                <span className="rounded-full bg-emerald-200/80 text-emerald-950 border border-emerald-300/80 px-2.5 py-0.5 text-[10.5px] font-extrabold shadow-2xs">
+                  Portal {getPortalAccountStatus(viewingResident)}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                <div>
-                  <span className="text-[10.5px] font-bold text-emerald-800/80 block">Phone Number</span>
-                  <span className="font-extrabold text-slate-900 font-mono">
-                    {viewingResident.phone || "-"}
-                  </span>
+                {/* Phone */}
+                <div className="rounded-xl bg-white p-2.5 border border-emerald-200/70 shadow-2xs">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 block mb-0.5">Mobile Hotline</span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-slate-900 font-mono text-sm">
+                      {viewingResident.phone || "-"}
+                    </span>
+                    {viewingResident.phone && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(viewingResident.phone);
+                          showAdminSystemToast("Phone number copied to clipboard", "success");
+                        }}
+                        className="p-1 rounded-md text-emerald-800 hover:bg-emerald-100 transition cursor-pointer"
+                        title="Copy phone"
+                      >
+                        <Copy size={13} />
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[10.5px] font-bold text-emerald-800/80 block">Portal Username</span>
-                  <span className="font-extrabold text-slate-900 font-mono">
-                    {getPortalUsername(viewingResident)}
-                  </span>
+
+                {/* Portal Username */}
+                <div className="rounded-xl bg-white p-2.5 border border-emerald-200/70 shadow-2xs">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 block mb-0.5">Portal Username</span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-slate-900 font-mono text-sm truncate max-w-[140px]">
+                      {getPortalUsername(viewingResident)}
+                    </span>
+                    {getPortalUsername(viewingResident) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(getPortalUsername(viewingResident));
+                          showAdminSystemToast("Username copied to clipboard", "success");
+                        }}
+                        className="p-1 rounded-md text-emerald-800 hover:bg-emerald-100 transition cursor-pointer"
+                        title="Copy username"
+                      >
+                        <Copy size={13} />
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div>
-                  <span className="text-[10.5px] font-bold text-emerald-800/80 block">Account Password</span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-slate-900 font-mono">
+
+                {/* Portal Password */}
+                <div className="rounded-xl bg-white p-2.5 border border-emerald-200/70 shadow-2xs">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 block mb-0.5">Portal Password</span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-slate-900 font-mono text-sm tracking-wider">
                       {viewPasswordVisible
                         ? getResidentPortalPassword(viewingResident)
                         : "••••••••••••"}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setViewPasswordVisible(!viewPasswordVisible)}
-                      className="p-1 rounded text-emerald-800 hover:bg-emerald-200/60 transition cursor-pointer"
-                      title={viewPasswordVisible ? "Hide password" : "Show password"}
-                    >
-                      {viewPasswordVisible ? <EyeOff size={13} /> : <Eye size={13} />}
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setViewPasswordVisible(!viewPasswordVisible)}
+                        className="p-1 rounded-md text-emerald-800 hover:bg-emerald-100 transition cursor-pointer"
+                        title={viewPasswordVisible ? "Hide password" : "Show password"}
+                      >
+                        {viewPasswordVisible ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const pass = getResidentPortalPassword(viewingResident);
+                          if (pass) {
+                            navigator.clipboard.writeText(pass);
+                            showAdminSystemToast("Password copied to clipboard", "success");
+                          }
+                        }}
+                        className="p-1 rounded-md text-emerald-800 hover:bg-emerald-100 transition cursor-pointer"
+                        title="Copy password"
+                      >
+                        <Copy size={13} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -4239,17 +4589,41 @@ const ResidentsManagement = () => {
 
             {/* Actions Bar */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowViewModal(false);
-                  handleEditResident(viewingResident);
-                }}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 px-4 py-2 text-xs font-bold transition cursor-pointer"
-              >
-                <Edit2 size={14} />
-                <span>Edit Resident Record</span>
-              </button>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowViewModal(false);
+                    handleEditResident(viewingResident);
+                  }}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#00552E] hover:bg-[#004224] text-white px-4 py-2 text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
+                >
+                  <Edit2 size={14} />
+                  <span>Edit Resident Record</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    generateResidentPrintReport([viewingResident], getResidentDisplayName(viewingResident), {
+                      reportType: "purok_simple",
+                      orientation: "portrait",
+                      selectedPurok: viewingResident.purok || "",
+                      includeHousehold: true,
+                      includeAgeSex: true,
+                      includePhone: true,
+                      includeSignatureCol: true,
+                      includeOfficials: true,
+                      customTitle: `OFFICIAL RESIDENT PROFILE - ${getResidentDisplayName(viewingResident)}`,
+                    });
+                  }}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-3.5 py-2 text-xs font-bold transition shadow-2xs cursor-pointer"
+                  title="Print official resident profile sheet"
+                >
+                  <Printer size={14} className="text-[#00552E]" />
+                  <span>Print Sheet</span>
+                </button>
+              </div>
 
               <button
                 type="button"
@@ -4257,7 +4631,7 @@ const ResidentsManagement = () => {
                   setShowViewModal(false);
                   setViewingResident(null);
                 }}
-                className="w-full sm:w-auto rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 text-xs font-bold transition cursor-pointer"
+                className="w-full sm:w-auto rounded-xl bg-slate-900 hover:bg-slate-800 text-white px-5 py-2 text-xs font-bold transition cursor-pointer shadow-xs"
               >
                 Close
               </button>

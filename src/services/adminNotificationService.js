@@ -1,7 +1,10 @@
 import { supabase } from "../lib/supabaseClient";
+import { cleanupExpiredLivelihoodPosts } from "./livelihoodService";
+import { cleanupExpiredAnnouncements } from "./announcementService";
 
 const ADMIN_NOTIFICATION_READ_KEY = "kaagapai_admin_notification_read_ids";
-const NOTIFICATION_LIMIT = 12;
+const ADMIN_NOTIFICATION_DELETED_KEY = "kaagapai_admin_notification_deleted_ids";
+const NOTIFICATION_LIMIT = 15;
 
 const getStorage = () => {
   if (typeof window === "undefined") return null;
@@ -24,6 +27,24 @@ const saveReadNotificationIds = (ids) => {
   const storage = getStorage();
   if (!storage) return;
   storage.setItem(ADMIN_NOTIFICATION_READ_KEY, JSON.stringify([...ids]));
+};
+
+const getDeletedNotificationIds = () => {
+  const storage = getStorage();
+  if (!storage) return new Set();
+
+  try {
+    const parsed = JSON.parse(storage.getItem(ADMIN_NOTIFICATION_DELETED_KEY) || "[]");
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+};
+
+const saveDeletedNotificationIds = (ids) => {
+  const storage = getStorage();
+  if (!storage) return;
+  storage.setItem(ADMIN_NOTIFICATION_DELETED_KEY, JSON.stringify([...ids]));
 };
 
 const formatResidentMeta = (resident) =>
@@ -200,16 +221,17 @@ const fetchPendingDocumentRequests = async (readIds) => {
 };
 
 const fetchOpenLivelihoodDeadlines = async (readIds) => {
-  const today = new Date();
-  const limitDate = new Date(today);
+  const todayStr = new Date().toLocaleDateString("en-CA");
+  const limitDate = new Date();
   limitDate.setDate(limitDate.getDate() + 7);
+  const limitDateStr = limitDate.toLocaleDateString("en-CA");
 
   const { data, error } = await supabase
     .from("livelihood_posts")
     .select("id,title,category,status,deadline,created_at")
     .eq("status", "Open")
-    .gte("deadline", today.toISOString().slice(0, 10))
-    .lte("deadline", limitDate.toISOString().slice(0, 10))
+    .gt("deadline", todayStr)
+    .lte("deadline", limitDateStr)
     .order("deadline", { ascending: true })
     .limit(4);
 
@@ -235,34 +257,51 @@ const fetchOpenLivelihoodDeadlines = async (readIds) => {
 const fetchPendingLivelihoodApplications = async (readIds) => {
   const { data, error } = await supabase
     .from("livelihood_applications")
-    .select("id,created_at,livelihood_post_id,residents(full_name),livelihood_posts(title,category)")
+    .select("id,created_at,livelihood_post_id,residents(full_name),livelihood_posts(title,category,status)")
     .eq("status", "Pending")
     .order("created_at", { ascending: false })
     .limit(8);
 
   if (error) return []; // Prevent crashing if table is not migrated yet
 
-  return (data || []).map((app) => {
-    const resident = Array.isArray(app.residents) ? app.residents[0] : app.residents;
-    const post = Array.isArray(app.livelihood_posts) ? app.livelihood_posts[0] : app.livelihood_posts;
-    return buildNotification(
-      {
-        type: "livelihood-application",
-        recordId: app.id,
-        title: "Livelihood Application",
-        message: `${resident?.full_name || "A resident"} applied for ${post?.title || "a livelihood/job"}.`,
-        created_at: app.created_at,
-        source: post?.category || "Livelihood",
-        path: "/livelihood",
-        tone: "blue",
-      },
-      readIds
-    );
-  });
+  return (data || [])
+    .filter((app) => {
+      const post = Array.isArray(app.livelihood_posts) ? app.livelihood_posts[0] : app.livelihood_posts;
+      return Boolean(post);
+    })
+    .map((app) => {
+      const resident = Array.isArray(app.residents) ? app.residents[0] : app.residents;
+      const post = Array.isArray(app.livelihood_posts) ? app.livelihood_posts[0] : app.livelihood_posts;
+      return buildNotification(
+        {
+          type: "livelihood-application",
+          recordId: app.id,
+          title: "Livelihood Application",
+          message: `${resident?.full_name || "A resident"} applied for ${post?.title || "a livelihood/job"}.`,
+          created_at: app.created_at,
+          source: post?.category || "Livelihood",
+          path: "/livelihood",
+          tone: "blue",
+        },
+        readIds
+      );
+    });
 };
 
 export async function fetchAdminNotifications() {
   const readIds = getReadNotificationIds();
+  const deletedIds = getDeletedNotificationIds();
+
+  // Run auto-cleanup for expired posts and announcements so expired items are recycled immediately to the Recycle Bin
+  try {
+    await Promise.allSettled([
+      cleanupExpiredLivelihoodPosts(),
+      cleanupExpiredAnnouncements(),
+    ]);
+  } catch (cleanErr) {
+    console.warn("Notification expiration cleanup notice:", cleanErr);
+  }
+
   const results = await Promise.allSettled([
     fetchPendingResidents(readIds),
     fetchPendingActivationRequests(readIds),
@@ -273,6 +312,7 @@ export async function fetchAdminNotifications() {
   ]);
   const notifications = results
     .flatMap((result) => (result.status === "fulfilled" ? result.value : []))
+    .filter((notification) => !deletedIds.has(notification.id))
     .sort((a, b) => b.sortTime - a.sortTime)
     .slice(0, NOTIFICATION_LIMIT);
   const errors = results
@@ -299,6 +339,21 @@ export function markAllAdminNotificationsRead(notificationIds = []) {
     if (id) readIds.add(id);
   });
   saveReadNotificationIds(readIds);
+}
+
+export function deleteAdminNotification(notificationId) {
+  if (!notificationId) return;
+  const deletedIds = getDeletedNotificationIds();
+  deletedIds.add(notificationId);
+  saveDeletedNotificationIds(deletedIds);
+}
+
+export function deleteAllAdminNotifications(notificationIds = []) {
+  const deletedIds = getDeletedNotificationIds();
+  notificationIds.forEach((id) => {
+    if (id) deletedIds.add(id);
+  });
+  saveDeletedNotificationIds(deletedIds);
 }
 
 export function subscribeAdminNotificationChanges(onChange) {

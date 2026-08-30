@@ -58,6 +58,7 @@ import {
   analyzeAndStructureKnowledgeWithAi,
 } from "../utils/fileKnowledgeParser";
 import { generateText } from "../services/geminiService";
+import { showAdminSystemToast } from "../utils/toast";
 
 const initialForm = {
   title: "",
@@ -115,7 +116,16 @@ const AIKnowledge = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [message, setMessage] = useState(null);
+  const [message, _setMessage] = useState(null);
+  const setMessage = useCallback((msg) => {
+    if (msg) {
+      if (typeof msg === "string") {
+        showAdminSystemToast(msg, "success");
+      } else if (msg.text) {
+        showAdminSystemToast(msg.text, msg.type || "success", msg.title);
+      }
+    }
+  }, []);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -433,118 +443,57 @@ RESIDENT QUESTION:
       />
 
       <main className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-        {/* Top Message Alert */}
-        {message && (
-          <div
-            className={`p-4 rounded-2xl border text-xs sm:text-sm font-bold flex items-center justify-between shadow-sm animate-fadeIn ${
-              message.type === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                : "border-rose-200 bg-rose-50 text-rose-800"
-            }`}
-          >
-            <div className="flex items-center gap-2.5">
-              {message.type === "success" ? (
-                <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
-              ) : (
-                <AlertCircle size={18} className="text-rose-600 shrink-0" />
-              )}
-              <span>{message.text}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setMessage(null)}
-              className="text-slate-400 hover:text-slate-700 p-1 cursor-pointer"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        )}
 
-        {/* HERO CONTROLS & STATS CONTAINER */}
-        <div className="rounded-3xl border border-emerald-200/60 bg-gradient-to-r from-[#023322] via-[#044E35] to-[#02221A] text-white p-6 sm:p-8 shadow-xl relative overflow-hidden">
-          {/* Ambient Glows */}
-          <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-400/15 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-0 left-0 w-80 h-80 bg-teal-400/10 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-            <div className="space-y-2 max-w-2xl">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 text-emerald-300 text-xs font-black tracking-wider uppercase">
-                <Sparkles size={13} className="text-[#FFD700]" />
-                <span>KaagapAI Knowledge Engine</span>
-              </div>
-              <h2 className="text-xl sm:text-3xl font-black text-white tracking-tight leading-tight">
-                AI Knowledge Training & Document Ingestion
+        {/* CLEAN TOP ACTION BAR */}
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-400/40 bg-gradient-to-r from-[#023B28] via-[#035237] to-[#023B28] p-4 sm:p-5 text-white shadow-xl">
+          <div className="flex items-center gap-3.5">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 border border-white/20 text-amber-300 shadow-inner">
+              <Sparkles size={22} className="text-amber-300 drop-shadow-sm" />
+            </span>
+            <div>
+              <h2 className="text-base sm:text-lg font-black text-white tracking-tight drop-shadow-xs">
+                Barangay Knowledge Base
               </h2>
-              <p className="text-xs sm:text-sm text-emerald-100/85 font-medium leading-relaxed">
-                Upload Word documents, PDFs, scanned resolutions, or guidelines. KaagapAI will automatically extract key ideas and instantly train the resident chatbot to accurately answer all resident inquiries!
+              <p className="text-xs sm:text-sm text-emerald-100 font-semibold drop-shadow-2xs">
+                Manage policies, FAQs, and guidelines for the KaagapAI resident chatbot
               </p>
             </div>
+          </div>
 
-            {/* Hero Quick Action Buttons */}
-            <div className="flex flex-wrap items-center gap-3 shrink-0">
-              {/* Hidden File Input */}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,.docx,.doc,.txt,.md,.csv,.json,.png,.jpg,.jpeg"
-                className="hidden"
-                onChange={handleFileUpload}
-              />
+          {/* Quick Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Add New Knowledge Manually */}
+            <button
+              type="button"
+              onClick={openCreate}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-emerald-50 text-[#00552E] font-black text-xs sm:text-sm shadow-md border border-emerald-200 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+            >
+              <Plus size={16} className="stroke-[3] text-[#00552E]" />
+              <span>New Knowledge</span>
+            </button>
 
-              {/* Upload Document / File Button */}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isProcessingFile}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 font-black text-xs sm:text-sm shadow-md transition-all transform hover:scale-[1.02] active:scale-95 cursor-pointer disabled:opacity-60"
-                title="Upload PDF, Word (.docx), TXT, or Image memo"
-              >
-                {isProcessingFile ? (
-                  <>
-                    <Loader size={16} className="animate-spin text-slate-950" />
-                    <span>Analyzing Document with AI...</span>
-                  </>
-                ) : (
-                  <>
-                    <Upload size={16} className="text-slate-950" />
-                    <span>Upload & Ingest File</span>
-                  </>
-                )}
-              </button>
+            {/* Re-Sync All Content */}
+            <button
+              type="button"
+              onClick={syncPublishedContent}
+              disabled={syncing}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#004D2A] hover:bg-[#006034] text-white font-black text-xs sm:text-sm shadow-md border border-emerald-400/60 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer disabled:opacity-60"
+              title="Re-sync all announcements and livelihood items"
+            >
+              {syncing ? <Loader size={16} className="animate-spin text-emerald-200" /> : <RefreshCw size={16} className="stroke-[2.5] text-emerald-200" />}
+              <span className="text-white font-black">{syncing ? "Syncing..." : "Re-Sync All"}</span>
+            </button>
 
-              {/* Add New Knowledge Manually */}
-              <button
-                type="button"
-                onClick={openCreate}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-emerald-950 font-black text-xs sm:text-sm shadow-md border border-white transition-all transform hover:scale-[1.02] active:scale-95 cursor-pointer"
-              >
-                <Plus size={16} className="text-emerald-800" />
-                <span>New Knowledge</span>
-              </button>
-
-              {/* Re-Sync All Content */}
-              <button
-                type="button"
-                onClick={syncPublishedContent}
-                disabled={syncing}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#032e1f] hover:bg-[#022015] border-2 border-emerald-400 text-white font-black text-xs sm:text-sm shadow-md transition active:scale-95 cursor-pointer disabled:opacity-60"
-                title="Re-sync all announcements and livelihood items"
-              >
-                {syncing ? <Loader size={16} className="animate-spin text-emerald-300" /> : <RefreshCw size={16} className="text-emerald-300" />}
-                <span>{syncing ? "Syncing..." : "Re-Sync All"}</span>
-              </button>
-
-              {/* Test Chatbot Playground Button */}
-              <button
-                type="button"
-                onClick={() => setShowSimulator(true)}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#FFB800] hover:bg-[#F59E0B] text-slate-950 font-black text-xs sm:text-sm shadow-md transition-all transform hover:scale-[1.02] active:scale-95 cursor-pointer"
-                title="Open Interactive Chatbot Simulator to test live responses"
-              >
-                <Bot size={16} className="text-slate-950" />
-                <span>Test Chatbot</span>
-              </button>
-            </div>
+            {/* Test Chatbot Playground Button */}
+            <button
+              type="button"
+              onClick={() => setShowSimulator(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#FFB800] hover:bg-[#F59E0B] text-slate-950 font-black text-xs sm:text-sm shadow-md border border-amber-400 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+              title="Open Interactive Chatbot Simulator to test live responses"
+            >
+              <Bot size={16} className="stroke-[2.5] text-slate-950" />
+              <span>Test Chatbot</span>
+            </button>
           </div>
         </div>
 
@@ -901,8 +850,12 @@ RESIDENT QUESTION:
             <div className="flex items-center justify-between pt-2">
               <button
                 type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(viewingItem.content);
+                onClick={async () => {
+                  try {
+                    if (navigator?.clipboard?.writeText) {
+                      await navigator.clipboard.writeText(viewingItem.content);
+                    }
+                  } catch {}
                   setMessage({ type: "success", text: "Knowledge content copied to clipboard!" });
                   setShowViewModal(false);
                 }}

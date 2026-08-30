@@ -18,6 +18,7 @@ import {
 import PageWrapper from "../components/PageWrapper";
 import Header from "../components/Header";
 import { useConfirm } from "../context/ConfirmContext";
+import { showAdminSystemToast } from "../utils/toast";
 import { supabase } from "../lib/supabaseClient";
 import {
   getRecycleBinItems,
@@ -38,7 +39,16 @@ const RecycleBin = () => {
   const [search, setSearch] = useState("");
   const [filterTable, setFilterTable] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [message, setMessage] = useState(null);
+  const [message, _setMessage] = useState(null);
+  const setMessage = useCallback((msg) => {
+    if (msg) {
+      if (typeof msg === "string") {
+        showAdminSystemToast(msg, "success");
+      } else if (msg.text) {
+        showAdminSystemToast(msg.text, msg.type || "success", msg.title);
+      }
+    }
+  }, []);
   const [loading, setLoading] = useState(false);
   const residentNamesRef = useRef({});
 
@@ -231,27 +241,6 @@ const RecycleBin = () => {
             </button>
           )}
         </div>
-
-        {/* Message Banner */}
-        {message && (
-          <div
-            className={`flex items-start gap-3 rounded-2xl border p-4 text-xs font-semibold shadow-sm ${
-              message.type === "success"
-                ? "bg-emerald-50 text-emerald-800 border-emerald-100"
-                : "bg-rose-50 text-rose-800 border-rose-100"
-            }`}
-          >
-            {message.type === "success" ? (
-              <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-600" size={16} />
-            ) : (
-              <AlertCircle className="mt-0.5 shrink-0 text-rose-600" size={16} />
-            )}
-            <span className="flex-1">{message.text}</span>
-            <button onClick={() => setMessage(null)} className="text-[10px] uppercase font-bold hover:underline text-slate-500 hover:text-slate-800 ml-2">
-              Dismiss
-            </button>
-          </div>
-        )}
 
         {/* Stats Cards Row */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

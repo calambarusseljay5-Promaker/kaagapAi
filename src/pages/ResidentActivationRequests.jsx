@@ -66,6 +66,7 @@ const ResidentActivationRequests = () => {
   const [actionId, setActionId] = useState("");
   const [proofLoadingId, setProofLoadingId] = useState("");
   const [proofPreview, setProofPreview] = useState(null);
+  const [viewedProofIds, setViewedProofIds] = useState(() => new Set());
   const [message, setMessage] = useState(null);
   const [error, setError] = useState("");
 
@@ -132,23 +133,25 @@ const ResidentActivationRequests = () => {
     );
   }, [requests, search]);
 
-  const stats = useMemo(() => {
-    const pendingCount = requests.filter((request) => request.request_status === "Pending Approval").length;
-    const approvedCount = requests.filter((request) => request.request_status === "Approved").length;
-    const rejectedCount = requests.filter((request) => request.request_status === "Rejected").length;
-
-    return [
-      { label: "Loaded Requests", value: requests.length, icon: UserCheck, color: "bg-blue-50 text-blue-700" },
-      { label: "Pending", value: pendingCount, icon: Clock3, color: "bg-amber-50 text-amber-700" },
-      { label: "Approved", value: approvedCount, icon: CheckCircle2, color: "bg-emerald-50 text-emerald-700" },
-      { label: "Rejected", value: rejectedCount, icon: XCircle, color: "bg-rose-50 text-rose-700" },
-    ];
-  }, [requests]);
-
   const handleStatusChange = (event) => {
     const nextStatus = event.target.value;
     setStatusFilter(nextStatus);
     loadRequests(nextStatus);
+  };
+
+  const handleViewProof = async (request) => {
+    setProofLoadingId(request.request_id);
+    setError("");
+
+    try {
+      const url = await createResidentRegistrationProofUrl(request);
+      setViewedProofIds((prev) => new Set(prev).add(request.request_id));
+      setProofPreview({ request, url });
+    } catch (proofError) {
+      setError(proofError.message || "Unable to open the submitted verification proof.");
+    } finally {
+      setProofLoadingId("");
+    }
   };
 
   const handleApprove = async (request) => {
@@ -157,9 +160,15 @@ const ResidentActivationRequests = () => {
       return;
     }
 
+    if (!viewedProofIds.has(request.request_id)) {
+      // Must review proof first before approving
+      await handleViewProof(request);
+      return;
+    }
+
     const ok = await confirm({
       title: "Approve Registration",
-      message: "Are you sure you want to approve this resident's account activation?",
+      message: `Are you sure you want to approve the registration for ${request.full_name || request.requested_full_name || "this resident"}?`,
       confirmText: "Approve",
       cancelText: "Cancel",
       variant: "emerald",
@@ -167,6 +176,7 @@ const ResidentActivationRequests = () => {
     });
     if (!ok) return;
 
+    setProofPreview(null);
     setActionId(request.request_id);
     setMessage(null);
     setError("");
@@ -179,42 +189,26 @@ const ResidentActivationRequests = () => {
 
       if (smsPhone && isValidSmsPhone(smsPhone)) {
         try {
-          const residentName = result.full_name || request.full_name || "Residente";
-          const bodyText = result.used_resident_credentials
-            ? [
-                "[OFFICIAL KAAGAPAI NOTIFICATION]",
-                "BARANGAY UPPER MINGADING, ALEOSAN",
-                "----------------------------------------",
-                `🏛️ Magandang araw, ${residentName}!`,
-                "Ang inyong KaagapAI resident registration ay APPROVED na.",
-                "Maaari na kayong mag-login sa Citizen Portal gamit ang inyong ginawang username at password.",
-                "----------------------------------------",
-                "⚠️ PAALALA: Ingatan ang inyong account. Ang Barangay ay HINDI kailanman hihingi ng password o pera via text.",
-              ].join("\n")
-            : [
-                "[OFFICIAL KAAGAPAI NOTIFICATION]",
-                "BARANGAY UPPER MINGADING, ALEOSAN",
-                "----------------------------------------",
-                `🏛️ Magandang araw, ${residentName}!`,
-                "Ang inyong Barangay resident account ay VERIFIED na.",
-                `Username: ${result.username}`,
-                `Temporary Password: ${result.temporary_password}`,
-                "Mangyaring palitan ang inyong password pagkatapos mag-login.",
-                "----------------------------------------",
-                "⚠️ PAALALA: Ingatan ang inyong account. Ang Barangay ay HINDI kailanman hihingi ng password o pera via text.",
-              ].join("\n");
+          const residentName = result.full_name || request.full_name || request.requested_full_name || "Residente";
+          const bodyText = [
+            "[OFFICIAL KAAGAPAI NOTIFICATION]",
+            "BARANGAY UPPER MINGADING, ALEOSAN",
+            "----------------------------------------",
+            `🏛️ Magandang araw, ${residentName}!`,
+            "Ang inyong Barangay resident portal registration ay OPISYAL NANG APPROVED at VERIFIED ng Barangay Admin.",
+            "Maaari na kayong mag-login sa KaagapAI Citizen Portal gamit ang inyong registered account.",
+            "----------------------------------------",
+            "⚠️ PAALALA: Ingatan ang inyong account. Ang Barangay ay HINDI kailanman hihingi ng password o pera via text.",
+          ].join("\n");
 
           await sendSmsNotification({
             to: smsPhone,
             body: bodyText,
           });
           smsStatus = "success";
-          smsMessage = result.used_resident_credentials
-            ? `Approval notification sent by SMS to ${normalizeSmsPhone(smsPhone)}.`
-            : `Credentials were sent by SMS to ${normalizeSmsPhone(smsPhone)}.`;
+          smsMessage = `Approval confirmation notice sent via SMS to ${normalizeSmsPhone(smsPhone)}.`;
         } catch (smsError) {
-          smsMessage = `The account was approved, but SMS sending failed: ${smsError.message || "Unable to send SMS."
-            } Give approval notice manually.`;
+          smsMessage = `The account was approved, but SMS sending failed: ${smsError.message || "Unable to send SMS."} Give approval notice manually.`;
         }
       }
 
@@ -223,29 +217,14 @@ const ResidentActivationRequests = () => {
         title: "Resident registration approved",
         text: smsMessage,
         phone: smsPhone ? normalizeSmsPhone(smsPhone) : "",
-        username: result.username,
-        temporaryPassword: result.temporary_password,
-        usedResidentCredentials: result.used_resident_credentials,
+        username: result.username || request.requested_username || "",
+        usedResidentCredentials: true,
       });
       await loadRequests();
     } catch (approveError) {
       setError(approveError.message || "Unable to approve registration request.");
     } finally {
       setActionId("");
-    }
-  };
-
-  const handleViewProof = async (request) => {
-    setProofLoadingId(request.request_id);
-    setError("");
-
-    try {
-      const url = await createResidentRegistrationProofUrl(request);
-      setProofPreview({ request, url });
-    } catch (proofError) {
-      setError(proofError.message || "Unable to open the submitted verification proof.");
-    } finally {
-      setProofLoadingId("");
     }
   };
 
@@ -260,6 +239,7 @@ const ResidentActivationRequests = () => {
     });
     if (!ok) return;
 
+    setProofPreview(null);
     setActionId(request.request_id);
     setMessage(null);
     setError("");
@@ -308,49 +288,15 @@ const ResidentActivationRequests = () => {
     {
       field: "phone",
       headerName: "Contact & Location",
-      flex: 1,
-      minWidth: 120,
+      flex: 1.2,
+      minWidth: 150,
       renderCell: (params) => {
         const request = params.row;
         return (
           <div className="py-2 leading-tight">
             <p className="text-slate-700 text-xs font-semibold">{request.phone || request.requested_phone || "-"}</p>
-            <p className="text-xs text-slate-500 mt-1">Purok: {request.purok || request.requested_purok || "-"}</p>
-          </div>
-        );
-      }
-    },
-    {
-      field: "verification",
-      headerName: "Verification Details",
-      flex: 1,
-      minWidth: 130,
-      renderCell: (params) => {
-        const request = params.row;
-        return (
-          <div className="py-2 leading-tight">
-            <p className="text-xs text-slate-500">Birth: {request.requested_birthday || "-"}</p>
-            {request.requested_proof_path ? (
-              <button
-                type="button"
-                onClick={() => handleViewProof(request)}
-                disabled={proofLoadingId === request.request_id}
-                className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 disabled:opacity-60"
-              >
-                {proofLoadingId === request.request_id ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <FileImage size={12} />
-                )}
-                View Proof
-              </button>
-            ) : (
-              <p className="mt-1.5 inline-block rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
-                {request.proof_review_available === false
-                  ? "Install migration"
-                  : "No proof"}
-              </p>
-            )}
+            <p className="text-xs text-slate-500 mt-0.5">Purok: {request.purok || request.requested_purok || "-"}</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">Birth: {request.requested_birthday || "-"}</p>
           </div>
         );
       }
@@ -378,34 +324,45 @@ const ResidentActivationRequests = () => {
     {
       field: "actions",
       headerName: "Actions",
-      flex: 1.5,
+      flex: 1.2,
       minWidth: 160,
       headerAlign: "right",
       align: "right",
       renderCell: (params) => {
         const request = params.row;
         const isPending = request.request_status === "Pending Approval";
-        const isBusy = actionId === request.request_id;
+        const isBusy = actionId === request.request_id || proofLoadingId === request.request_id;
+        const hasProof = Boolean(request.requested_proof_path);
+
+        if (!hasProof) {
+          return (
+            <div className="flex justify-end items-center">
+              <span className="inline-block rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                No proof
+              </span>
+            </div>
+          );
+        }
+
         return (
-          <div className="flex gap-1.5 justify-end">
+          <div className="flex justify-end items-center">
             <button
               type="button"
-              onClick={() => handleApprove(request)}
-              disabled={!isPending || isBusy || !request.requested_proof_path}
-              className="btn-gov btn-gov-primary px-2.5 py-1 text-xs font-bold"
-              title={isPending && !request.requested_proof_path ? "A verification proof is required before approval." : undefined}
+              onClick={() => handleViewProof(request)}
+              disabled={isBusy}
+              className={`px-3 py-1.5 text-xs font-bold transition rounded-xl inline-flex items-center gap-1.5 shadow-sm ${
+                isPending
+                  ? "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-700/20"
+                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              }`}
+              title="Click to view submitted proof and review registration"
             >
-              {isBusy ? <Loader2 size={12} className="animate-spin" /> : <ShieldCheck size={12} />}
-              Approve
-            </button>
-            <button
-              type="button"
-              onClick={() => handleReject(request)}
-              disabled={!isPending || isBusy}
-              className="btn-gov btn-gov-danger px-2.5 py-1 text-xs font-bold"
-            >
-              <XCircle size={12} />
-              Reject
+              {proofLoadingId === request.request_id ? (
+                <Loader2 size={13} className="animate-spin" />
+              ) : (
+                <FileImage size={13} />
+              )}
+              <span>{isPending ? "View Proof" : "View Proof"}</span>
             </button>
           </div>
         );
@@ -417,28 +374,6 @@ const ResidentActivationRequests = () => {
     <>
       <PageWrapper title="Online Resident Registration" description="Review online registrations and approve resident portal access">
         <div className="space-y-5">
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {stats.map((stat) => {
-              const Icon = stat.icon;
-
-              return (
-                <div key={stat.label} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                        {stat.label}
-                      </p>
-                      <p className="mt-2 text-2xl font-bold text-[#17233c]">{stat.value}</p>
-                    </div>
-                    <span className={`flex h-11 w-11 items-center justify-center rounded-lg ${stat.color}`}>
-                      <Icon size={21} />
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
           <section className="rounded-lg border border-emerald-200 bg-white p-4 shadow-sm">
             <div className="flex items-start gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
@@ -447,9 +382,7 @@ const ResidentActivationRequests = () => {
               <div>
                 <h2 className="font-bold text-[#17233c]">Controlled online registration workflow</h2>
                 <p className="mt-1 text-sm leading-6 text-slate-600">
-                  Resident submits details and proof, the admin receives a notification, reviews the
-                  private proof, then approves or rejects. Only approval creates or activates the
-                  resident record and portal account.
+                  Resident submits details and proof, the admin reviews the submitted proof document, then approves or rejects directly from the preview. Only approval creates or activates the resident record and portal account.
                 </p>
               </div>
             </div>
@@ -457,43 +390,17 @@ const ResidentActivationRequests = () => {
 
           {message ? (
             <section
-              className={`rounded-lg border px-4 py-3 text-sm shadow-sm ${message.type === "success"
+              className={`rounded-lg border px-4 py-3 text-sm shadow-sm ${
+                message.type === "success"
                   ? "border-emerald-200 bg-emerald-50 text-emerald-800"
                   : "border-amber-200 bg-amber-50 text-amber-800"
-                }`}
+              }`}
             >
               <p className="font-semibold">{message.title}</p>
               <p className="mt-1">{message.text}</p>
-              {message.username || message.temporaryPassword || message.usedResidentCredentials ? (
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  <div className="rounded-md bg-white/70 px-3 py-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Username</p>
-                    <p className="mt-1 font-mono text-sm font-semibold text-[#17233c]">{message.username}</p>
-                  </div>
-                  {message.temporaryPassword ? (
-                    <div className="rounded-md bg-white/70 px-3 py-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                        Household Password
-                      </p>
-                      <p className="mt-1 font-mono text-sm font-semibold text-[#17233c]">
-                        {message.temporaryPassword}
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="rounded-md bg-white/70 px-3 py-2">
-                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                        Password Status
-                      </p>
-                      <p className="mt-1 text-xs font-semibold text-emerald-800">
-                        Resident-chosen credentials approved.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ) : null}
               {message.phone ? (
                 <p className="mt-2 text-xs font-semibold text-slate-600">
-                  SMS phone: {message.phone}
+                  SMS Recipient: <span className="font-mono text-emerald-900 font-bold">{message.phone}</span>
                 </p>
               ) : null}
             </section>
@@ -567,39 +474,100 @@ const ResidentActivationRequests = () => {
       <FloatingModal
         open={!!proofPreview}
         onClose={() => setProofPreview(null)}
-        title="Verification proof"
-        eyebrow={proofPreview ? `${proofPreview.request.full_name || proofPreview.request.requested_full_name || "Resident"} - ${proofPreview.request.requested_proof_name || "Submitted file"}` : ""}
+        title="Resident Verification Proof Review"
+        eyebrow={proofPreview ? `${proofPreview.request.full_name || proofPreview.request.requested_full_name || "Resident"} • Submitted Document` : ""}
         maxWidth="max-w-4xl"
         footer={
           proofPreview && (
-            <div className="flex justify-end w-full">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 w-full">
               <a
                 href={proofPreview.url}
                 target="_blank"
                 rel="noreferrer"
-                className="btn-gov btn-gov-primary"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 hover:text-blue-900 transition"
               >
-                <ExternalLink size={15} />
-                Open in new tab
+                <ExternalLink size={14} />
+                Open full proof in new tab
               </a>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={() => setProofPreview(null)}
+                  className="btn-gov btn-gov-secondary px-3 py-1.5 text-xs font-bold"
+                >
+                  Close
+                </button>
+                {proofPreview.request.request_status === "Pending Approval" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const req = proofPreview.request;
+                        setProofPreview(null);
+                        handleReject(req);
+                      }}
+                      disabled={actionId === proofPreview.request.request_id}
+                      className="btn-gov btn-gov-danger px-3.5 py-2 text-xs font-bold inline-flex items-center gap-1.5"
+                    >
+                      <XCircle size={15} />
+                      Reject
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleApprove(proofPreview.request)}
+                      disabled={actionId === proofPreview.request.request_id}
+                      className="btn-gov btn-gov-primary px-5 py-2 text-xs font-bold inline-flex items-center gap-1.5 shadow-md shadow-emerald-700/20"
+                    >
+                      {actionId === proofPreview.request.request_id ? (
+                        <Loader2 size={15} className="animate-spin" />
+                      ) : (
+                        <ShieldCheck size={15} />
+                      )}
+                      Approve Application
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           )
         }
       >
         {proofPreview && (
-          <div className="p-6">
-            <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-4 rounded-lg">
+          <div className="p-5 space-y-4">
+            {/* Resident Key Info Summary Banner */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs">
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase block">Resident Name:</span>
+                <span className="font-extrabold text-slate-900 truncate block">{proofPreview.request.full_name || proofPreview.request.requested_full_name || "-"}</span>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase block">Household No:</span>
+                <span className="font-bold text-slate-900 truncate block">{proofPreview.request.household_no || proofPreview.request.requested_household_no || "-"}</span>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase block">Purok:</span>
+                <span className="font-bold text-slate-900 truncate block">{proofPreview.request.purok || proofPreview.request.requested_purok || "-"}</span>
+              </div>
+              <div>
+                <span className="text-[10px] font-bold text-slate-500 uppercase block">Mobile Phone:</span>
+                <span className="font-bold text-slate-900 truncate block">{proofPreview.request.phone || proofPreview.request.requested_phone || "-"}</span>
+              </div>
+            </div>
+
+            {/* Proof Image / Document Container */}
+            <div className="min-h-0 flex-1 overflow-auto bg-slate-900/5 p-4 rounded-xl border border-slate-200 flex items-center justify-center">
               {proofPreview.request.requested_proof_type === "application/pdf" ? (
                 <iframe
                   src={proofPreview.url}
                   title="Resident registration proof PDF"
-                  className="h-[50vh] w-full rounded-lg border border-slate-200 bg-white"
+                  className="h-[55vh] w-full rounded-lg border border-slate-300 bg-white"
                 />
               ) : (
                 <img
                   src={proofPreview.url}
                   alt="Submitted resident verification proof"
-                  className="mx-auto max-h-[50vh] max-w-full rounded-lg border border-slate-200 bg-white object-contain shadow-sm"
+                  className="mx-auto max-h-[55vh] max-w-full rounded-lg border border-slate-300 bg-white object-contain shadow-md"
                 />
               )}
             </div>

@@ -17,11 +17,8 @@ const MainLayout = () => {
     normalizeAdminTheme(getSystemSettings().adminTheme)
   );
 
-  // Silent auto-backup check + retention policy enforcement on app load
+  // Silent auto-backup check + retention policy enforcement on app load & on window focus
   useEffect(() => {
-    if (backupCheckRan.current) return;
-    backupCheckRan.current = true;
-
     const runBackupMaintenance = async () => {
       try {
         await checkAndRunAutoBackup();
@@ -31,9 +28,24 @@ const MainLayout = () => {
       }
     };
 
-    // Delay slightly to not block initial render
-    const timer = setTimeout(runBackupMaintenance, 3000);
-    return () => clearTimeout(timer);
+    // Run quickly on initial load
+    const timer = setTimeout(runBackupMaintenance, 600);
+
+    // Also check on window focus / tab visibility change (e.g. next day open)
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        runBackupMaintenance();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("focus", handleVisibility);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("focus", handleVisibility);
+    };
   }, []);
 
   useEffect(() => {

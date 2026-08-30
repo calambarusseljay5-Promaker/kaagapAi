@@ -43,7 +43,61 @@ const preparePayload = (data = {}) => ({
   updated_at: new Date().toISOString(),
 });
 
+export const isAnnouncementExpired = (item) => {
+  if (!item?.expires_at) return false;
+  const raw = String(item.expires_at).trim();
+  if (!raw) return false;
+
+  const todayStr = new Date().toLocaleDateString("en-CA"); // 'YYYY-MM-DD'
+  const nowTime = Date.now();
+
+  // Plain date check (e.g. '2026-08-20' <= today)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw < todayStr;
+  }
+
+  const expiryDate = new Date(raw.includes("T") ? raw : `${raw}T23:59:59`);
+  if (isNaN(expiryDate.getTime())) return false;
+
+  return raw <= todayStr || expiryDate.getTime() <= nowTime;
+};
+
+export async function cleanupExpiredAnnouncements() {
+  try {
+    const { data: announcements, error } = await supabase
+      .from(TABLE)
+      .select("*");
+
+    if (error || !Array.isArray(announcements) || announcements.length === 0) return 0;
+
+    const expiredAnnouncements = announcements.filter(isAnnouncementExpired);
+    if (expiredAnnouncements.length === 0) return 0;
+
+    for (const item of expiredAnnouncements) {
+      try {
+        moveToRecycleBin(TABLE, item.id, item, `Auto-expired (${item.expires_at})`);
+        await supabase.from(TABLE).delete().eq("id", item.id);
+        deleteKnowledgeForSource("announcement", item.id).catch(() => {});
+      } catch (itemErr) {
+        console.warn("Failed to auto-clean single announcement:", itemErr);
+      }
+    }
+
+    return expiredAnnouncements.length;
+  } catch (err) {
+    console.warn("Notice during announcement auto-expiration cleanup:", err);
+    return 0;
+  }
+}
+
 export async function fetchAnnouncements({ search = "", status = "", category = "", limit = 100 } = {}) {
+  // Automatically cleanup expired announcements into the Recycle Bin
+  try {
+    await cleanupExpiredAnnouncements();
+  } catch (e) {
+    console.warn("Auto-clean announcement notice:", e);
+  }
+
   let query = supabase
     .from(TABLE)
     .select("*")
@@ -61,10 +115,29 @@ export async function fetchAnnouncements({ search = "", status = "", category = 
 
   const { data, error } = await query;
   if (error) throw normalizeSupabaseError(error);
-  return data || [];
+
+  const list = data || [];
+  const validList = [];
+  for (const item of list) {
+    if (isAnnouncementExpired(item)) {
+      moveToRecycleBin(TABLE, item.id, item, `Auto-expired (${item.expires_at})`);
+      supabase.from(TABLE).delete().eq("id", item.id).catch(() => {});
+      deleteKnowledgeForSource("announcement", item.id).catch(() => {});
+    } else {
+      validList.push(item);
+    }
+  }
+
+  return validList;
 }
 
 export async function fetchPublishedAnnouncements(limit = 10) {
+  try {
+    await cleanupExpiredAnnouncements();
+  } catch (e) {
+    console.warn("Auto-clean announcement notice:", e);
+  }
+
   try {
     const { data, error } = await supabase
       .from(TABLE)
@@ -81,9 +154,9 @@ export async function fetchPublishedAnnouncements(limit = 10) {
         .limit(limit);
 
       if (fbError) throw normalizeSupabaseError(error);
-      return fallback || [];
+      return (fallback || []).filter((item) => !isAnnouncementExpired(item));
     }
-    return data || [];
+    return (data || []).filter((item) => !isAnnouncementExpired(item));
   } catch (err) {
     console.warn("fetchPublishedAnnouncements fallback:", err.message);
     return [];

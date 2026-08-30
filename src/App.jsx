@@ -7,6 +7,7 @@ import ResidentActivationRequests from "./pages/ResidentActivationRequests";
 import ResidentProfileUpdateRequests from "./pages/ResidentProfileUpdateRequests";
 import Archive from "./pages/Archive";
 import DocumentManagement from "./pages/DocumentManagement";
+import DocumentTemplates from "./pages/DocumentTemplates";
 import Reports from "./pages/Reports";
 import Livelihood from "./pages/Livelihood";
 import Announcements from "./pages/Announcements";
@@ -93,6 +94,8 @@ function App() {
               <Route path="/resident-profile-updates" element={<ResidentProfileUpdateRequests />} />
               <Route path="/archive" element={<Archive />} />
               <Route path="/documents" element={<DocumentManagement />} />
+              <Route path="/document-templates" element={<DocumentTemplates />} />
+              <Route path="/document-template-management" element={<DocumentTemplates />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/livelihood" element={<Livelihood />} />
               <Route path="/announcements" element={<Announcements />} />

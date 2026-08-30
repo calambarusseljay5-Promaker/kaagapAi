@@ -121,15 +121,33 @@ async function attachResidentRegistrationProof(requestId, file) {
     throw getResidentAuthError(uploadError);
   }
 
-  const { error: attachError } = await supabase.rpc("attach_resident_registration_proof", {
-    p_request_id: requestId,
-    p_proof_path: objectPath,
-    p_proof_name: file.name,
-    p_proof_type: file.type,
-  });
+  let attachError;
+  try {
+    const { error } = await supabase.rpc("attach_resident_registration_proof", {
+      p_request_id: requestId,
+      p_proof_path: objectPath,
+      p_proof_name: file.name,
+      p_proof_type: file.type,
+    });
+    attachError = error;
+  } catch (err) {
+    attachError = err;
+  }
 
   if (attachError) {
-    throw getResidentAuthError(attachError);
+    // Direct table update fallback
+    const { error: updateError } = await supabase
+      .from("resident_activation_requests")
+      .update({
+        requested_proof_path: objectPath,
+        requested_proof_name: file.name,
+        requested_proof_type: file.type,
+      })
+      .eq("id", requestId);
+
+    if (updateError) {
+      throw getResidentAuthError(updateError);
+    }
   }
 
   return objectPath;
@@ -361,6 +379,10 @@ export async function requestResidentActivation(activation = {}) {
   // Validate email format if provided
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new Error("Please enter a valid email address.");
+  }
+
+  if (!activation.proofFile) {
+    throw new Error("Kailangang mag-attach ng valid ID o proof of residency.");
   }
 
   let requestId = null;

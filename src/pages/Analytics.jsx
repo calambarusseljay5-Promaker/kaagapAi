@@ -30,11 +30,15 @@ import Header from "../components/Header";
 import FloatingModal from "../components/FloatingModal";
 import { supabase } from "../lib/supabaseClient";
 import { fetchResidents } from "../services/adminService";
+import {
+  fetchOrganizationOfficials,
+  getOrganizationOfficials,
+  getActiveCaptain,
+  getActiveSecretary,
+} from "../services/organizationService";
 import { buildPurokSummary, calculateAge, formatPurok, getPurokDefinition } from "../utils/residentProfile";
 
 const SENIOR_AGE = 60;
-const BARANGAY_SECRETARY = "Jovy lyn C. Cabay";
-const PUNONG_BARANGAY = "Hon. Mamerto C. Clarito";
 const PWD_FIELDS = ["is_pwd", "pwd", "is_pwed", "pwed", "has_disability", "disability", "pwd_status"];
 const SK_FIELDS = ["is_sk_participant", "sk_participant", "is_sk_member", "sk_member", "participates_in_sk", "sk_program_participant"];
 const REPORT_AGE_BANDS = [
@@ -646,18 +650,18 @@ const sumNumericColumn = (rows, columnIndex) =>
 
 // REPORT STYLING CONTEXT — defaults tuned to match the official reference template
 const ReportStyleContext = createContext({
-  fontSize: 7,      // in pt — matches reference
-  rowPadding: 2,    // in px — tight like reference
-  margin: 5         // in mm — minimal margins
+  fontSize: 6.8,      // in pt — calibrated to fill space and guarantee 1-sheet fit
+  rowPadding: 1.1,    // in px — clear and readable
+  margin: 3           // in mm — balanced margins
 });
 
 // REUSABLE REPORT LAYOUT COMPONENT
-const ReportLayout = ({ children, paperSize = "a4", orientation = "portrait", fontSize = 7, rowPadding = 2, margin = 5 }) => {
+const ReportLayout = ({ children, paperSize = "a4", orientation = "landscape", fontSize = 6.8, rowPadding = 1.1, margin = 3 }) => {
   const pageStyle = `
     @media print {
       @page {
         size: ${paperSize.toUpperCase()} ${orientation};
-        margin: ${margin}mm !important;
+        margin: 0mm !important;
       }
     }
   `;
@@ -681,24 +685,24 @@ const ReportLayout = ({ children, paperSize = "a4", orientation = "portrait", fo
 // REUSABLE REPORT HEADER COMPONENT — uses context fontSize so sliders work
 const ReportHeader = ({ title, year = 2026, purokLabel = "" }) => {
   const { fontSize } = useContext(ReportStyleContext);
-  const logoSize = Math.max(36, fontSize * 6);
-  const titleSize = Math.max(10, fontSize + 4);
-  const subSize = Math.max(7, fontSize);
+  const logoSize = 52;
+  const titleSize = Math.max(9.5, fontSize + 3);
+  const subSize = Math.max(6.8, fontSize);
   return (
-    <div className="gov-report-header" style={{ marginBottom: '4px' }}>
-      <div className="gov-report-masthead" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '2px' }}>
+    <div className="gov-report-header" style={{ marginBottom: '3px' }}>
+      <div className="gov-report-masthead" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', marginBottom: '1px' }}>
         <img src="/logo.png" className="gov-report-logo" alt="Barangay Logo" style={{ width: `${logoSize}px`, height: `${logoSize}px`, objectFit: 'contain' }} />
-        <div className="gov-report-info" style={{ textAlign: 'center', lineHeight: 1.2 }}>
+        <div className="gov-report-info" style={{ textAlign: 'center', lineHeight: 1.18 }}>
           <p style={{ fontSize: `${subSize}pt`, margin: 0, fontWeight: 500 }}>Republic of the Philippines</p>
           <p style={{ fontSize: `${subSize}pt`, margin: 0, fontWeight: 500 }}>Province of Cotabato</p>
           <p style={{ fontSize: `${subSize}pt`, margin: 0, fontWeight: 500 }}>Municipality of Aleosan</p>
-          <p style={{ fontSize: `${subSize + 1}pt`, margin: '1px 0', fontWeight: 900, letterSpacing: '0.5px' }}>BARANGAY UPPER MINGADING</p>
+          <p style={{ fontSize: `${subSize + 1}pt`, margin: '0.5px 0', fontWeight: 900, letterSpacing: '0.5px' }}>BARANGAY UPPER MINGADING</p>
           <p style={{ fontSize: `${subSize - 0.5}pt`, margin: 0, fontWeight: 600 }}>OFFICE OF THE PUNONG BARANGAY</p>
         </div>
         <img src="/aleosan.logo.png" className="gov-report-logo" alt="Aleosan Municipality Logo" style={{ width: `${logoSize}px`, height: `${logoSize}px`, objectFit: 'contain' }} />
       </div>
-      <div className="gov-report-divider" style={{ borderTop: '1.5px solid #14532D', height: '0', margin: '3px 0' }} />
-      <h2 className="gov-report-title" style={{ fontSize: `${titleSize}pt`, fontWeight: 900, textAlign: 'center', margin: '3px 0 2px', letterSpacing: '1px' }}>{title} C.Y. {year}</h2>
+      <div className="gov-report-divider" style={{ borderTop: '1.5px solid #14532D', height: '0', margin: '2.5px 0' }} />
+      <h2 className="gov-report-title" style={{ fontSize: `${titleSize}pt`, fontWeight: 900, textAlign: 'center', margin: '2px 0 1px', letterSpacing: '0.5px' }}>{title} C.Y. {year}</h2>
       {purokLabel ? (
         <p className="gov-report-filter" style={{ fontSize: `${subSize + 0.5}pt`, textAlign: 'center', margin: 0, fontWeight: 700, color: '#14532D' }}>PUROK: {purokLabel.toUpperCase()}</p>
       ) : null}
@@ -706,36 +710,135 @@ const ReportHeader = ({ title, year = 2026, purokLabel = "" }) => {
   );
 };
 
+const formatReportHeaderLabel = (h) => {
+  if (!h) return "";
+  const str = String(h).trim();
+  const lower = str.toLowerCase();
+  
+  if (lower.startsWith("percent of") || lower === "percent") return "% of Total";
+  // Senior Age Groups
+  if (lower === "80 years old and above" || lower === "80 years old & over" || lower === "80+ years old") return "80+ Yrs";
+  if (lower === "75-79 years old") return "75-79 Yrs";
+  if (lower === "70-74 years old") return "70-74 Yrs";
+  if (lower === "65-69 years old") return "65-69 Yrs";
+  if (lower === "60-64 years old") return "60-64 Yrs";
+  // Youth & General Age Groups
+  if (lower === "13-17 years old") return "13-17 Yrs";
+  if (lower === "18-30 years old") return "18-30 Yrs";
+  if (lower === "children (0-12 years old)" || lower === "children (0-12 yrs)") return "Children (0-12)";
+  if (lower === "youth (13-17 years old)" || lower === "youth (13-17 yrs)") return "Youth (13-17)";
+  if (lower === "young adults (18-30 years old)" || lower === "young adults (18-30 yrs)") return "Young Adults (18-30)";
+  if (lower === "adults (31-59 years old)" || lower === "adults (31-59 yrs)") return "Adults (31-59)";
+  if (lower === "senior citizens (60 years old and above)" || lower === "senior citizens (60+ yrs)") return "Seniors (60+)";
+  // Educational Attainment
+  if (lower === "elementary level/graduate" || lower === "elementary level / graduate") return "Elementary";
+  if (lower === "high school level/graduate" || lower === "high school level / graduate") return "High School";
+  if (lower === "college level/graduate" || lower === "college level / graduate") return "College";
+  if (lower === "postgraduate level" || lower === "postgraduate") return "Postgraduate";
+  if (lower === "self-employed") return "Self-Employed";
+  return str;
+};
+
 // REUSABLE REPORT TABLE COMPONENT
 const ReportTable = ({ title, headers, rows, footerRows = [], emptyText = "No data available." }) => {
   const { fontSize, rowPadding } = useContext(ReportStyleContext);
-  const cellPad = `${rowPadding}px ${rowPadding + 1}px`;
+  const cellPad = `${rowPadding}px ${Math.max(2, rowPadding)}px`;
+  const colCount = headers.length;
+
   return (
-    <section className="gov-report-table-section" style={{ marginBottom: '6px' }}>
+    <section className="gov-report-table-section" style={{ marginBottom: '3.5px', width: '100%', maxWidth: '100%' }}>
       {title && (
-        <h3 className="gov-report-table-title" style={{ fontSize: `${fontSize + 1}pt`, paddingLeft: '4px', marginBottom: '2px' }}>
+        <h3 className="gov-report-table-title" style={{ fontSize: `${fontSize + 0.8}pt`, paddingLeft: '3px', marginBottom: '1.5px' }}>
           {title}
         </h3>
       )}
       {rows.length === 0 ? (
         <p className="print-report-empty" style={{ fontSize: `${fontSize}pt` }}>{emptyText}</p>
       ) : (
-        <table className="gov-report-table" style={{ fontSize: `${fontSize}pt` }}>
+        <table
+          className="gov-report-table"
+          style={{
+            fontSize: `${fontSize}pt`,
+            width: '100%',
+            maxWidth: '100%',
+            tableLayout: 'fixed',
+            boxSizing: 'border-box'
+          }}
+        >
           <thead>
             <tr>
-              {headers.map((h, i) => (
-                <th key={i} style={{ fontSize: `${fontSize}pt`, padding: cellPad }}>{h}</th>
-              ))}
+              {headers.map((rawH, i) => {
+                const h = formatReportHeaderLabel(rawH);
+                const isFirst = i === 0;
+                
+                let colWidth = undefined;
+                if (colCount > 5) {
+                  if (isFirst) colWidth = '22%';
+                  else if (i === colCount - 2) colWidth = '9%';
+                  else if (i === colCount - 1) colWidth = '11%';
+                  else colWidth = `${(100 - 42) / (colCount - 3)}%`;
+                } else if (colCount === 5) {
+                  if (isFirst) colWidth = '28%';
+                  else if (i >= colCount - 2) colWidth = '14%';
+                  else colWidth = '22%';
+                } else if (colCount === 4) {
+                  if (isFirst) colWidth = '35%';
+                  else colWidth = '21.6%';
+                } else if (colCount === 3) {
+                  if (isFirst) colWidth = '45%';
+                  else if (i === 1) colWidth = '25%';
+                  else colWidth = '30%';
+                }
+
+                let hFontSize = fontSize;
+                if (colCount >= 7) {
+                  if (h.length > 10) hFontSize = Math.max(5.5, fontSize - 1.0);
+                  else if (h.length > 7) hFontSize = Math.max(6.0, fontSize - 0.5);
+                } else if (colCount >= 6 && h.length > 9) {
+                  hFontSize = Math.max(6.0, fontSize - 0.5);
+                }
+
+                return (
+                  <th
+                    key={i}
+                    style={{
+                      fontSize: `${hFontSize}pt`,
+                      padding: cellPad,
+                      whiteSpace: isFirst ? 'nowrap' : 'normal',
+                      wordBreak: 'keep-all',
+                      overflowWrap: 'normal',
+                      hyphens: 'none',
+                      width: colWidth,
+                      lineHeight: 1.15
+                    }}
+                  >
+                    {h}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
             {rows.map((row, rIndex) => (
               <tr key={rIndex}>
                 {row.map((cell, cIndex) => {
+                  const isFirst = cIndex === 0;
                   const numeric = /^-?\d+(\.\d+)?%?$/.test(String(cell ?? "").trim());
-                  const alignClass = cIndex === 0 ? "text-left font-bold" : (numeric ? "text-center" : "text-left");
+                  const alignClass = isFirst ? "text-left font-bold" : (numeric ? "text-center" : "text-left");
                   return (
-                    <td key={cIndex} className={alignClass} style={{ padding: cellPad, fontSize: `${fontSize}pt` }}>
+                    <td
+                      key={cIndex}
+                      className={alignClass}
+                      style={{
+                        padding: cellPad,
+                        fontSize: `${fontSize}pt`,
+                        whiteSpace: isFirst ? 'nowrap' : 'normal',
+                        wordBreak: 'keep-all',
+                        overflowWrap: 'normal',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}
+                    >
                       {cell}
                     </td>
                   );
@@ -748,9 +851,18 @@ const ReportTable = ({ title, headers, rows, footerRows = [], emptyText = "No da
               {footerRows.map((row, rIndex) => (
                 <tr key={rIndex} className="gov-table-totals">
                   {row.map((cell, cIndex) => {
-                    const alignClass = cIndex === 0 ? "text-left font-bold" : "text-center";
+                    const isFirst = cIndex === 0;
+                    const alignClass = isFirst ? "text-left font-bold" : "text-center";
                     return (
-                      <td key={cIndex} className={alignClass} style={{ padding: cellPad, fontSize: `${fontSize}pt` }}>
+                      <td
+                        key={cIndex}
+                        className={alignClass}
+                        style={{
+                          padding: cellPad,
+                          fontSize: `${fontSize}pt`,
+                          whiteSpace: isFirst ? 'nowrap' : 'normal'
+                        }}
+                      >
                         {cell}
                       </td>
                     );
@@ -770,8 +882,8 @@ const ReportSummary = ({ title, items = [] }) => {
   const { fontSize } = useContext(ReportStyleContext);
   if (!items.length) return null;
   return (
-    <div className="gov-report-summary-box" style={{ padding: '4px 8px', margin: '4px 0' }}>
-      <h4 className="gov-report-summary-title" style={{ fontSize: `${fontSize + 1}pt`, marginBottom: '3px' }}>{title}</h4>
+    <div className="gov-report-summary-box" style={{ padding: '3px 8px', margin: '3px 0' }}>
+      <h4 className="gov-report-summary-title" style={{ fontSize: `${fontSize + 0.6}pt`, marginBottom: '2px' }}>{title}</h4>
       <div className="gov-report-summary-grid">
         {items.map((item, index) => (
           <div key={index} className="gov-report-summary-item" style={{ fontSize: `${fontSize}pt`, paddingBottom: '1px' }}>
@@ -786,21 +898,23 @@ const ReportSummary = ({ title, items = [] }) => {
 
 // REUSABLE REPORT FOOTER COMPONENT
 const ReportFooter = ({
-  preparedBy = "JOVY LYN C. CABAY",
+  preparedBy,
   preparedByTitle = "Barangay Secretary",
-  certifiedBy = "HON. MAMERTO C. CLARITO",
+  certifiedBy,
   certifiedByTitle = "Punong Barangay"
 }) => {
+  const finalPreparedBy = preparedBy || getActiveSecretary();
+  const finalCertifiedBy = certifiedBy || getActiveCaptain();
   return (
     <footer className="gov-report-footer" style={{ marginTop: '12px' }}>
       <div className="gov-report-signatory">
         <p style={{ fontSize: '7.5pt', marginBottom: '18px' }}>Prepared by:</p>
-        <div className="gov-report-signatory-name" style={{ fontSize: '9pt', minWidth: '160px' }}>{preparedBy}</div>
+        <div className="gov-report-signatory-name" style={{ fontSize: '8.2pt', minWidth: '160px' }}>{finalPreparedBy}</div>
         <div className="gov-report-signatory-title" style={{ fontSize: '7pt' }}>{preparedByTitle}</div>
       </div>
       <div className="gov-report-signatory">
         <p style={{ fontSize: '7.5pt', marginBottom: '18px' }}>Certified by:</p>
-        <div className="gov-report-signatory-name" style={{ fontSize: '9pt', minWidth: '160px' }}>{certifiedBy}</div>
+        <div className="gov-report-signatory-name" style={{ fontSize: '8.2pt', minWidth: '160px' }}>{finalCertifiedBy}</div>
         <div className="gov-report-signatory-title" style={{ fontSize: '7pt' }}>{certifiedByTitle}</div>
       </div>
     </footer>
@@ -845,17 +959,34 @@ const getPurokSubHeaderStyle = (purokKey) => {
 const PopulationMatrixSection = ({ familyProfile, puroks }) => {
   const { fontSize, rowPadding } = useContext(ReportStyleContext);
   const grandTotal = familyProfile.grandTotals.male + familyProfile.grandTotals.female;
-  const cellPad = `${rowPadding}px 1px`;
+  const cellPad = `${rowPadding}px 0.6px`;
 
   return (
-    <section className="gov-report-table-section" style={{ marginBottom: '4px' }}>
-      <h3 className="gov-report-table-title" style={{ fontSize: `${fontSize + 1}pt`, paddingLeft: '2px', marginBottom: '2px' }}>
+    <section className="gov-report-table-section" style={{ marginBottom: '2.5px', width: '100%' }}>
+      <h3 className="gov-report-table-title" style={{ fontSize: `${fontSize + 0.8}pt`, paddingLeft: '2px', marginBottom: '1.5px' }}>
         Population by Age Group and Purok
       </h3>
       <table className="gov-report-table" style={{ fontSize: `${fontSize}pt`, tableLayout: 'fixed', width: '100%' }}>
         <thead>
           <tr>
-            <th rowSpan="2" className="text-center font-bold" style={{ fontSize: `${fontSize}pt`, padding: cellPad, verticalAlign: "middle", width: '60px' }}>Age</th>
+            <th
+              rowSpan="2"
+              className="text-center font-bold"
+              style={{
+                fontSize: `${fontSize}pt`,
+                padding: cellPad,
+                verticalAlign: "middle",
+                textAlign: "center",
+                width: '16%',
+                border: "1px solid #111827",
+                backgroundColor: "#dcfce7",
+                color: "#14532D",
+                fontWeight: 700,
+                textTransform: "uppercase"
+              }}
+            >
+              AGE
+            </th>
             {puroks.map((purok) => (
               <th
                 key={purok.value}
@@ -865,7 +996,8 @@ const PopulationMatrixSection = ({ familyProfile, puroks }) => {
                   ...getPurokHeaderStyle(purok.value),
                   fontSize: `${fontSize}pt`,
                   padding: cellPad,
-                  border: "1px solid #111827"
+                  border: "1px solid #111827",
+                  width: '12%'
                 }}
               >
                 {purok.label.toUpperCase()}
@@ -876,15 +1008,15 @@ const PopulationMatrixSection = ({ familyProfile, puroks }) => {
             {puroks.flatMap((purok) => {
               const subStyle = {
                 ...getPurokSubHeaderStyle(purok.value),
-                fontSize: `${fontSize - 0.5}pt`,
+                fontSize: `${fontSize - 0.4}pt`,
                 padding: `${rowPadding}px 0px`,
                 border: "1px solid #cbd5e1",
                 textAlign: 'center'
               };
               return [
-                <th key={`${purok.value}-male`} style={subStyle}>M</th>,
-                <th key={`${purok.value}-female`} style={subStyle}>F</th>,
-                <th key={`${purok.value}-total`} style={{ ...subStyle, fontWeight: "800" }}>T</th>,
+                <th key={`${purok.value}-male`} style={{ ...subStyle, width: '3.6%' }}>M</th>,
+                <th key={`${purok.value}-female`} style={{ ...subStyle, width: '3.6%' }}>F</th>,
+                <th key={`${purok.value}-total`} style={{ ...subStyle, width: '4.8%', fontWeight: "800" }}>T</th>,
               ];
             })}
           </tr>
@@ -892,13 +1024,13 @@ const PopulationMatrixSection = ({ familyProfile, puroks }) => {
         <tbody>
           {familyProfile.rows.map((row) => (
             <tr key={row.label}>
-              <td className="text-left font-bold" style={{ padding: cellPad, fontSize: `${fontSize - 0.5}pt`, whiteSpace: 'nowrap' }}>{row.label}</td>
+              <td className="text-left font-bold" style={{ width: '16%', padding: cellPad, fontSize: `${fontSize - 0.4}pt`, whiteSpace: 'nowrap', border: '1px solid #cbd5e1' }}>{row.label}</td>
               {puroks.flatMap((purok) => {
                 const counts = row.counts[purok.value] || { male: 0, female: 0 };
                 return [
-                  <td key={`${row.label}-${purok.value}-male`} className="text-center" style={{ padding: cellPad }}>{counts.male}</td>,
-                  <td key={`${row.label}-${purok.value}-female`} className="text-center" style={{ padding: cellPad }}>{counts.female}</td>,
-                  <td key={`${row.label}-${purok.value}-total`} className="text-center font-semibold" style={{ padding: cellPad, backgroundColor: "#f8fafc" }}>{counts.male + counts.female}</td>,
+                  <td key={`${row.label}-${purok.value}-male`} className="text-center" style={{ width: '3.6%', padding: cellPad, border: '1px solid #cbd5e1' }}>{counts.male}</td>,
+                  <td key={`${row.label}-${purok.value}-female`} className="text-center" style={{ width: '3.6%', padding: cellPad, border: '1px solid #cbd5e1' }}>{counts.female}</td>,
+                  <td key={`${row.label}-${purok.value}-total`} className="text-center font-semibold" style={{ width: '4.8%', padding: cellPad, backgroundColor: "#f8fafc", border: '1px solid #cbd5e1' }}>{counts.male + counts.female}</td>,
                 ];
               })}
             </tr>
@@ -906,7 +1038,7 @@ const PopulationMatrixSection = ({ familyProfile, puroks }) => {
         </tbody>
         <tfoot>
           <tr className="gov-table-totals">
-            <td className="text-left font-bold" style={{ padding: cellPad, fontSize: `${fontSize}pt` }}>Total</td>
+            <td className="text-left font-bold" style={{ width: '16%', padding: cellPad, fontSize: `${fontSize}pt`, backgroundColor: "#fef9c3", color: "#1f2937", border: "1px solid #14532D" }}>Total</td>
             {puroks.flatMap((purok) => {
               const totals = familyProfile.purokTotals[purok.value] || { male: 0, female: 0 };
               const totalCellStyle = {
@@ -917,9 +1049,9 @@ const PopulationMatrixSection = ({ familyProfile, puroks }) => {
                 border: "1px solid #14532D"
               };
               return [
-                <td key={`${purok.value}-total-male`} className="text-center font-bold" style={totalCellStyle}>{totals.male}</td>,
-                <td key={`${purok.value}-total-female`} className="text-center font-bold" style={totalCellStyle}>{totals.female}</td>,
-                <td key={`${purok.value}-total-all`} className="text-center font-extrabold" style={{ ...totalCellStyle, backgroundColor: "#ded260" }}>{totals.male + totals.female}</td>,
+                <td key={`${purok.value}-total-male`} className="text-center font-bold" style={{ ...totalCellStyle, width: '3.6%' }}>{totals.male}</td>,
+                <td key={`${purok.value}-total-female`} className="text-center font-bold" style={{ ...totalCellStyle, width: '3.6%' }}>{totals.female}</td>,
+                <td key={`${purok.value}-total-all`} className="text-center font-extrabold" style={{ ...totalCellStyle, width: '4.8%', backgroundColor: "#ded260" }}>{totals.male + totals.female}</td>,
               ];
             })}
           </tr>
@@ -927,7 +1059,7 @@ const PopulationMatrixSection = ({ familyProfile, puroks }) => {
       </table>
       <div 
         className="text-right font-bold uppercase text-[#14532D]"
-        style={{ fontSize: `${fontSize + 1}pt`, marginTop: '2px' }}
+        style={{ fontSize: `${fontSize + 0.8}pt`, marginTop: '1.5px', width: '100%' }}
       >
         Grand Total: {grandTotal}
       </div>
@@ -941,22 +1073,22 @@ const PrintPurokTotals = ({ rows, grandTotalLabel = "Grand Total" }) => {
   const femaleTotal = sumNumericColumn(rows, 2);
   const overallTotal = sumNumericColumn(rows, 3);
   const cellPad = `${rowPadding}px ${rowPadding + 1}px`;
-  const allRows = [...rows, [grandTotalLabel, maleTotal, femaleTotal, overallTotal]];
   const headers = ["Purok Name", "Male Total", "Female Total", "Overall Total"];
+  const colWidths = ['37%', '21%', '21%', '21%'];
 
   return (
-    <section className="gov-report-table-section" style={{ marginBottom: '6px' }}>
-      <h3 className="gov-report-table-title" style={{ fontSize: `${fontSize + 1}pt`, paddingLeft: '4px', marginBottom: '2px' }}>
+    <section className="gov-report-table-section" style={{ marginBottom: '3.5px', width: '100%' }}>
+      <h3 className="gov-report-table-title" style={{ fontSize: `${fontSize + 0.8}pt`, paddingLeft: '3px', marginBottom: '1.5px' }}>
         Summary by Purok
       </h3>
       {rows.length === 0 ? (
         <p style={{ fontSize: `${fontSize}pt` }}>No purok summary available.</p>
       ) : (
-        <table className="gov-report-table gov-report-table-light" style={{ fontSize: `${fontSize}pt` }}>
+        <table className="gov-report-table gov-report-table-light" style={{ fontSize: `${fontSize}pt`, tableLayout: 'fixed', width: '100%' }}>
           <thead>
             <tr>
               {headers.map((h, i) => (
-                <th key={i} style={{ fontSize: `${fontSize}pt`, padding: cellPad, backgroundColor: '#dcfce7', color: '#14532D', border: '1px solid #86efac', fontWeight: 700, textTransform: 'uppercase', textAlign: 'center' }}>{h}</th>
+                <th key={i} style={{ width: colWidths[i], fontSize: `${fontSize}pt`, padding: cellPad, backgroundColor: '#dcfce7', color: '#14532D', border: '1px solid #86efac', fontWeight: 700, textTransform: 'uppercase', textAlign: i === 0 ? 'left' : 'center', paddingLeft: i === 0 ? '6px' : undefined }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -966,7 +1098,7 @@ const PrintPurokTotals = ({ rows, grandTotalLabel = "Grand Total" }) => {
                 {row.map((cell, cIndex) => {
                   const alignClass = cIndex === 0 ? "text-left font-bold" : "text-center";
                   return (
-                    <td key={cIndex} className={alignClass} style={{ padding: cellPad, fontSize: `${fontSize}pt` }}>
+                    <td key={cIndex} className={alignClass} style={{ width: colWidths[cIndex], padding: cellPad, fontSize: `${fontSize}pt`, paddingLeft: cIndex === 0 ? '6px' : undefined, border: '1px solid #cbd5e1' }}>
                       {cell}
                     </td>
                   );
@@ -977,7 +1109,7 @@ const PrintPurokTotals = ({ rows, grandTotalLabel = "Grand Total" }) => {
           <tfoot>
             <tr className="gov-table-totals">
               {[grandTotalLabel, maleTotal, femaleTotal, overallTotal].map((cell, cIndex) => (
-                <td key={cIndex} className={cIndex === 0 ? "text-left font-bold" : "text-center"} style={{ padding: cellPad, fontSize: `${fontSize}pt` }}>
+                <td key={cIndex} className={cIndex === 0 ? "text-left font-bold" : "text-center"} style={{ width: colWidths[cIndex], padding: cellPad, fontSize: `${fontSize}pt`, paddingLeft: cIndex === 0 ? '6px' : undefined, border: '1px solid #14532D', backgroundColor: '#fef9c3', color: '#1f2937' }}>
                   {cell}
                 </td>
               ))}
@@ -997,39 +1129,31 @@ const Analytics = () => {
     purok: "all",
   });
   const [residents, setResidents] = useState([]);
+  const [officials, setOfficials] = useState(() => getOrganizationOfficials());
   const [pwdColumnReady, setPwdColumnReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [activeTab, setActiveTab] = useState("analytics");
   const [paperSize, setPaperSize] = useState("a4");
   const [paperOrientation, setPaperOrientation] = useState("");
-  const [fontSize, setFontSize] = useState(7);
-  const [rowPadding, setRowPadding] = useState(2);
-  const [margin, setMargin] = useState(5);
+  const [fontSize] = useState(6.8);
+  const [rowPadding] = useState(1.1);
+  const [margin] = useState(3);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzingStep, setAnalyzingStep] = useState("Analyzing demographic data...");
+
+  const handleTriggerGenerate = () => {
+    setActiveTab("preview");
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setMessage("");
 
     try {
-      const [residentResult] = await Promise.allSettled([
-        fetchResidents("", "", { withAccounts: false }),
-      ]);
-      const { error: pwdColumnError } = await supabase
-        .from("residents")
-        .select("is_pwd,pwd_type")
-        .limit(1);
-
-      setResidents(residentResult.status === "fulfilled" ? residentResult.value : []);
-      setPwdColumnReady(!pwdColumnError);
-
-      const errors = [residentResult]
-        .filter((result) => result.status === "rejected")
-        .map((result) => result.reason?.message || "A report module could not be loaded.");
-
-      if (errors.length) {
-        setMessage(`Some report data could not be loaded. ${errors[0]}`);
-      }
+      const data = await fetchResidents("", "", { withAccounts: false });
+      setResidents(data || []);
+      setPwdColumnReady(true);
     } catch (error) {
       setMessage(error.message || "Failed to load reports.");
     } finally {
@@ -1038,9 +1162,35 @@ const Analytics = () => {
   }, []);
 
   useEffect(() => {
-    const timer = window.setTimeout(loadData, 0);
-    return () => window.clearTimeout(timer);
+    loadData();
   }, [loadData]);
+
+  // Sync officials with database and real-time organizational chart updates
+  useEffect(() => {
+    let isMounted = true;
+    fetchOrganizationOfficials()
+      .then((data) => {
+        if (isMounted && data?.length) {
+          setOfficials(data);
+        }
+      })
+      .catch(() => {});
+
+    const handleOfficialsUpdate = (event) => {
+      if (isMounted && event.detail?.length) {
+        setOfficials(event.detail);
+      }
+    };
+
+    window.addEventListener("organization_officials_updated", handleOfficialsUpdate);
+    return () => {
+      isMounted = false;
+      window.removeEventListener("organization_officials_updated", handleOfficialsUpdate);
+    };
+  }, []);
+
+  const punongBarangay = useMemo(() => getActiveCaptain(officials), [officials]);
+  const barangaySecretary = useMemo(() => getActiveSecretary(officials), [officials]);
 
   const report = useMemo(() => {
     const selectedPurokValue = reportFilters.purok;
@@ -1442,8 +1592,8 @@ const Analytics = () => {
         ["Barangay Upper Mingading"],
         [selectedReportInfo.title],
         ["Generated", generatedAt],
-        ["Prepared by", BARANGAY_SECRETARY],
-        ["Certified by", PUNONG_BARANGAY],
+        ["Prepared by", barangaySecretary],
+        ["Certified by", punongBarangay],
         [],
         ...(rowsByReport[selectedReport] || rowsByReport.residents),
       ],
@@ -1451,8 +1601,35 @@ const Analytics = () => {
     );
   };
 
+  const escapeHtml = (val) =>
+    String(val ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const handlePrintReport = () => {
+    const originalTitle = document.title;
+    document.title = "";
+    if (activeTab !== "preview") {
+      setActiveTab("preview");
+      setTimeout(() => {
+        window.print();
+        setTimeout(() => {
+          document.title = originalTitle;
+        }, 1000);
+      }, 350);
+    } else {
+      window.print();
+      setTimeout(() => {
+        document.title = originalTitle;
+      }, 1000);
+    }
+  };
+
   const handleExportPdf = () => {
-    window.print();
+    handlePrintReport();
   };
 
   const handleDownloadImage = async () => {
@@ -1593,7 +1770,7 @@ const Analytics = () => {
           <>
             <PrintSection
               title="Age Distribution by Purok/Sitio"
-              headers={["Purok/Sitio", ...report.ageCategoryLabels, "Total", "Percent of residents"]}
+              headers={["Purok / Sitio", ...report.ageCategoryLabels, "Total", "Percent of residents"]}
               rows={report.agePurokRows}
               footerRows={[purokCategoryFooterRow(report.ageCategoryLabels, report.agePurokRows, report.current.length)]}
             />
@@ -1611,7 +1788,7 @@ const Analytics = () => {
           <>
             <PrintSection
               title="Gender Distribution by Purok/Sitio"
-              headers={["Purok/Sitio", ...report.genderCategoryLabels, "Total", "Percent of residents"]}
+              headers={["Purok / Sitio", ...report.genderCategoryLabels, "Total", "Percent of residents"]}
               rows={report.genderPurokRows}
               footerRows={[purokCategoryFooterRow(report.genderCategoryLabels, report.genderPurokRows, report.current.length)]}
             />
@@ -1629,7 +1806,7 @@ const Analytics = () => {
           <>
             <PrintSection
               title="Civil Status by Purok/Sitio"
-              headers={["Purok/Sitio", ...report.civilStatusCategoryLabels, "Total", "Percent of residents"]}
+              headers={["Purok / Sitio", ...report.civilStatusCategoryLabels, "Total", "Percent of residents"]}
               rows={report.civilStatusPurokRows}
               footerRows={[purokCategoryFooterRow(report.civilStatusCategoryLabels, report.civilStatusPurokRows, report.current.length)]}
             />
@@ -1646,7 +1823,7 @@ const Analytics = () => {
           <>
             <PrintSection
               title="Employment Status by Purok/Sitio"
-              headers={["Purok/Sitio", ...report.employmentStatusCategoryLabels, "Total", "Percent of residents"]}
+              headers={["Purok / Sitio", ...report.employmentStatusCategoryLabels, "Total", "Percent of residents"]}
               rows={report.employmentStatusPurokRows}
               footerRows={[purokCategoryFooterRow(report.employmentStatusCategoryLabels, report.employmentStatusPurokRows, report.current.length)]}
             />
@@ -1663,7 +1840,7 @@ const Analytics = () => {
           <>
             <PrintSection
               title="Educational Attainment by Purok/Sitio"
-              headers={["Purok/Sitio", ...report.educationalAttainmentCategoryLabels, "Total", "Percent of residents"]}
+              headers={["Purok / Sitio", ...report.educationalAttainmentCategoryLabels, "Total", "Percent of residents"]}
               rows={report.educationalAttainmentPurokRows}
               footerRows={[purokCategoryFooterRow(report.educationalAttainmentCategoryLabels, report.educationalAttainmentPurokRows, report.current.length)]}
             />
@@ -1680,7 +1857,7 @@ const Analytics = () => {
           <>
             <PrintSection
               title="Senior Citizens by Purok/Sitio and Age Band"
-              headers={["Purok/Sitio", ...report.seniorAgeCategoryLabels, "Total", "Percent of senior citizens"]}
+              headers={["Purok / Sitio", ...report.seniorAgeCategoryLabels, "Total", "Percent of senior citizens"]}
               rows={report.seniorAgePurokRows}
               footerRows={[purokCategoryFooterRow(report.seniorAgeCategoryLabels, report.seniorAgePurokRows, report.seniors.length)]}
             />
@@ -1703,7 +1880,7 @@ const Analytics = () => {
           <>
             <PrintSection
               title="Youth Profile by Purok/Sitio and Age Band"
-              headers={["Purok/Sitio", ...report.youthAgeCategoryLabels, "Total", "Percent of youth"]}
+              headers={["Purok / Sitio", ...report.youthAgeCategoryLabels, "Total", "Percent of youth"]}
               rows={report.youthAgePurokRows}
               footerRows={[purokCategoryFooterRow(report.youthAgeCategoryLabels, report.youthAgePurokRows, report.youthResidents.length)]}
             />
@@ -1731,7 +1908,7 @@ const Analytics = () => {
           <>
             <PrintSection
               title="PWD Distribution by Purok/Sitio and Disability Type"
-              headers={["Purok/Sitio", ...report.pwdTypeCategoryLabels, "Total", "Percent of PWD residents"]}
+              headers={["Purok / Sitio", ...report.pwdTypeCategoryLabels, "Total", "Percent of PWD residents"]}
               rows={report.pwdTypePurokRows}
               footerRows={[purokCategoryFooterRow(report.pwdTypeCategoryLabels, report.pwdTypePurokRows, report.pwdResidents.length)]}
             />
@@ -1971,7 +2148,9 @@ const Analytics = () => {
 
   return (
     <div className="min-h-screen bg-[#eef3f8]">
-      <Header title="Reports & Analytics" subtitle="Generate demographics and barangay data reports" />
+      {activeTab !== "preview" && (
+        <Header title="Reports & Analytics" subtitle="Generate demographics and barangay data reports" />
+      )}
       <main className="mx-auto max-w-[1240px] px-4 py-6 sm:px-6 lg:px-8 no-print">
         {/* Unified Workspace Panel */}
         <div className="gov-workspace-panel rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-6">
@@ -1993,7 +2172,7 @@ const Analytics = () => {
               </button>
               <button
                 type="button"
-                onClick={() => setActiveTab("preview")}
+                onClick={handleTriggerGenerate}
                 className={`inline-flex items-center gap-2 rounded-md px-4 py-1.5 text-xs font-bold transition duration-200 ${
                   activeTab === "preview"
                     ? "bg-[#14532D] text-white shadow-sm"
@@ -2039,7 +2218,7 @@ const Analytics = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => window.print()}
+                    onClick={handlePrintReport}
                     disabled={loading}
                     className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#14532D] hover:bg-[#0f3e21] px-4.5 py-1.5 text-xs font-bold text-white shadow-sm transition active:scale-95"
                   >
@@ -2103,7 +2282,7 @@ const Analytics = () => {
 
               <button
                 type="button"
-                onClick={() => setActiveTab("preview")}
+                onClick={handleTriggerGenerate}
                 className="w-full inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#14532D] hover:bg-[#0f3e21] px-4 py-2.5 text-xs font-bold text-white shadow-sm transition active:scale-95"
               >
                 <SlidersHorizontal size={13} />
@@ -2137,7 +2316,7 @@ const Analytics = () => {
 
       {/* WYSIWYG Print Preview View — Fullscreen Floating at Root Level */}
       {!loading && activeTab === "preview" && (
-        <div className="fixed inset-0 z-50 flex bg-slate-900/60 backdrop-blur-sm" style={{ top: 0, left: 0 }}>
+        <div className="fixed inset-0 z-[99999] flex bg-slate-900/60 backdrop-blur-sm" style={{ top: 0, left: 0 }}>
           {/* Control Sidebar */}
           <div className="w-80 shrink-0 bg-white border-r border-slate-200 p-5 space-y-5 report-controls overflow-y-auto">
             {/* Actions Header */}
@@ -2145,14 +2324,13 @@ const Analytics = () => {
               <button
                 type="button"
                 onClick={() => setActiveTab("analytics")}
-                className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-rose-600"
+                className="w-full inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-rose-600 tracking-wide"
               >
-                <X size={14} />
                 Exit
               </button>
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={handlePrintReport}
                 disabled={loading}
                 className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#14532D] hover:bg-[#0f3e21] px-4 py-2 text-xs font-bold text-white shadow-sm transition active:scale-95"
               >
@@ -2240,55 +2418,6 @@ const Analytics = () => {
                     <option value="landscape">Landscape</option>
                   </select>
                 </label>
-
-                {/* Font Size Slider */}
-                <label className="block space-y-1">
-                  <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500">
-                    <span>Font Size</span>
-                    <span className="font-mono text-green-700">{fontSize}pt</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="5"
-                    max="14"
-                    step="0.5"
-                    value={fontSize}
-                    onChange={(e) => setFontSize(Number(e.target.value))}
-                    className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#14532D]"
-                  />
-                </label>
-
-                {/* Spacing / Padding Slider */}
-                <label className="block space-y-1">
-                  <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500">
-                    <span>Row Spacing</span>
-                    <span className="font-mono text-green-700">{rowPadding}px</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="10"
-                    value={rowPadding}
-                    onChange={(e) => setRowPadding(Number(e.target.value))}
-                    className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#14532D]"
-                  />
-                </label>
-
-                {/* Margins Slider */}
-                <label className="block space-y-1">
-                  <div className="flex justify-between text-[10px] font-bold uppercase text-slate-500">
-                    <span>Page Margins</span>
-                    <span className="font-mono text-green-700">{margin}mm</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="3"
-                    max="25"
-                    value={margin}
-                    onChange={(e) => setMargin(Number(e.target.value))}
-                    className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#14532D]"
-                  />
-                </label>
               </div>
             </div>
 
@@ -2320,32 +2449,39 @@ const Analytics = () => {
               {renderPrintSummary()}
               
               <ReportFooter
-                preparedBy={BARANGAY_SECRETARY}
-                certifiedBy={PUNONG_BARANGAY}
+                preparedBy={barangaySecretary}
+                certifiedBy={punongBarangay}
               />
             </ReportLayout>
           </div>
         </div>
       )}
 
-      {/* Hidden Print Wrapper (Prints exactly the active layout, styled via index.css) */}
-      <div className="hidden print:block">
-        <ReportLayout paperSize={paperSize} orientation={activeOrientation} fontSize={fontSize} rowPadding={rowPadding} margin={margin}>
-          <ReportHeader
-            title={selectedReportInfo.title}
-            year={reportYear}
-            purokLabel={selectedPurokLabel}
-          />
-          
-          {renderPrintReportSections()}
-          {renderPrintSummary()}
-          
-          <ReportFooter
-            preparedBy={BARANGAY_SECRETARY}
-            certifiedBy={PUNONG_BARANGAY}
-          />
-        </ReportLayout>
-      </div>
+      {/* Analyzing & Loading Transition Overlay */}
+      {isAnalyzing && (
+        <div className="fixed inset-0 z-[999999] flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-md transition-all duration-300">
+          <div className="flex flex-col items-center max-w-sm w-full mx-4 p-7 rounded-2xl bg-white border border-emerald-500/20 shadow-2xl text-center space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="relative flex items-center justify-center h-16 w-16">
+              <div className="absolute inset-0 rounded-full border-4 border-emerald-100 border-t-[#14532D] animate-spin" />
+              <BarChart3 className="h-7 w-7 text-[#14532D] animate-pulse" />
+            </div>
+            
+            <div className="space-y-1.5">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">
+                Generating Report
+              </h3>
+              <p className="text-xs font-bold text-emerald-700 h-4 transition-all duration-200">
+                {analyzingStep}
+              </p>
+            </div>
+
+            {/* Simulated Progress bar */}
+            <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-emerald-500 to-[#14532D] rounded-full animate-[pulse_1s_infinite] w-full" />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

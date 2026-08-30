@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useConfirm } from "../context/ConfirmContext";
 import SettingsDrawer from "../components/SettingsDrawer";
@@ -20,12 +20,14 @@ import {
 } from "recharts";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
+  ArrowLeft,
   Bell,
   Bot,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
   CreditCard,
+  Crown,
   FileCheck2,
   FileText,
   HelpCircle,
@@ -87,17 +89,25 @@ import {
   cancelDocumentRequest,
   createDocumentRequest,
   deleteDocumentRequest,
+  deleteDocumentRequests,
   fetchDocumentRequests,
   fetchDocumentTemplates,
   fetchResidentNotifications,
   getResidentDocumentRequests,
   markResidentNotificationRead,
+  markAllResidentNotificationsRead,
+  deleteResidentNotification,
+  clearAllResidentNotifications,
   updateDocumentRequestType,
 } from "../services/documentRequestService";
 import { fetchLivelihoodPosts, applyForLivelihood, fetchResidentLivelihoodApplications } from "../services/livelihoodService";
 import { fetchResidentKnowledge } from "../services/knowledgeService";
 import { askResidentAssistant } from "../services/residentAssistantService";
-import { getOrganizationOfficials, fetchOrganizationOfficials } from "../services/organizationService";
+import {
+  DEFAULT_ORGANIZATION_OFFICIALS,
+  getOrganizationOfficials,
+  fetchOrganizationOfficials,
+} from "../services/organizationService";
 import { getSystemSettings, subscribeSystemSettings } from "../services/adminActivityService";
 import {
   clearResidentSession,
@@ -136,6 +146,19 @@ const DEFAULT_ASSISTANT_MESSAGE = {
   role: "assistant",
   text: "Hello! I'm KaagapAI, your Barangay Assistant. How can I help you today? You can ask about document requests, barangay services, complaints, announcements, livelihood programs, health services, and more.",
 };
+
+const quickPurposes = [
+  "OWWA",
+  "Local Employment",
+  "Job Application",
+  "Scholarship",
+  "Postal ID",
+  "Bank Account",
+  "Medical Assistance",
+  "Financial Assistance",
+  "4Ps Requirement",
+  "CAFGU",
+];
 
 const getStoredReadIds = (key) => {
   try {
@@ -201,6 +224,25 @@ const isTagalogText = (text = "") => {
     }
   }
   return matches >= 1;
+};
+
+const isNotificationSupported = () => {
+  try {
+    return typeof window !== "undefined" && "Notification" in window && typeof window.Notification !== "undefined";
+  } catch {
+    return false;
+  }
+};
+
+const getNotificationPermission = () => {
+  try {
+    if (isNotificationSupported()) {
+      return window.Notification.permission;
+    }
+  } catch (e) {
+    console.warn("Could not read notification permission:", e);
+  }
+  return "unsupported";
 };
 
 const isNativeFilipinoVoice = (voice) => {
@@ -328,6 +370,7 @@ const getProfessionalVoice = (isTagalog = false) => {
 };
 
 let currentSpeechUtterances = [];
+let activeSpeechToken = null;
 
 const speakAssistantText = (text, onStart = null, onEnd = null) => {
   stopAssistantSpeech();
@@ -335,6 +378,9 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
     if (onEnd) onEnd();
     return;
   }
+
+  const speechToken = Date.now() + Math.random();
+  activeSpeechToken = speechToken;
 
   const isTagalog = isTagalogText(text);
   const chosenVoice = getProfessionalVoice(isTagalog);
@@ -351,7 +397,7 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
 
     // Split text into natural sentence chunks to ensure smooth browser playback without freezing
     const rawSentences = cleanText.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [cleanText];
-    const sentences = rawSentences.map(s => s.trim()).filter(Boolean);
+    const sentences = rawSentences.map((s) => s.trim()).filter(Boolean);
 
     if (sentences.length === 0) {
       if (onEnd) onEnd();
@@ -362,7 +408,13 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
     let started = false;
 
     const speakNextSentence = () => {
+      // Abort immediately if speech was stopped, muted, or cancelled
+      if (activeSpeechToken !== speechToken) {
+        return;
+      }
+
       if (currentIndex >= sentences.length) {
+        activeSpeechToken = null;
         if (onEnd) onEnd();
         currentSpeechUtterances = [];
         return;
@@ -383,6 +435,10 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
       utterance.pitch = 1.0;
 
       utterance.onstart = () => {
+        if (activeSpeechToken !== speechToken) {
+          window.speechSynthesis.cancel();
+          return;
+        }
         if (!started) {
           started = true;
           if (onStart) onStart();
@@ -390,11 +446,15 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
       };
 
       utterance.onend = () => {
-        speakNextSentence();
+        if (activeSpeechToken === speechToken) {
+          speakNextSentence();
+        }
       };
 
       utterance.onerror = (e) => {
-        console.warn("Speech synthesis utterance error:", e);
+        if (activeSpeechToken !== speechToken || e?.error === "canceled" || e?.error === "interrupted") {
+          return;
+        }
         speakNextSentence();
       };
 
@@ -405,11 +465,13 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
     speakNextSentence();
   } catch (err) {
     console.warn("Speech synthesis error:", err);
+    activeSpeechToken = null;
     if (onEnd) onEnd();
   }
 };
 
 const stopAssistantSpeech = () => {
+  activeSpeechToken = null;
   currentSpeechUtterances = [];
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     try {
@@ -938,20 +1000,20 @@ const isRequestExpired = (request) => {
 const getStatusClass = (status) => {
   switch (status) {
     case "Pending":
-      return "bg-amber-50 border-amber-250 text-amber-700";
+      return "bg-amber-500/25 border-amber-400/40 text-amber-200";
     case "Processing":
-      return "bg-blue-50 border-blue-250 text-blue-700";
+      return "bg-blue-500/25 border-blue-400/40 text-blue-200";
     case "Approved":
-      return "bg-emerald-50 border-emerald-250 text-emerald-700";
+      return "bg-emerald-500/25 border-emerald-400/40 text-emerald-200";
     case "Completed":
     case "Released":
-      return "bg-teal-50 border-teal-250 text-teal-700";
+      return "bg-emerald-500/30 border-emerald-300/50 text-emerald-100 font-bold";
     case "Rejected":
-      return "bg-rose-50 border-rose-250 text-rose-700";
+    case "Cancelled":
     case "Expired":
-      return "bg-rose-50 border-rose-250 text-rose-700 font-bold border-rose-300";
+      return "bg-rose-500/25 border-rose-400/40 text-rose-200 font-bold";
     default:
-      return "bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-350";
+      return "bg-white/10 border-white/20 text-white/80";
   }
 };
 
@@ -967,6 +1029,174 @@ const AssistantAiIcon = () => (
     />
   </div>
 );
+
+const FloatingRobotWidget = memo(({ assistantOpen, onOpenAssistant }) => {
+  const [robotDismissed, setRobotDismissed] = useState(() => {
+    try {
+      return localStorage.getItem("kaagapai_robot_dismissed") === "true";
+    } catch {
+      return false;
+    }
+  });
+  const [robotVisible, setRobotVisible] = useState(() => !robotDismissed);
+  const [robotMessageIndex, setRobotMessageIndex] = useState(0);
+  const [robotTypedText, setRobotTypedText] = useState("");
+
+  const robotSayings = useMemo(() => [
+    "Hai! I'm your KaagapAI Virtual Assistant! 🤖 Need help with barangay services, documents, or announcements? Click me!",
+    "May kailangan ka bang tulong sa Certificate of Residency, Clearance, o Indigency? Pwede kitang gabayan! 📄✨",
+    "Stay updated! Check out the latest Barangay Announcements & Livelihood Opportunities on your Home tab! 📢",
+    "May tanong ka ba sa Barangay Officials o Office Hours? Mag-chat lang sa akin 24/7! 💬"
+  ], []);
+
+  // 15s Visible <-> 15s Hidden Cycle (isolated to widget)
+  useEffect(() => {
+    if (robotDismissed) {
+      setRobotVisible(false);
+      return;
+    }
+
+    let timer = null;
+    if (robotVisible) {
+      timer = setTimeout(() => {
+        setRobotVisible(false);
+      }, 15000);
+    } else {
+      timer = setTimeout(() => {
+        if (!robotDismissed) {
+          setRobotMessageIndex((prev) => (prev + 1) % robotSayings.length);
+          setRobotVisible(true);
+        }
+      }, 15000);
+    }
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [robotVisible, robotDismissed, robotSayings.length]);
+
+  // Typewriter effect isolated to this widget
+  useEffect(() => {
+    if (!robotVisible) {
+      setRobotTypedText("");
+      return;
+    }
+
+    let typeTimer = null;
+    let charIndex = 0;
+    const currentFullText = robotSayings[robotMessageIndex] || "";
+
+    setRobotTypedText("");
+
+    typeTimer = setInterval(() => {
+      if (charIndex < currentFullText.length) {
+        charIndex++;
+        setRobotTypedText(currentFullText.slice(0, charIndex));
+      } else {
+        clearInterval(typeTimer);
+      }
+    }, 32);
+
+    return () => {
+      if (typeTimer) clearInterval(typeTimer);
+    };
+  }, [robotVisible, robotMessageIndex, robotSayings]);
+
+  if (assistantOpen || !robotVisible || robotDismissed) return null;
+
+  return (
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.8, y: 15 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.8, y: 15 }}
+        transition={{ duration: 0.45, ease: "easeOut" }}
+        className="fixed bottom-[8rem] right-3 sm:bottom-24 sm:right-6 z-[9945] w-16 sm:w-20 flex items-center justify-center pointer-events-auto"
+      >
+        <div className="relative w-full flex items-center justify-center">
+          {/* Animated Typewriter Speech Bubble (Transparent White Glassmorphism) */}
+          <div
+            className="absolute right-[calc(100%+8px)] bottom-1.5 sm:bottom-2 w-[180px] sm:w-[260px] max-w-[calc(100vw-5.5rem)] bg-white/95 backdrop-blur-2xl border border-white/95 text-slate-900 p-2.5 sm:p-3 rounded-2xl shadow-xl sm:shadow-2xl shadow-slate-950/25 z-20 text-left pointer-events-auto select-none cursor-pointer"
+            onClick={onOpenAssistant}
+            title="Click to chat with KaagapAI Virtual Assistant"
+          >
+            {/* Chat Bubble Tail Pointer */}
+            <div className="absolute -right-2 bottom-4 sm:bottom-5 w-0 h-0 border-t-[5px] sm:border-t-[6px] border-t-transparent border-l-[7px] sm:border-l-[8px] border-l-white/95 border-b-[5px] sm:border-b-[6px] border-b-transparent" />
+            
+            {/* Speech Bubble Header */}
+            <div className="flex items-center justify-between pb-1 sm:pb-1.5 mb-1 sm:mb-1.5 border-b border-slate-200/80">
+              <div className="flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+                </span>
+                <span className="text-[9.5px] sm:text-[10px] font-black uppercase tracking-wider text-emerald-800">KaagapAI Robot</span>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setRobotVisible(false);
+                  setRobotDismissed(true);
+                  try {
+                    localStorage.setItem("kaagapai_robot_dismissed", "true");
+                  } catch {}
+                }}
+                className="text-slate-400 hover:text-slate-900 text-xs font-bold px-1.5 py-0.5 hover:bg-slate-200/80 rounded transition cursor-pointer"
+                title="Dismiss permanently"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Typewriter Text */}
+            <p className="text-[10.5px] sm:text-xs font-black leading-relaxed text-slate-900 font-sans">
+              {robotTypedText}
+              {robotTypedText.length < (robotSayings[robotMessageIndex]?.length || 0) && (
+                <span className="inline-block w-1 h-3 ml-0.5 bg-emerald-600 animate-pulse" />
+              )}
+            </p>
+
+            <div className="mt-1.5 pt-1 sm:pt-1.5 border-t border-slate-200/80 flex justify-between items-center text-[9px] sm:text-[9.5px] font-bold">
+              <span className="text-emerald-700 font-black">Click to chat</span>
+              <span className="text-amber-700">24/7 AI ⚡</span>
+            </div>
+          </div>
+
+          {/* Levitating 3D Robot Avatar Image */}
+          <motion.div
+            animate={{ 
+              y: [0, -7, 0],
+              rotate: [0, -1.5, 1.5, 0]
+            }}
+            transition={{ 
+              duration: 3.5, 
+              repeat: Infinity, 
+              repeatType: "mirror", 
+              ease: "easeInOut" 
+            }}
+            onClick={onOpenAssistant}
+            className="relative cursor-pointer group shrink-0 flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20"
+            title="Click KaagapAI Robot to open Assistant"
+          >
+            {/* Soft Ambient Glow Halo */}
+            <div className="absolute -inset-2 bg-gradient-to-r from-emerald-500/25 via-teal-400/25 to-cyan-500/25 rounded-full blur-md opacity-75 group-hover:opacity-100 transition duration-300 animate-pulse pointer-events-none" />
+
+            {/* 3D Robot Image */}
+            <img
+              src="/ai-robot.webp"
+              alt="KaagapAI Floating Robot Assistant"
+              className="w-16 h-16 sm:w-20 sm:h-20 max-w-full max-h-full object-contain drop-shadow-[0_10px_16px_rgba(0,0,0,0.5)] relative z-10 transition-transform duration-300 group-hover:scale-110"
+              onError={(e) => {
+                e.target.src = "/robot/Robot.cutout.png";
+              }}
+            />
+          </motion.div>
+        </div>
+      </motion.div>
+    </AnimatePresence>
+  );
+});
 
 const parsePurpose = (docType) => {
   if (!docType) return "";
@@ -1040,6 +1270,43 @@ const UserDashboard = () => {
   // Dynamic system settings (Office Email, Office Phone, etc.)
   const [systemSettings, setSystemSettings] = useState(() => getSystemSettings());
 
+  const getOfficialById = useCallback(
+    (id) => {
+      return (
+        officials.find((off) => off.id === id) ||
+        DEFAULT_ORGANIZATION_OFFICIALS.find((off) => off.id === id) ||
+        null
+      );
+    },
+    [officials]
+  );
+
+  const captain = useMemo(() => getOfficialById("captain"), [getOfficialById]);
+  const leftWingOfficials = useMemo(
+    () =>
+      [
+        getOfficialById("kagawad-wilson-boy-capon-pon"),
+        getOfficialById("kagawad-garry-bernal"),
+        getOfficialById("kagawad-juanito-c-talaman"),
+        getOfficialById("kagawad-loreto-c-calamba"),
+      ].filter(Boolean),
+    [getOfficialById]
+  );
+
+  const rightWingOfficials = useMemo(
+    () =>
+      [
+        getOfficialById("kagawad-judy-c-cabaya"),
+        getOfficialById("kagawad-kobi-gandawali"),
+        getOfficialById("kagawad-mercy-joy-c-calamba"),
+        getOfficialById("sk-chairman-chrystophyr-b-trance"),
+      ].filter(Boolean),
+    [getOfficialById]
+  );
+
+  const secretary = useMemo(() => getOfficialById("secretary-jovelyn-c-cabaya"), [getOfficialById]);
+  const treasurer = useMemo(() => getOfficialById("treasurer-rosalie-c-calamba"), [getOfficialById]);
+
   useEffect(() => {
     const unsubscribe = subscribeSystemSettings((nextSettings) => {
       setSystemSettings(nextSettings);
@@ -1070,6 +1337,7 @@ const UserDashboard = () => {
     };
   }, []);
   const [settingsTab, setSettingsTab] = useState("security"); // default changed to security
+  const [mobileSettingsOpen, setMobileSettingsOpen] = useState(false);
   const [theme, setTheme] = useState("light");
   const [fontSize, setFontSize] = useState(() => localStorage.getItem("kaagapai_resident_font_size") || "medium");
   const [smsNotificationsEnabled, setSmsNotificationsEnabled] = useState(() => localStorage.getItem("kaagapai_sms_notifications") !== "false");
@@ -1081,79 +1349,6 @@ const UserDashboard = () => {
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [selectedAnnouncementModal, setSelectedAnnouncementModal] = useState(null);
 
-  // Floating AI Robot Assistant Animation State (Dismissible)
-  const [robotDismissed, setRobotDismissed] = useState(() => {
-    try {
-      return localStorage.getItem("kaagapai_robot_dismissed") === "true";
-    } catch {
-      return false;
-    }
-  });
-  const [robotVisible, setRobotVisible] = useState(() => !robotDismissed);
-  const [robotMessageIndex, setRobotMessageIndex] = useState(0);
-  const [robotTypedText, setRobotTypedText] = useState("");
-
-  const robotSayings = useMemo(() => [
-    "Hai! I'm your KaagapAI Virtual Assistant! 🤖 Need help with barangay services, documents, or announcements? Click me!",
-    "May kailangan ka bang tulong sa Certificate of Residency, Clearance, o Indigency? Pwede kitang gabayan! 📄✨",
-    "Stay updated! Check out the latest Barangay Announcements & Livelihood Opportunities on your Home tab! 📢",
-    "May tanong ka ba sa Barangay Officials o Office Hours? Mag-chat lang sa akin 24/7! 💬"
-  ], []);
-
-  // 15s Visible <-> 15s Hidden Cycle (Only if not dismissed by user)
-  useEffect(() => {
-    if (robotDismissed) {
-      setRobotVisible(false);
-      return;
-    }
-
-    let timer = null;
-    if (robotVisible) {
-      // Stay visible for 15 seconds, then disappear
-      timer = setTimeout(() => {
-        setRobotVisible(false);
-      }, 15000);
-    } else {
-      // Stay hidden for 15 seconds, then advance message and reappear
-      timer = setTimeout(() => {
-        if (!robotDismissed) {
-          setRobotMessageIndex((prev) => (prev + 1) % robotSayings.length);
-          setRobotVisible(true);
-        }
-      }, 15000);
-    }
-
-    return () => {
-      if (timer) clearTimeout(timer);
-    };
-  }, [robotVisible, robotDismissed, robotSayings.length]);
-
-  // Typewriter effect triggered whenever robot becomes visible
-  useEffect(() => {
-    if (!robotVisible) {
-      setRobotTypedText("");
-      return;
-    }
-
-    let typeTimer = null;
-    let charIndex = 0;
-    const currentFullText = robotSayings[robotMessageIndex] || "";
-
-    setRobotTypedText("");
-
-    typeTimer = setInterval(() => {
-      if (charIndex < currentFullText.length) {
-        charIndex++;
-        setRobotTypedText(currentFullText.slice(0, charIndex));
-      } else {
-        clearInterval(typeTimer);
-      }
-    }, 28);
-
-    return () => {
-      if (typeTimer) clearInterval(typeTimer);
-    };
-  }, [robotVisible, robotMessageIndex, robotSayings]);
 
   // Realtime Functional Search Index across all resident system items
   const searchResults = useMemo(() => {
@@ -1285,10 +1480,12 @@ const UserDashboard = () => {
 
   useEffect(() => {
     const requestPerm = async () => {
-      if (typeof window !== "undefined" && "Notification" in window) {
-        if (Notification.permission === "default") {
-          await Notification.requestPermission();
+      try {
+        if (isNotificationSupported() && window.Notification.permission === "default") {
+          await window.Notification.requestPermission();
         }
+      } catch (e) {
+        console.warn("Notification request permission failed:", e);
       }
     };
     requestPerm();
@@ -1349,20 +1546,26 @@ const UserDashboard = () => {
                   setLatestAnnouncementToast(newAnn);
 
                   // HTML5 browser push notification
-                  if (Notification.permission === "granted") {
-                    const nativeNotif = new Notification("Barangay Upper Mingading", {
-                      body: `${newAnn.title}\n${newAnn.body}`,
-                      icon: "/favicon.ico",
-                      tag: `announcement-${newAnn.id}`,
-                    });
-                    nativeNotif.onclick = () => {
-                      window.focus();
-                      localStorage.setItem("kaagapai_redirect_module", "announcements");
-                      window.location.href = "/resident-dashboard";
-                    };
-                    setTimeout(() => {
-                      nativeNotif.close();
-                    }, 3000); // Swipe/close after 3 seconds!
+                  if (isNotificationSupported() && window.Notification.permission === "granted") {
+                    try {
+                      const nativeNotif = new window.Notification("Barangay Upper Mingading", {
+                        body: `${newAnn.title}\n${newAnn.body}`,
+                        icon: "/favicon.ico",
+                        tag: `announcement-${newAnn.id}`,
+                      });
+                      nativeNotif.onclick = () => {
+                        window.focus();
+                        localStorage.setItem("kaagapai_redirect_module", "announcements");
+                        window.location.href = "/resident-dashboard";
+                      };
+                      setTimeout(() => {
+                        try {
+                          nativeNotif.close();
+                        } catch (e) {}
+                      }, 3000); // Swipe/close after 3 seconds!
+                    } catch (e) {
+                      console.warn("Native notification display failed:", e);
+                    }
                   }
                 }
               }
@@ -1387,7 +1590,13 @@ const UserDashboard = () => {
           filter: `resident_id=eq.${resident.id}`,
         },
         () => {
-          refreshResidentActivity(resident.id);
+          if (resident?.id) {
+            fetchResidentNotifications(resident.id)
+              .then((freshNotifs) => {
+                if (freshNotifs) setNotifications(freshNotifs);
+              })
+              .catch(() => {});
+          }
         }
       )
       .subscribe();
@@ -1419,20 +1628,26 @@ const UserDashboard = () => {
       setLatestNotificationToast(latest);
 
       // Trigger native browser notification
-      if (Notification.permission === "granted") {
-        const nativeNotif = new Notification("KaagapA.I Notification", {
-          body: `${latest.title}\n${latest.message || latest.body || ""}`,
-          icon: "/favicon.ico",
-          tag: `notification-${latest.id}`,
-        });
-        nativeNotif.onclick = () => {
-          window.focus();
-          localStorage.setItem("kaagapai_redirect_module", "documents");
-          window.location.href = "/resident-dashboard";
-        };
-        setTimeout(() => {
-          nativeNotif.close();
-        }, 3000); // Close/swipe out after 3 seconds!
+      if (isNotificationSupported() && window.Notification.permission === "granted") {
+        try {
+          const nativeNotif = new window.Notification("KaagapA.I Notification", {
+            body: `${latest.title}\n${latest.message || latest.body || ""}`,
+            icon: "/favicon.ico",
+            tag: `notification-${latest.id}`,
+          });
+          nativeNotif.onclick = () => {
+            window.focus();
+            localStorage.setItem("kaagapai_redirect_module", "documents");
+            window.location.href = "/resident-dashboard";
+          };
+          setTimeout(() => {
+            try {
+              nativeNotif.close();
+            } catch (e) {}
+          }, 3000); // Close/swipe out after 3 seconds!
+        } catch (e) {
+          console.warn("Native notification display failed:", e);
+        }
       }
     }
   }, [notifications, resident?.id]);
@@ -1557,14 +1772,39 @@ const UserDashboard = () => {
   const [refreshingRequests, setRefreshingRequests] = useState(false);
   const [requestMessage, setRequestMessage] = useState(null);
   const [activeNav, setActiveNav] = useState("home");
+  const [selectedLogIds, setSelectedLogIds] = useState([]);
+  const [deletingLogs, setDeletingLogs] = useState(false);
+  const [previousNav, setPreviousNav] = useState("home");
+  const prevNavRef = useRef("home");
+
+  useEffect(() => {
+    if (activeNav !== prevNavRef.current) {
+      setPreviousNav(prevNavRef.current);
+      prevNavRef.current = activeNav;
+    }
+  }, [activeNav]);
+
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [documentModalOpen, setDocumentModalOpen] = useState(false);
   const [showNotificationMenu, setShowNotificationMenu] = useState(false);
+
+  useEffect(() => {
+    if (activeNav !== "settings") {
+      setMobileSettingsOpen(false);
+    }
+  }, [activeNav]);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [isSettingsDrawerOpen, setIsSettingsDrawerOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [chatFabExpanded, setChatFabExpanded] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [voiceEnabled, setVoiceEnabled] = useState(() => {
+    try {
+      const saved = localStorage.getItem("kaagapai_chatbot_voice_enabled");
+      return saved !== "false";
+    } catch {
+      return true;
+    }
+  });
   const [speakingChatId, setSpeakingChatId] = useState(null);
   const [selectedLivelihoodDetail, setSelectedLivelihoodDetail] = useState(null);
   const [selectedAnnouncementDetail, setSelectedAnnouncementDetail] = useState(null);
@@ -2085,21 +2325,6 @@ const UserDashboard = () => {
     setLivelihoodReadIds(livelihoodIds);
   }, [resident?.id]);
 
-  useEffect(() => {
-    if (!resident?.id) return undefined;
-    const intervalId = window.setInterval(refreshResidentBroadcasts, 5000);
-    return () => window.clearInterval(intervalId);
-  }, [refreshResidentBroadcasts, resident?.id]);
-
-  useEffect(() => {
-    if (!resident?.id) return undefined;
-    const refreshActivity = async () => {
-      await refreshResidentActivity(resident.id);
-    };
-    const intervalId = window.setInterval(refreshActivity, 5000);
-    return () => window.clearInterval(intervalId);
-  }, [resident?.id]);
-
   const allNotificationsMerged = useMemo(() => {
     const systemNotifs = notifications.map((n) => ({
       id: String(n.id),
@@ -2146,9 +2371,26 @@ const UserDashboard = () => {
     setAnnouncementReadIds(nextAnnReadIds);
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     try {
-      await markAllNotificationsAsRead(resident.id);
+      await markAllResidentNotificationsRead(resident.id);
     } catch (e) {
       console.warn("Failed to sync mark all notifications read:", e);
+    }
+  };
+
+  const handleDeleteResidentNotification = async (e, notif) => {
+    e.stopPropagation();
+    if (!notif) return;
+    if (notif.isAnnouncement) {
+      const next = [...new Set([...announcementReadIds, notif.announcement_id])];
+      saveStoredReadIds(`${ANNOUNCEMENT_READ_KEY}:${resident?.id}`, next);
+      setAnnouncementReadIds(next);
+      return;
+    }
+    setNotifications((prev) => prev.filter((item) => String(item.id) !== String(notif.id)));
+    try {
+      await deleteResidentNotification(notif.id);
+    } catch (e) {
+      console.warn("Failed to delete resident notification:", e);
     }
   };
 
@@ -2218,21 +2460,18 @@ const UserDashboard = () => {
       ? Math.round((readAnnouncementsCount / totalAnnouncements) * 100)
       : 100;
 
-    // 4. Profile Completeness Score
+    // 4. Profile Completeness Score (Evaluates all essential registered personal details)
     const profileFields = [
-      Boolean(resident?.full_name || (resident?.first_name && resident?.last_name)),
-      Boolean(resident?.phone || resident?.telephone),
-      Boolean(resident?.email),
+      Boolean(resident?.full_name || (resident?.first_name && resident?.last_name) || displayName),
+      Boolean(resident?.phone || resident?.telephone || resident?.contact_number),
+      Boolean(resident?.email || userData?.email),
       Boolean(resident?.birthday || resident?.birth_date),
-      Boolean(resident?.purok),
-      Boolean(resident?.address),
-      Boolean(resident?.household_no),
+      Boolean(resident?.purok || resident?.address),
       Boolean(resident?.civil_status),
-      Boolean(resident?.employment_status || resident?.occupation),
-      Boolean(resident?.photo_url),
+      Boolean(resident?.gender || resident?.sex),
     ];
     const filledFields = profileFields.filter(Boolean).length;
-    const profileCompleteness = Math.round((filledFields / profileFields.length) * 100);
+    const profileCompleteness = filledFields >= profileFields.length ? 100 : Math.round((filledFields / profileFields.length) * 100);
 
     // 5. Overall Participation Index Score
     const indexScores = [
@@ -2551,7 +2790,6 @@ const UserDashboard = () => {
 
     try {
       const organizationOfficials = officials;
-      const startTime = Date.now();
       const answer = await askResidentAssistant(question, {
         announcements: publishedAnnouncements,
         documentTemplates,
@@ -2562,11 +2800,6 @@ const UserDashboard = () => {
         resident,
         residentStats,
       });
-
-      const elapsed = Date.now() - startTime;
-      if (elapsed < 1000) {
-        await new Promise((resolve) => setTimeout(resolve, 1000 - elapsed));
-      }
 
       const finalMessages = [
         ...nextMessagesWithUser,
@@ -2585,6 +2818,9 @@ const UserDashboard = () => {
           () => setSpeakingChatId(replyId),
           () => setSpeakingChatId(null)
         );
+      } else {
+        stopAssistantSpeech();
+        setSpeakingChatId(null);
       }
     } catch (error) {
       const finalMessages = [
@@ -2851,7 +3087,7 @@ const UserDashboard = () => {
   const handleDeleteRequestAction = async (req) => {
     const ok = await confirm({
       title: "Delete Request Log?",
-      message: `Delete record for "${req.document_type}" from your history?`,
+      message: `Are you sure you want to delete the record for "${req.document_type}" from your history?`,
       confirmText: "Delete Log",
       cancelText: "Cancel",
       confirmVariant: "danger",
@@ -2861,8 +3097,52 @@ const UserDashboard = () => {
     try {
       await deleteDocumentRequest(req.id);
       setRequests((prev) => prev.filter((r) => r.id !== req.id));
+      setSelectedLogIds((prev) => prev.filter((id) => id !== req.id));
+      setRequestMessage({
+        type: "success",
+        text: `Log for "${req.document_type}" has been deleted successfully.`,
+      });
     } catch (err) {
       console.error("Failed to delete request:", err);
+      setRequestMessage({
+        type: "error",
+        text: err.message || "Failed to delete request log.",
+      });
+    }
+  };
+
+  const handleDeleteSelectedLogsAction = async () => {
+    if (selectedLogIds.length === 0) return;
+    const ok = await confirm({
+      title: "Delete Selected Document Logs?",
+      message: `Are you sure you want to delete ${selectedLogIds.length} selected document log(s) from your history?`,
+      confirmText: `Delete ${selectedLogIds.length} Log(s)`,
+      cancelText: "Cancel",
+      confirmVariant: "danger",
+    });
+    if (!ok) return;
+
+    setDeletingLogs(true);
+    try {
+      await deleteDocumentRequests(selectedLogIds);
+      const count = selectedLogIds.length;
+      setRequests((prev) => prev.filter((r) => !selectedLogIds.includes(r.id)));
+      setSelectedLogIds([]);
+      setRequestMessage({
+        type: "success",
+        text: `Successfully deleted ${count} document log(s).`,
+      });
+    } catch (err) {
+      console.error("Failed to delete selected requests:", err);
+      try {
+        await Promise.allSettled(selectedLogIds.map((id) => deleteDocumentRequest(id)));
+        setRequests((prev) => prev.filter((r) => !selectedLogIds.includes(r.id)));
+        setSelectedLogIds([]);
+      } catch (fallbackErr) {
+        console.error("Fallback delete error:", fallbackErr);
+      }
+    } finally {
+      setDeletingLogs(false);
     }
   };
 
@@ -3018,6 +3298,63 @@ const UserDashboard = () => {
       return acc;
     }, {});
   };
+
+  const handleCancelPersonalInfo = useCallback(() => {
+    if (resident) {
+      setProfileForm({
+        username: resident.username || resident.portal_username || resident.email || "",
+        currentPassword: "",
+        first_name: resident.first_name || "",
+        middle_name: resident.middle_name || "",
+        last_name: resident.last_name || "",
+        suffix: resident.suffix || "",
+        full_name: resident.full_name || "",
+        sex: resident.sex || resident.gender || "Male",
+        birthday: resident.birthday || "",
+        birthplace: resident.birthplace || "",
+        age: resident.age ?? "",
+        civil_status: resident.civil_status || "Single",
+        nationality: resident.nationality || "Filipino",
+        religion: resident.religion || "",
+        blood_type: resident.blood_type || "",
+        phone: resident.phone || "",
+        telephone: resident.telephone || "",
+        email: resident.email || "",
+        emergency_contact_person: resident.emergency_contact_person || "",
+        emergency_contact_phone: resident.emergency_contact_phone || "",
+        region: resident.region || "",
+        province: resident.province || "",
+        municipality: resident.municipality || "",
+        barangay: resident.barangay || "",
+        purok: resident.purok || "",
+        house_no: resident.house_no || "",
+        address: resident.address || "",
+        zip_code: resident.zip_code || "",
+        household_no: resident.household_no || "",
+        relationship_to_household_head: resident.relationship_to_household_head || "Head",
+        status: resident.status || "Active",
+        voter_status: resident.voter_status || "No",
+        occupation: resident.occupation || "",
+        employment_status: resident.employment_status || "Employed",
+        educational_attainment: resident.educational_attainment || "",
+        years_of_residency: resident.years_of_residency ?? "",
+        is_senior_citizen: Boolean(resident.is_senior_citizen),
+        is_pwd: Boolean(resident.is_pwd),
+        pwd_type: resident.pwd_type || "",
+        is_solo_parent: Boolean(resident.is_solo_parent),
+        is_4ps_member: Boolean(resident.is_4ps_member),
+        indigenous_group: resident.indigenous_group || "",
+        philhealth_no: resident.philhealth_no || "",
+        sss_no: resident.sss_no || "",
+        tin_no: resident.tin_no || "",
+      });
+    }
+    setProfileMessage(null);
+
+    const targetNav = previousNav && previousNav !== "personal_info" ? previousNav : "home";
+    setActiveNav(targetNav);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [resident, previousNav]);
 
   const handleProfileUpdate = (event) => {
     if (event) event.preventDefault();
@@ -3290,25 +3627,12 @@ const UserDashboard = () => {
     const docKey = getRealDocumentTemplateKey(selectedDocumentType);
     const isFemale = String(resident?.gender || resident?.sex || "").toLowerCase().includes("female");
 
-    const quickPurposes = [
-      "OWWA",
-      "Local Employment",
-      "Job Application",
-      "Scholarship",
-      "Postal ID",
-      "Bank Account",
-      "Medical Assistance",
-      "Financial Assistance",
-      "4Ps Requirement",
-      "CAFGU",
-    ];
-
     return (
       <form onSubmit={handleDocumentRequest} className="space-y-4 text-slate-800">
         {/* Document Selector */}
         <div className="space-y-1.5">
-          <label className="block text-xs font-black uppercase tracking-wider text-[#033E2A]">
-            Pumili ng Dokumento (Clearance / Certificate) *
+          <label className="block text-xs font-black uppercase tracking-wider text-emerald-200 drop-shadow-xs">
+            SELECT DOCUMENT (CLEARANCE / CERTIFICATE) *
           </label>
           <select
             value={selectedDocumentType}
@@ -3320,7 +3644,7 @@ const UserDashboard = () => {
                 setRequestSoloReason(isFemale ? "death of her husband" : "death of his wife");
               }
             }}
-            className="w-full rounded-2xl border border-slate-300 bg-white/90 backdrop-blur-md px-4 py-3 text-xs font-bold text-slate-900 outline-none transition-all focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-500/20 shadow-xs cursor-pointer"
+            className="w-full rounded-2xl border border-slate-300 bg-white/95 backdrop-blur-md px-4 py-3 text-xs font-bold text-slate-900 outline-none transition-all focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-500/20 shadow-xs cursor-pointer"
           >
             {documentTemplates.length === 0 ? (
               <option value="">No templates available</option>
@@ -3335,18 +3659,18 @@ const UserDashboard = () => {
         </div>
 
         {/* Auto-filled Info Summary Card */}
-        <div className="rounded-2xl bg-emerald-50/80 border border-emerald-200/80 p-3.5 text-xs space-y-1.5 shadow-xs">
-          <p className="font-extrabold text-[#033E2A] uppercase text-[10.5px] tracking-wider flex items-center gap-1.5">
-            <UserCheck size={14} className="text-emerald-700" />
-            <span>Awtomatikong Ilalagay Mula sa Iyong Profile:</span>
+        <div className="rounded-2xl bg-white/95 border-2 border-emerald-300/80 p-3.5 text-xs space-y-1.5 shadow-sm">
+          <p className="font-extrabold text-[#064e3b] uppercase text-[10.5px] tracking-wider flex items-center gap-1.5">
+            <UserCheck size={15} className="text-emerald-700 shrink-0" />
+            <span>AUTOMATICALLY APPLIED FROM YOUR RESIDENT PROFILE:</span>
           </p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-2 gap-y-1 text-[11px] text-slate-700 font-semibold pt-0.5">
-            <p>Pangalan: <b className="text-slate-900">{resident?.full_name || displayName}</b></p>
-            <p>Kasarian: <b className="text-slate-900">{resident?.gender || resident?.sex || "Male"}</b></p>
-            <p>Edad: <b className="text-slate-900">{resident?.age || calculateAge(resident?.birth_date) || "Legal age"} yrs. old</b></p>
-            <p>Kaarawan: <b className="text-slate-900">{resident?.birth_date ? formatBirthdate(resident.birth_date) : "N/A"}</b></p>
-            <p>Civil Status: <b className="text-slate-900">{resident?.civil_status || "Single"}</b></p>
-            <p>Purok: <b className="text-slate-900">Purok {resident?.purok || "Upper Mingading"}</b></p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-2 gap-y-1.5 text-[11px] text-slate-700 font-semibold pt-0.5">
+            <p>Full Name: <b className="text-slate-950 font-black">{resident?.full_name || displayName}</b></p>
+            <p>Sex / Gender: <b className="text-slate-950 font-black">{resident?.gender || resident?.sex || "Male"}</b></p>
+            <p>Age: <b className="text-slate-950 font-black">{resident?.age || calculateAge(resident?.birth_date) || "Legal age"} yrs. old</b></p>
+            <p>Birthdate: <b className="text-slate-950 font-black">{resident?.birth_date ? formatBirthdate(resident.birth_date) : "N/A"}</b></p>
+            <p>Civil Status: <b className="text-slate-950 font-black">{resident?.civil_status || "Single"}</b></p>
+            <p>Purok / Zone: <b className="text-slate-950 font-black">Purok {resident?.purok || "Upper Mingading"}</b></p>
           </div>
         </div>
 
@@ -3354,13 +3678,13 @@ const UserDashboard = () => {
 
         {/* 1. RESIDENCY CERTIFICATION FIELDS */}
         {docKey === "residency" && (
-          <div className="space-y-2 rounded-2xl bg-blue-50/70 border border-blue-200 p-3.5">
+          <div className="space-y-2 rounded-2xl bg-white/95 border-2 border-blue-300 p-3.5 shadow-sm">
             <label className="block text-xs font-black uppercase tracking-wider text-blue-950 flex items-center justify-between">
-              <span>Rekomendasyon / Gamitan (Peace & Order Committee) *</span>
-              <span className="text-[10px] text-blue-700 font-normal">Sertipiko ng Residency</span>
+              <span>RECOMMENDATION / PURPOSE (PEACE & ORDER) *</span>
+              <span className="text-[10px] text-blue-700 font-bold">Certificate of Residency</span>
             </label>
-            <p className="text-[10px] text-blue-800 font-medium">
-              Pumili ng layunin o i-type ang dahilan kung bakit ka inirerekomenda ng barangay:
+            <p className="text-[10.5px] text-blue-900 font-medium">
+              Select purpose or specify why the barangay peace and order committee recommends you:
             </p>
             <select
               value={requestResidencyPreset}
@@ -3374,17 +3698,17 @@ const UserDashboard = () => {
                   setRequestResidencyRecommendation("");
                 }
               }}
-              className="w-full rounded-xl border border-blue-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-blue-500"
+              className="w-full rounded-xl border border-blue-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-blue-500 shadow-2xs cursor-pointer"
             >
               <option value="for a CAFGU">for a CAFGU</option>
-              <option value="for Local Employment">for Local Employment / Trabaho</option>
-              <option value="for Scholarship">for Scholarship / Pag-aaral</option>
+              <option value="for Local Employment">for Local Employment</option>
+              <option value="for Scholarship">for Scholarship / School Requirement</option>
               <option value="for Bank Account Opening">for Bank Account Opening / Loan</option>
               <option value="for Barangay ID Application">for Barangay ID Application</option>
               <option value="for Police Clearance">for Police Clearance / NBI Requirement</option>
               <option value="for Postal ID Application">for Postal ID Application</option>
               <option value="for whatever legal purpose it may serve best">for whatever legal purpose it may serve best</option>
-              <option value="custom">Iba pang Gamitan / Custom</option>
+              <option value="custom">Other Purpose (Custom)</option>
             </select>
             <input
               type="text"
@@ -3394,22 +3718,22 @@ const UserDashboard = () => {
                 setRequestResidencyRecommendation(e.target.value);
                 setRequestPurpose(e.target.value);
               }}
-              placeholder="Halimbawa: for a CAFGU / for Local Employment"
+              placeholder="e.g., for a CAFGU / for Local Employment"
               className="w-full rounded-xl border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-blue-500 shadow-2xs"
               required
             />
-            <p className="text-[10px] text-blue-800 italic">
-              Lalabas sa sertipiko bilang: <em>"From our barangay peace and order committee we are recommending {isFemale ? "her" : "him"} <b>{requestResidencyRecommendation || "____________________"}</b>.."</em>
+            <p className="text-[10px] text-blue-800 italic font-medium">
+              Will appear on certificate as: <em>"From our barangay peace and order committee we are recommending {isFemale ? "her" : "him"} <b>{requestResidencyRecommendation || "____________________"}</b>.."</em>
             </p>
           </div>
         )}
 
         {/* 2. 4PS CERTIFICATION FIELDS */}
         {docKey === "4ps" && (
-          <div className="space-y-2 rounded-2xl bg-emerald-50/80 border border-emerald-300 p-3.5">
+          <div className="space-y-2.5 rounded-2xl bg-white/95 border-2 border-emerald-300 p-3.5 shadow-sm">
             <label className="block text-xs font-black uppercase tracking-wider text-emerald-950 flex items-center justify-between">
-              <span>4Ps Layunin (Purpose / Grantee) *</span>
-              <span className="text-[10px] text-emerald-700 font-normal">4Ps Certificate</span>
+              <span>4PS PURPOSE / GRANTEE DETAILS *</span>
+              <span className="text-[10px] text-emerald-700 font-bold">4Ps Certificate</span>
             </label>
             <select
               value={requestFourPsPreset}
@@ -3431,18 +3755,19 @@ const UserDashboard = () => {
                   setRequestPurpose("whatever legal purpose it may serve best");
                 }
               }}
-              className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-emerald-500"
+              className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-emerald-500 shadow-2xs cursor-pointer"
             >
-              <option value="change_grantee_abroad">Change Grantee (Asawa Nagtatrabaho sa Abroad)</option>
-              <option value="change_grantee_transfer">Change Grantee / Transfer of Cash Grant</option>
+              <option value="change_grantee_abroad">Change Grantee (Spouse Working Abroad)</option>
+              <option value="change_grantee_transfer">Change Grantee / Transfer of Cash Grant Beneficiary</option>
               <option value="cash_grant_requirement">4Ps Cash Grant / Program Requirement</option>
-              <option value="member_verification">4Ps Beneficiary & Member Verification</option>
-              <option value="profile_update">Updating of 4Ps Household Profile</option>
-              <option value="custom">Iba pang Layunin (Custom)</option>
+              <option value="member_verification">4Ps Beneficiary & Household Member Verification</option>
+              <option value="profile_update">Updating of 4Ps Household Profile & Records</option>
+              <option value="legal_purpose">Whatever legal purpose it may serve best</option>
+              <option value="custom">Other Purpose (Custom)</option>
             </select>
 
             <div>
-              <label className="text-[10px] font-bold text-slate-600 block mb-1">Pangalan ng Asawa / Relative na nasa Abroad (kung Change Grantee):</label>
+              <label className="text-[10.5px] font-bold text-slate-700 block mb-1">Name of Spouse / Current Grantee Abroad (for Change Grantee):</label>
               <input
                 type="text"
                 value={requestFourPsSpouse}
@@ -3452,13 +3777,13 @@ const UserDashboard = () => {
                   const rel = isFemale ? "her husband" : "her wife";
                   setRequestPurpose(spouse ? `Change Grantee of ${rel} ${spouse} working Abroad` : `Change Grantee of ${rel} working Abroad`);
                 }}
-                placeholder="Halimbawa: Maria Balad"
+                placeholder="e.g., Maria Balad"
                 className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-emerald-500 shadow-2xs"
               />
             </div>
 
             <div>
-              <label className="text-[10px] font-bold text-slate-600 block mb-1">Full Purpose Text (Lalabas sa Dokumento):</label>
+              <label className="text-[10.5px] font-bold text-slate-700 block mb-1">Full Purpose Text (Appears on Certificate):</label>
               <input
                 type="text"
                 value={requestPurpose || `Change Grantee of ${isFemale ? "her husband" : "her wife"} working Abroad`}
@@ -3475,10 +3800,10 @@ const UserDashboard = () => {
 
         {/* 3. CERTIFICATE OF INDIGENCY FIELDS */}
         {docKey === "indigency" && (
-          <div className="space-y-2 rounded-2xl bg-emerald-50/80 border border-emerald-300 p-3.5">
+          <div className="space-y-2 rounded-2xl bg-white/95 border-2 border-emerald-300 p-3.5 shadow-sm">
             <label className="block text-xs font-black uppercase tracking-wider text-emerald-950 flex items-center justify-between">
-              <span>Uri ng Tulong / Layunin (Assistance Needed) *</span>
-              <span className="text-[10px] text-emerald-700 font-normal">Certificate of Indigency</span>
+              <span>TYPE OF ASSISTANCE / PURPOSE *</span>
+              <span className="text-[10px] text-emerald-700 font-bold">Certificate of Indigency</span>
             </label>
             <select
               value={requestIndigencyPreset}
@@ -3491,16 +3816,16 @@ const UserDashboard = () => {
                   setRequestPurpose("");
                 }
               }}
-              className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-emerald-500"
+              className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-emerald-500 shadow-2xs cursor-pointer"
             >
-              <option value="MEDICAL ASSISTANCE">Medical Assistance / Gamot</option>
-              <option value="HOSPITALIZATION">Hospitalization / Ospital</option>
-              <option value="FINANCIAL ASSISTANCE">Financial Assistance / Pinansyal</option>
-              <option value="BURIAL ASSISTANCE">Burial Assistance / Libing</option>
-              <option value="EDUCATIONAL ASSISTANCE">Educational Assistance / Paaral</option>
+              <option value="MEDICAL ASSISTANCE">Medical Assistance</option>
+              <option value="HOSPITALIZATION">Hospitalization</option>
+              <option value="FINANCIAL ASSISTANCE">Financial Assistance</option>
+              <option value="BURIAL ASSISTANCE">Burial Assistance</option>
+              <option value="EDUCATIONAL ASSISTANCE">Educational Assistance</option>
               <option value="LEGAL ASSISTANCE">Public Attorney / Legal Assistance</option>
-              <option value="whatever legal purpose it may serve best">General / Blank (person and whatever legal...)</option>
-              <option value="custom">Iba pang Layunin (Custom)</option>
+              <option value="whatever legal purpose it may serve best">General / Whatever legal purpose it may serve best</option>
+              <option value="custom">Other Purpose (Custom)</option>
             </select>
             <input
               type="text"
@@ -3509,7 +3834,7 @@ const UserDashboard = () => {
                 setRequestIndigencyPreset("custom");
                 setRequestPurpose(e.target.value);
               }}
-              placeholder="Halimbawa: MEDICAL ASSISTANCE / HOSPITALIZATION"
+              placeholder="e.g., MEDICAL ASSISTANCE / HOSPITALIZATION"
               className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-emerald-500 shadow-2xs"
               required
             />
@@ -3518,10 +3843,10 @@ const UserDashboard = () => {
 
         {/* 4. BARANGAY CLEARANCE FIELDS */}
         {docKey === "clearance" && (
-          <div className="space-y-2 rounded-2xl bg-emerald-50/80 border border-emerald-300 p-3.5">
+          <div className="space-y-2 rounded-2xl bg-white/95 border-2 border-emerald-300 p-3.5 shadow-sm">
             <label className="block text-xs font-black uppercase tracking-wider text-emerald-950 flex items-center justify-between">
-              <span>Layunin ng Barangay Clearance *</span>
-              <span className="text-[10px] text-emerald-700 font-normal">Barangay Clearance</span>
+              <span>PURPOSE OF BARANGAY CLEARANCE *</span>
+              <span className="text-[10px] text-emerald-700 font-bold">Barangay Clearance</span>
             </label>
             <select
               value={requestClearancePreset}
@@ -3534,17 +3859,17 @@ const UserDashboard = () => {
                   setRequestPurpose("");
                 }
               }}
-              className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-emerald-500"
+              className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-emerald-500 shadow-2xs cursor-pointer"
             >
               <option value="OWWA">OWWA / Overseas Worker</option>
-              <option value="LOCAL EMPLOYMENT">Local Employment / Trabaho</option>
+              <option value="LOCAL EMPLOYMENT">Local Employment</option>
               <option value="POSTAL ID">Postal ID Application</option>
               <option value="NBI CLEARANCE">NBI Clearance Application</option>
               <option value="POLICE CLEARANCE">Police Clearance Application</option>
               <option value="BANK REQUIREMENT">Bank Account / Loan Requirement</option>
               <option value="SCHOOL REQUIREMENT">School / Scholarship Requirement</option>
               <option value="LEGAL PURPOSE">Whatever legal purpose it may serve best</option>
-              <option value="custom">Iba pang Layunin (Custom)</option>
+              <option value="custom">Other Purpose (Custom)</option>
             </select>
             <input
               type="text"
@@ -3553,106 +3878,21 @@ const UserDashboard = () => {
                 setRequestClearancePreset("custom");
                 setRequestPurpose(e.target.value);
               }}
-              placeholder="Halimbawa: OWWA / LOCAL EMPLOYMENT"
+              placeholder="e.g., OWWA / LOCAL EMPLOYMENT"
               className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-emerald-500 shadow-2xs"
               required
             />
           </div>
         )}
 
-        {/* 4.5. 4PS CERTIFICATION FIELDS */}
-        {docKey === "4ps" && (
-          <div className="space-y-2.5 rounded-2xl bg-emerald-50/80 border border-emerald-300 p-3.5">
-            <label className="block text-xs font-black uppercase tracking-wider text-emerald-950 flex items-center justify-between">
-              <span>Layunin ng 4Ps Certification *</span>
-              <span className="text-[10px] text-emerald-700 font-normal">Pantawid Pamilyang Pilipino</span>
-            </label>
-
-            <div>
-              <span className="text-[10px] font-bold text-slate-600 block mb-1">Pumili ng Karaniwang Layunin:</span>
-              <select
-                value={requestFourPsPreset}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setRequestFourPsPreset(val);
-                  const isFemale = String(resident?.gender || resident?.sex || "").toLowerCase().includes("female");
-                  const relativeTerm = isFemale ? "her husband" : "her wife";
-                  if (val === "change_grantee_abroad") {
-                    setRequestPurpose(
-                      requestFourPsSpouse
-                        ? `Change Grantee of ${relativeTerm} ${requestFourPsSpouse} working Abroad`
-                        : `Change Grantee of ${relativeTerm} ________________ working Abroad`
-                    );
-                  } else if (val === "change_grantee_transfer") {
-                    setRequestPurpose("Change Grantee / Transfer of Cash Grant Beneficiary");
-                  } else if (val === "cash_grant_requirement") {
-                    setRequestPurpose("Pantawid Pamilyang Pilipino Program (4Ps) Requirement");
-                  } else if (val === "member_verification") {
-                    setRequestPurpose("4Ps Beneficiary & Household Member Verification");
-                  } else if (val === "profile_update") {
-                    setRequestPurpose("Updating of 4Ps Household Profile & Records");
-                  } else if (val === "legal_purpose") {
-                    setRequestPurpose("whatever legal purpose it may serve best");
-                  }
-                }}
-                className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-emerald-500 shadow-2xs"
-              >
-                <option value="change_grantee_abroad">Change Grantee (Asawa Nagtatrabaho sa Abroad)</option>
-                <option value="change_grantee_transfer">Change Grantee / Transfer of Cash Grant Beneficiary</option>
-                <option value="cash_grant_requirement">4Ps Cash Grant / Program Requirement</option>
-                <option value="member_verification">4Ps Beneficiary & Household Member Verification</option>
-                <option value="profile_update">Updating of 4Ps Household Profile & Records</option>
-                <option value="legal_purpose">Whatever legal purpose it may serve best</option>
-                <option value="custom">Iba pang Layunin (Custom Input)</option>
-              </select>
-            </div>
-
-            <div>
-              <span className="text-[10px] font-bold text-slate-600 block mb-1">Pangalan ng Asawa / Kasalukuyang Grantee (Abroad):</span>
-              <input
-                type="text"
-                value={requestFourPsSpouse}
-                onChange={(e) => {
-                  const spouse = e.target.value;
-                  setRequestFourPsSpouse(spouse);
-                  const isFemale = String(resident?.gender || resident?.sex || "").toLowerCase().includes("female");
-                  const relativeTerm = isFemale ? "her husband" : "her wife";
-                  setRequestPurpose(
-                    spouse
-                      ? `Change Grantee of ${relativeTerm} ${spouse} working Abroad`
-                      : `Change Grantee of ${relativeTerm} ________________ working Abroad`
-                  );
-                }}
-                placeholder="Halimbawa: Maria Balad"
-                className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-emerald-500 shadow-2xs"
-              />
-            </div>
-
-            <div>
-              <span className="text-[10px] font-bold text-slate-600 block mb-1">Eksaktong Layunin (Purpose):</span>
-              <input
-                type="text"
-                value={requestPurpose || (requestFourPsSpouse ? `Change Grantee of ${String(resident?.gender || resident?.sex || "").toLowerCase().includes("female") ? "her husband" : "her wife"} ${requestFourPsSpouse} working Abroad` : "Change Grantee of her wife working Abroad")}
-                onChange={(e) => {
-                  setRequestFourPsPreset("custom");
-                  setRequestPurpose(e.target.value);
-                }}
-                placeholder="Halimbawa: Change Grantee of her wife Maria Balad working Abroad"
-                className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-emerald-500 shadow-2xs"
-                required
-              />
-            </div>
-          </div>
-        )}
-
         {/* 5. SOLO PARENT CERTIFICATION FIELDS */}
         {docKey === "solo" && (
-          <div className="space-y-2 rounded-2xl bg-amber-50/70 border border-amber-200 p-3.5">
-            <label className="block text-xs font-black uppercase tracking-wider text-amber-900">
-              Dahilan ng Pagiging Solo Parent (Reason) *
+          <div className="space-y-2 rounded-2xl bg-white/95 border-2 border-amber-300 p-3.5 shadow-sm">
+            <label className="block text-xs font-black uppercase tracking-wider text-amber-950">
+              REASON FOR SOLO PARENT APPLICATION *
             </label>
-            <p className="text-[10px] text-amber-800 font-medium">
-              Pumili ng dahilan o i-type ang eksaktong sitwasyon upang mailagay sa sertipiko:
+            <p className="text-[10.5px] text-amber-900 font-medium">
+              Select reason or specify the exact circumstance to be stated on the certificate:
             </p>
             <select
               value={requestSoloReasonPreset}
@@ -3673,14 +3913,14 @@ const UserDashboard = () => {
                   setRequestSoloReason("");
                 }
               }}
-              className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-amber-500"
+              className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-amber-500 shadow-2xs cursor-pointer"
             >
-              <option value="death">Kamatayan ng Asawa (Death of {isFemale ? "her husband" : "his wife"})</option>
-              <option value="separation">Hiwalay sa Asawa (Separation from {isFemale ? "her husband" : "his wife"})</option>
-              <option value="abandonment">Iniwan ng Asawa (Abandonment by spouse)</option>
-              <option value="unwed">Single Parent / Di-Kasal ({isFemale ? "unmarried mother" : "single father"})</option>
-              <option value="detention">Nakakulong ang Asawa (Incarceration of spouse)</option>
-              <option value="custom">Iba pang Dahilan (Custom)</option>
+              <option value="death">Death of Spouse (Death of {isFemale ? "her husband" : "his wife"})</option>
+              <option value="separation">Separation from Spouse (Separation from {isFemale ? "her husband" : "his wife"})</option>
+              <option value="abandonment">Abandonment by Spouse</option>
+              <option value="unwed">Single Parent / Unmarried ({isFemale ? "unmarried mother" : "single father"})</option>
+              <option value="detention">Incarceration / Detention of Spouse</option>
+              <option value="custom">Other Reason (Custom)</option>
             </select>
 
             <input
@@ -3690,11 +3930,11 @@ const UserDashboard = () => {
                 setRequestSoloReasonPreset("custom");
                 setRequestSoloReason(e.target.value);
               }}
-              placeholder="Halimbawa: death of her husband / separation from spouse"
+              placeholder="e.g., death of her husband / separation from spouse"
               className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-amber-500 shadow-2xs"
               required
             />
-            <p className="text-[10px] text-amber-800 italic">
+            <p className="text-[10px] text-amber-800 italic font-medium">
               Preview: "...on application for solo parent due to <b>{requestSoloReason || (isFemale ? "death of her husband" : "death of his wife")}</b> and whatever any legal intent may serve best."
             </p>
           </div>
@@ -3702,9 +3942,9 @@ const UserDashboard = () => {
 
         {/* 6. BUSINESS PERMIT FIELDS */}
         {docKey === "business" && (
-          <div className="space-y-2 rounded-2xl bg-blue-50/70 border border-blue-200 p-3.5">
+          <div className="space-y-2 rounded-2xl bg-white/95 border-2 border-blue-300 p-3.5 shadow-sm">
             <label className="block text-xs font-black uppercase tracking-wider text-blue-950">
-              Pangalan at Uri ng Negosyo (Business Name & Nature) *
+              BUSINESS NAME & NATURE *
             </label>
             <input
               type="text"
@@ -3713,11 +3953,11 @@ const UserDashboard = () => {
                 setRequestBusinessName(e.target.value);
                 setRequestPurpose(e.target.value);
               }}
-              placeholder="Halimbawa: BANANA BUY AND SALE / SARI-SARI STORE"
+              placeholder="e.g., BANANA BUY AND SALE / SARI-SARI STORE"
               className="w-full rounded-xl border border-blue-300 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-900 outline-none focus:border-blue-500 shadow-2xs"
               required
             />
-            <p className="text-[10px] text-blue-800 italic">
+            <p className="text-[10px] text-blue-800 italic font-medium">
               Preview: "...and he/she has a <b>{(requestBusinessName || requestPurpose || "BANANA BUY AND SALE").toUpperCase()}</b> at the said place."
             </p>
           </div>
@@ -3725,17 +3965,17 @@ const UserDashboard = () => {
 
         {/* 7. RSBSA CERTIFICATION FIELDS */}
         {docKey === "rsbsa" && (
-          <div className="space-y-2.5 rounded-2xl bg-emerald-50/80 border border-emerald-300 p-3.5">
+          <div className="space-y-2.5 rounded-2xl bg-white/95 border-2 border-emerald-300 p-3.5 shadow-sm">
             <label className="block text-xs font-black uppercase tracking-wider text-emerald-950">
-              Pananim at Detalye ng Sakahan (Crop / Farm Details) *
+              CROP & FARM DETAILS *
             </label>
             <div>
-              <span className="text-[10px] font-bold text-slate-600 block mb-1">Uri ng Pananim / Tilling Crop(s):</span>
+              <span className="text-[10.5px] font-bold text-slate-700 block mb-1">Tilling Crop(s) / Farm Commodity:</span>
               <input
                 type="text"
                 value={requestCropsText}
                 onChange={(e) => setRequestCropsText(e.target.value)}
-                placeholder="Halimbawa: Rice Field ½ hectare, and Fruits Crops 1 hectare"
+                placeholder="e.g., Rice Field ½ hectare, and Fruit Crops 1 hectare"
                 className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-emerald-600 shadow-2xs"
                 required
               />
@@ -3751,7 +3991,7 @@ const UserDashboard = () => {
                     key={preset}
                     type="button"
                     onClick={() => setRequestCropsText(preset)}
-                    className="rounded-lg bg-emerald-100/70 hover:bg-emerald-200/80 px-2 py-0.5 text-[9px] font-bold text-emerald-900 border border-emerald-300 transition-colors"
+                    className="rounded-lg bg-emerald-100/80 hover:bg-emerald-200/90 px-2 py-0.5 text-[9px] font-bold text-emerald-900 border border-emerald-300 transition-colors cursor-pointer"
                   >
                     + {preset}
                   </button>
@@ -3760,22 +4000,22 @@ const UserDashboard = () => {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <span className="text-[10px] font-bold text-slate-600 block mb-1">Laki ng Lupa (Farm Size):</span>
+                <span className="text-[10.5px] font-bold text-slate-700 block mb-1">Farm Size:</span>
                 <input
                   type="text"
                   value={requestFarmSize}
                   onChange={(e) => setRequestFarmSize(e.target.value)}
-                  placeholder="e.g. One (1) hectare"
+                  placeholder="e.g., One (1) hectare"
                   className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-emerald-600 shadow-2xs"
                   required
                 />
               </div>
               <div>
-                <span className="text-[10px] font-bold text-slate-600 block mb-1">Pag-aari (Tenure):</span>
+                <span className="text-[10.5px] font-bold text-slate-700 block mb-1">Land Tenure:</span>
                 <select
                   value={requestTenure}
                   onChange={(e) => setRequestTenure(e.target.value)}
-                  className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-emerald-600 shadow-2xs"
+                  className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-emerald-600 shadow-2xs cursor-pointer"
                 >
                   <option value="Owner">Owner</option>
                   <option value="Farmer">Farmer</option>
@@ -3790,14 +4030,14 @@ const UserDashboard = () => {
         {/* 8. FALLBACK GENERAL PURPOSE */}
         {docKey !== "residency" && docKey !== "4ps" && docKey !== "indigency" && docKey !== "clearance" && docKey !== "solo" && docKey !== "business" && docKey !== "rsbsa" && (
           <div className="space-y-2">
-            <label className="block text-xs font-black uppercase tracking-wider text-[#033E2A]">
-              Layunin ng Paghingi (Purpose of Request) *
+            <label className="block text-xs font-black uppercase tracking-wider text-emerald-200 drop-shadow-xs">
+              PURPOSE OF REQUEST *
             </label>
             <textarea
               value={requestPurpose}
               onChange={(event) => setRequestPurpose(event.target.value)}
-              placeholder="I-type ang layunin (hal. OWWA, Local Employment, Scholarship, Postal ID, Bank, etc.)"
-              className="w-full rounded-2xl border border-slate-300 bg-white/90 backdrop-blur-md px-4 py-3 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-500/20 shadow-xs"
+              placeholder="Enter purpose (e.g., OWWA, Local Employment, Scholarship, Postal ID, Bank, etc.)"
+              className="w-full rounded-2xl border border-slate-300 bg-white/95 backdrop-blur-md px-4 py-3 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-500/20 shadow-xs"
               rows={2}
               required
             />
@@ -3811,7 +4051,7 @@ const UserDashboard = () => {
                   className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer ${
                     requestPurpose === p
                       ? "bg-[#0B5D3B] text-white border-[#0B5D3B] shadow-xs"
-                      : "bg-slate-100 hover:bg-emerald-50 text-slate-700 border-slate-200"
+                      : "bg-white/90 hover:bg-emerald-50 text-slate-800 border-slate-200"
                   }`}
                 >
                   {p}
@@ -4159,65 +4399,81 @@ const UserDashboard = () => {
                         <div className="flex items-center justify-between border-b px-4 py-3 border-white/10 bg-white/5">
                           <div className="flex items-center gap-2">
                             <p className="text-xs font-black uppercase tracking-wider text-white">Notifications</p>
-                            <span className="rounded-full px-2 py-0.5 text-[10px] font-black bg-emerald-500/30 text-emerald-200 border border-emerald-400/30">
-                              {unreadNotificationCount} New
-                            </span>
+                            {unreadNotificationCount > 0 && (
+                              <span className="rounded-full px-2 py-0.5 text-[10px] font-black bg-rose-500/30 text-rose-200 border border-rose-400/30">
+                                {unreadNotificationCount} New
+                              </span>
+                            )}
                           </div>
                           {unreadNotificationCount > 0 && (
                             <button
                               type="button"
                               onClick={handleMarkAllNotificationsRead}
-                              className="text-[10px] font-bold text-emerald-300 hover:underline cursor-pointer"
+                              className="text-[10px] font-bold text-emerald-300 hover:text-emerald-200 hover:underline cursor-pointer"
                             >
                               Mark all read
                             </button>
                           )}
                         </div>
                         <div className="max-h-72 divide-y divide-white/10 overflow-y-auto">
-                          {allNotificationsMerged.filter((n) => !n.is_read).length === 0 ? (
+                          {allNotificationsMerged.length === 0 ? (
                             <div className="p-6 text-center text-xs text-white/60 font-bold flex flex-col items-center gap-1.5">
                               <CheckCircle2 size={18} className="text-emerald-400" />
-                              <span>No unread notifications.</span>
+                              <span>No notifications right now.</span>
                             </div>
                           ) : (
-                            allNotificationsMerged
-                              .filter((n) => !n.is_read)
-                              .map((n) => (
-                                <button
-                                  key={n.id}
-                                  type="button"
-                                  onClick={() => {
-                                    if (n.isAnnouncement) {
-                                      const next = [...new Set([...announcementReadIds, n.announcement_id])];
-                                      saveStoredReadIds(`${ANNOUNCEMENT_READ_KEY}:${resident?.id}`, next);
-                                      setAnnouncementReadIds(next);
-                                      setShowNotificationMenu(false);
+                            allNotificationsMerged.map((n) => (
+                              <div
+                                key={n.id}
+                                onClick={() => {
+                                  if (n.isAnnouncement) {
+                                    const next = [...new Set([...announcementReadIds, n.announcement_id])];
+                                    saveStoredReadIds(`${ANNOUNCEMENT_READ_KEY}:${resident?.id}`, next);
+                                    setAnnouncementReadIds(next);
+                                    setShowNotificationMenu(false);
+                                    openModule("announcements");
+                                  } else {
+                                    handleMarkNotificationRead(n.original);
+                                    setShowNotificationMenu(false);
+                                    const title = (n.title || "").toLowerCase();
+                                    const msg = (n.message || "").toLowerCase();
+                                    if (title.includes("announcement") || msg.includes("announcement")) {
                                       openModule("announcements");
+                                    } else if (title.includes("livelihood") || msg.includes("livelihood")) {
+                                      openModule("livelihood");
                                     } else {
-                                      handleMarkNotificationRead(n.original);
-                                      setShowNotificationMenu(false);
-                                      const title = (n.title || "").toLowerCase();
-                                      const msg = (n.message || "").toLowerCase();
-                                      if (title.includes("announcement") || msg.includes("announcement")) {
-                                        openModule("announcements");
-                                      } else if (title.includes("livelihood") || msg.includes("livelihood")) {
-                                        openModule("livelihood");
-                                      } else {
-                                        openModule("my_documents");
-                                      }
+                                      openModule("my_documents");
                                     }
-                                  }}
-                                  className="w-full flex gap-3 p-3.5 text-left transition-colors hover:bg-white/10 bg-transparent cursor-pointer"
-                                >
-                                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                                    <FileText size={14} />
-                                  </span>
-                                  <div className="min-w-0 flex-1">
+                                  }
+                                }}
+                                className={`group w-full flex items-start gap-3 p-3.5 text-left transition-colors hover:bg-white/10 cursor-pointer ${
+                                  !n.is_read ? "bg-emerald-950/40" : "bg-transparent opacity-80 hover:opacity-100"
+                                }`}
+                              >
+                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                                  <FileText size={14} />
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-start justify-between gap-1.5">
                                     <p className="truncate text-xs font-black text-white">{n.title}</p>
-                                    <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed font-medium text-white/70">{n.message}</p>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      {!n.is_read && (
+                                        <span className="h-2 w-2 rounded-full bg-rose-500" />
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleDeleteResidentNotification(e, n)}
+                                        className="rounded p-1 text-white/40 opacity-0 group-hover:opacity-100 hover:bg-rose-500/20 hover:text-rose-300 transition"
+                                        title="Delete notification"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
                                   </div>
-                                </button>
-                              ))
+                                  <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed font-medium text-white/70">{n.message}</p>
+                                </div>
+                              </div>
+                            ))
                           )}
                         </div>
                       </motion.div>
@@ -4651,33 +4907,37 @@ const UserDashboard = () => {
                         </thead>
                         <tbody className="divide-y font-medium divide-white/10 text-emerald-100">
                           {requests && requests.length > 0 ? (
-                            requests.slice(0, 3).map((req, idx) => (
-                              <tr key={req.id || idx} className="hover:bg-white/10 transition">
-                                <td className="px-2.5 py-2 font-bold text-white truncate max-w-[100px]">{req.document_type}</td>
-                                <td className="px-2.5 py-2 font-mono text-[10px] text-emerald-200/75">{req.tracking_number || req.ref || `REQ-${String(req.id || idx + 1).slice(0, 8)}`}</td>
-                                <td className="px-2.5 py-2 text-emerald-200/75 text-[10px]">{req.created_at ? new Date(req.created_at).toLocaleDateString() : (req.date || "-")}</td>
-                                <td className="px-2.5 py-2">
-                                  <span className={`inline-flex rounded-md px-1.5 py-0.2 text-[8.5px] font-black ${
-                                    String(req.status || "").toLowerCase() === "completed" || String(req.status || "").toLowerCase() === "ready"
-                                      ? "bg-emerald-500/25 text-emerald-200 border border-emerald-400/40"
-                                      : String(req.status || "").toLowerCase() === "rejected"
-                                      ? "bg-rose-500/25 text-rose-200 border border-rose-400/40"
-                                      : "bg-amber-500/25 text-amber-200 border border-amber-400/40"
-                                  }`}>
-                                    {req.status || "PENDING"}
-                                  </span>
-                                </td>
-                                <td className="px-2.5 py-2 text-right">
-                                  <button
-                                    type="button"
-                                    onClick={() => openModule("my_documents")}
-                                    className="text-[10px] font-black text-emerald-300 hover:text-white hover:underline cursor-pointer"
-                                  >
-                                    View
-                                  </button>
-                                </td>
-                              </tr>
-                            ))
+                            requests.slice(0, 3).map((req, idx) => {
+                              const expired = isRequestExpired(req);
+                              const displayStatus = expired ? "Expired" : (req.status || "Pending");
+                              return (
+                                <tr key={req.id || idx} className="hover:bg-white/10 transition">
+                                  <td className="px-2.5 py-2 font-bold text-white truncate max-w-[100px]">{req.document_type}</td>
+                                  <td className="px-2.5 py-2 font-mono text-[10px] text-emerald-200/75">{req.tracking_number || req.ref || `REQ-${String(req.id || idx + 1).slice(0, 8)}`}</td>
+                                  <td className="px-2.5 py-2 text-emerald-200/75 text-[10px]">{req.created_at ? new Date(req.created_at).toLocaleDateString() : (req.date || "-")}</td>
+                                  <td className="px-2.5 py-2">
+                                    <span className={`inline-flex rounded-md px-1.5 py-0.2 text-[8.5px] font-black ${
+                                      expired || String(req.status || "").toLowerCase() === "rejected" || String(req.status || "").toLowerCase() === "cancelled"
+                                        ? "bg-rose-500/25 text-rose-200 border border-rose-400/40"
+                                        : String(req.status || "").toLowerCase() === "completed" || String(req.status || "").toLowerCase() === "ready"
+                                        ? "bg-emerald-500/25 text-emerald-200 border border-emerald-400/40"
+                                        : "bg-amber-500/25 text-amber-200 border border-amber-400/40"
+                                    }`}>
+                                      {displayStatus}
+                                    </span>
+                                  </td>
+                                  <td className="px-2.5 py-2 text-right">
+                                    <button
+                                      type="button"
+                                      onClick={() => openModule("my_documents")}
+                                      className="text-[10px] font-black text-emerald-300 hover:text-white hover:underline cursor-pointer"
+                                    >
+                                      View
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })
                           ) : (
                             <tr>
                               <td colSpan="5" className="px-3 py-6 text-center text-xs text-emerald-200/60 font-semibold">
@@ -4781,6 +5041,7 @@ const UserDashboard = () => {
                     color: "from-emerald-900/60 to-teal-950/60",
                     border: "border-emerald-400/40",
                     text: "text-emerald-300",
+                    onClick: () => setActiveNav("my_documents"),
                   },
                   {
                     title: "In Progress",
@@ -4792,6 +5053,7 @@ const UserDashboard = () => {
                     color: "from-teal-900/60 to-cyan-950/60",
                     border: "border-teal-400/40",
                     text: "text-teal-300",
+                    onClick: () => setActiveNav("my_documents"),
                   },
                   {
                     title: "Applications",
@@ -4803,31 +5065,35 @@ const UserDashboard = () => {
                     color: "from-blue-900/60 to-indigo-950/60",
                     border: "border-blue-400/40",
                     text: "text-blue-300",
+                    onClick: () => setActiveNav("livelihood"),
                   },
                   {
                     title: "Profile Standing",
                     fullTitle: "Profile Verification & Score",
                     value: `${userDashboardMetrics.profileCompleteness}%`,
                     change: resident?.status || "Active",
-                    sub: userDashboardMetrics.profileCompleteness === 100 ? "Fully verified" : "Complete your info",
+                    sub: userDashboardMetrics.profileCompleteness === 100 ? "Fully verified & complete" : "Complete your info",
                     icon: UserCheck,
                     color: "from-amber-900/60 to-yellow-950/60",
                     border: "border-amber-400/40",
                     text: "text-amber-300",
+                    onClick: () => setActiveNav("personal_info"),
                   },
                 ].map((kpi, idx) => {
                   const Icon = kpi.icon;
                   return (
                     <div
                       key={idx}
-                      className={`relative rounded-xl sm:rounded-2xl overflow-hidden p-3 sm:p-4 border ${kpi.border} bg-gradient-to-br ${kpi.color} backdrop-blur-xl text-white shadow-lg hover:shadow-2xl transition duration-300 group flex flex-col justify-between`}
+                      onClick={kpi.onClick}
+                      className={`relative rounded-xl sm:rounded-2xl overflow-hidden p-3 sm:p-4 border ${kpi.border} bg-gradient-to-br ${kpi.color} backdrop-blur-xl text-white shadow-lg hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 cursor-pointer group flex flex-col justify-between`}
+                      title={`Click to open ${kpi.fullTitle || kpi.title}`}
                     >
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-[8.5px] sm:text-[10px] font-black uppercase tracking-wider text-slate-300 truncate">
                           <span className="sm:hidden">{kpi.title}</span>
                           <span className="hidden sm:inline">{kpi.fullTitle}</span>
                         </span>
-                        <div className={`h-6 w-6 sm:h-7 sm:w-7 rounded-lg sm:rounded-xl bg-white/10 border border-white/20 flex items-center justify-center ${kpi.text} shrink-0 shadow-xs`}>
+                        <div className={`h-6 w-6 sm:h-7 sm:w-7 rounded-lg sm:rounded-xl bg-white/10 border border-white/20 flex items-center justify-center ${kpi.text} shrink-0 shadow-xs group-hover:scale-110 transition-transform duration-200`}>
                           <Icon size={13} className="sm:hidden" />
                           <Icon size={15} className="hidden sm:block" />
                         </div>
@@ -5131,73 +5397,555 @@ const UserDashboard = () => {
                 )}
               </div>
 
-              {/* 5. BARANGAY OFFICIALS & LEADERSHIP - TRANSLUCENT EMERALD GLASS */}
-              <div className="bg-emerald-950/35 backdrop-blur-2xl border-2 border-white/20 rounded-[2.2rem] p-4 sm:p-5 shadow-2xl hover:shadow-emerald-900/40 transition-all duration-300 space-y-4 text-white">
-                <div className="bg-gradient-to-r from-[#044E35] via-[#057A55] to-[#046C4E] text-white px-4 py-3 rounded-2xl flex justify-between items-center shadow-md relative overflow-hidden border border-emerald-400/30">
-                  <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-transparent pointer-events-none" />
-                  <div className="flex items-center gap-2.5 relative z-10">
-                    <Users size={18} className="text-emerald-200" />
-                    <div>
-                      <h4 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
-                        BARANGAY OFFICIALS & LEADERSHIP
-                      </h4>
-                      <p className="text-[10px] text-emerald-200/90 font-bold">Click photo to view official profile details</p>
+              {/* 5. BARANGAY OFFICIALS & LEADERSHIP - ORGANIZATIONAL CHART LAYOUT & DESIGN */}
+              <div className="bg-gradient-to-b from-[#e0f2fe]/90 via-[#f0f9ff] to-[#ffffff] border-2 border-sky-300 rounded-3xl sm:rounded-[2.2rem] p-3.5 sm:p-6 md:p-8 shadow-2xl hover:shadow-sky-900/20 transition-all duration-300 space-y-4 text-slate-900 relative overflow-hidden backdrop-blur-md">
+                {/* Subtle Grid Pattern */}
+                <div className="pointer-events-none absolute inset-0 rounded-3xl sm:rounded-[2.2rem] bg-[radial-gradient(#93c5fd_1px,transparent_1px)] [background-size:18px_18px] opacity-40" />
+
+                {/* Section Header Bar with Seals & View All Link */}
+                <div className="relative z-10 flex items-center justify-between gap-2 sm:gap-4 w-full mb-3 sm:mb-5 pb-2 px-1 sm:px-2 border-b border-sky-200/80">
+                  {/* Left Seal */}
+                  <div className="flex items-center shrink-0">
+                    <div className="flex h-10 w-10 sm:h-14 sm:w-14 md:h-16 md:w-16 items-center justify-center rounded-2xl bg-white/90 p-1 shadow-sm border border-sky-200">
+                      <img
+                        src="/aleosan.logo.png"
+                        alt="Municipality of Aleosan Seal"
+                        className="h-full w-full object-contain drop-shadow-xs"
+                        onError={(e) => {
+                          e.target.src = "/aleosan logo.png";
+                        }}
+                      />
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => openModule("officials")}
-                    className="text-xs font-bold text-emerald-200 hover:text-white hover:underline flex items-center gap-0.5 relative z-10 cursor-pointer"
-                  >
-                    <span>View All Officials</span>
-                    <ChevronRight size={14} />
-                  </button>
+
+                  {/* Center Title */}
+                  <div className="flex flex-col items-center text-center flex-1 min-w-0 px-1">
+                    <h3 className="text-xs sm:text-lg md:text-2xl font-black uppercase tracking-normal sm:tracking-wide text-[#064e3b] leading-tight drop-shadow-2xs">
+                      BARANGAY UPPER MINGADING
+                    </h3>
+                    <h4 className="text-[8px] sm:text-xs md:text-sm font-black uppercase tracking-[0.1em] sm:tracking-[0.2em] text-[#16a34a] mt-0.5 sm:mt-1 flex items-center justify-center gap-1 sm:gap-2">
+                      <span className="h-0.5 w-2.5 sm:w-6 md:w-8 bg-[#16a34a] inline-block" />
+                      <span>OFFICIAL ORGANIZATIONAL CHART</span>
+                      <span className="h-0.5 w-2.5 sm:w-6 md:w-8 bg-[#16a34a] inline-block" />
+                    </h4>
+                  </div>
+
+                  {/* Right Seal & Action */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex h-10 w-10 sm:h-14 sm:w-14 md:h-16 md:w-16 items-center justify-center rounded-2xl bg-white/90 p-1 shadow-sm border border-sky-200">
+                      <img
+                        src="/logo.png"
+                        alt="Barangay Upper Mingading Seal"
+                        className="h-full w-full object-contain drop-shadow-xs"
+                      />
+                    </div>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-                  {officials.slice(0, 5).map((official) => {
-                    const initials = official.name
-                      ? official.name
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")
-                          .substring(0, 2)
-                          .toUpperCase()
-                      : "OF";
-                    return (
-                      <div
-                        key={official.id}
-                        onClick={() => setSelectedOfficialForModal(official)}
-                        className="group relative flex flex-col items-center justify-center p-2.5 rounded-3xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 hover:border-emerald-400/60 shadow-md hover:shadow-xl hover:scale-[1.04] transition-all duration-300 cursor-pointer aspect-square overflow-hidden"
-                        title={`Click to view details of ${official.name}`}
+                {/* ─── HIERARCHICAL FLOWCHART TREE ─── */}
+                <div className="relative z-10 flex flex-col items-center w-full mx-auto pb-2">
+                  {/* Level 1: Punong Barangay */}
+                  {captain && (
+                    <div className="relative flex flex-col items-center w-full">
+                      <article
+                        onClick={() => setSelectedOfficialForModal(captain)}
+                        className="group relative flex items-center gap-2.5 sm:gap-3.5 w-full max-w-[290px] sm:max-w-[340px] rounded-2xl bg-white border-2 border-[#166534] ring-2 ring-emerald-400/30 p-2.5 sm:p-3 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] select-none text-left"
+                        title={`Click to view profile of ${captain.name}`}
                       >
-                        <div className="h-full w-full rounded-2xl overflow-hidden bg-emerald-900/40 flex items-center justify-center border border-white/20 relative">
-                          {official.photoUrl ? (
+                        <div className="relative h-14 w-12 sm:h-16 sm:w-14 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                          {captain.photoUrl ? (
                             <img
-                              src={official.photoUrl}
-                              alt={official.name}
-                              className="h-full w-full object-cover rounded-2xl group-hover:scale-108 transition-transform duration-500"
+                              src={captain.photoUrl}
+                              alt={captain.name}
+                              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
                             />
                           ) : (
-                            <div className="flex flex-col items-center justify-center text-center p-2 text-emerald-200">
-                              <User size={32} className="mb-1 opacity-80" />
-                              <span className="text-[10px] font-black">{initials}</span>
+                            <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs sm:text-sm">
+                              <Crown size={22} className="text-amber-400" />
                             </div>
                           )}
-                          
-                          {/* Glass hover overlay prompt */}
-                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-2.5 text-center text-white backdrop-blur-[2px]">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-emerald-300 truncate">
-                              {official.name}
-                            </span>
-                            <span className="text-[8.5px] text-slate-200 font-semibold truncate">
-                              Click for details
+                          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                            <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow">
+                              <Eye size={9} />
+                              <span>Details</span>
                             </span>
                           </div>
                         </div>
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <span className="inline-flex items-center gap-1 text-[8px] sm:text-[9px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-amber-100 text-amber-900 border-amber-300">
+                            <Crown size={10} className="text-amber-600" />
+                            <span>PUNONG BARANGAY</span>
+                          </span>
+                          <h4 className="font-black text-xs sm:text-[13.5px] text-slate-900 leading-tight truncate" title={captain.name}>
+                            {captain.name}
+                          </h4>
+                          <p className="text-[8.5px] sm:text-[9px] text-slate-500 font-semibold leading-tight mt-0.5 truncate">
+                            {captain.committee || "Executive Leadership"}
+                          </p>
+                        </div>
+                      </article>
+                    </div>
+                  )}
+
+                  {/* Central Stem Line from Captain */}
+                  <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+
+                  {/* Level 2: Sangguniang Barangay (Desktop: Connected 4-Column Tree / Mobile: Responsive Grid) */}
+                  
+                  {/* ─── MOBILE VIEW (< lg): Roomy Responsive Grid with Connected Stems ─── */}
+                  <div className="flex lg:hidden flex-col items-center w-full max-w-[620px] px-0.5">
+                    <div className="w-full flex flex-col items-center mb-3">
+                      <span className="inline-block text-[9px] font-black uppercase tracking-wider text-emerald-900 bg-emerald-100/90 border border-emerald-300/80 px-3 py-0.5 rounded-full shadow-2xs">
+                        Sangguniang Barangay Council
+                      </span>
+                      <div className="w-[2px] h-3 bg-[#166534] mt-1" />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
+                      {[...leftWingOfficials, ...rightWingOfficials].map((off) => {
+                        const isSK = off.id?.includes("sk") || off.level === "sk";
+                        return (
+                          <article
+                            key={off.id || off.name}
+                            onClick={() => setSelectedOfficialForModal(off)}
+                            className="group relative flex items-center gap-2.5 rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] select-none text-left w-full"
+                            title={`Click to view profile of ${off.name}`}
+                          >
+                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                              {off.photoUrl ? (
+                                <img
+                                  src={off.photoUrl}
+                                  alt={off.name}
+                                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
+                                  <User size={18} className="text-slate-300" />
+                                </div>
+                              )}
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-slate-900 shadow">
+                                  <Eye size={8} />
+                                  <span>Details</span>
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span
+                                className={`inline-flex items-center gap-1 text-[8px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border ${
+                                  isSK
+                                    ? "bg-sky-100 text-sky-900 border-sky-300"
+                                    : "bg-emerald-100 text-emerald-900 border-emerald-300"
+                                }`}
+                              >
+                                {off.position || (isSK ? "SK CHAIRMAN" : "BARANGAY KAGAWAD")}
+                              </span>
+                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={off.name}>
+                                {off.name}
+                              </h4>
+                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={off.committee}>
+                                {off.committee || (isSK ? "Sangguniang Kabataan" : "Council Member")}
+                              </p>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* ─── DESKTOP VIEW (>= lg): Connected 4-Column Flowchart Tree ─── */}
+                  <div className="hidden lg:flex items-start justify-center w-full max-w-[980px]">
+                    {/* LEFT WING: Col 1 & Col 2 */}
+                    <div className="relative flex items-start gap-3">
+                      {/* Continuous Horizontal Bus from Col 1 center to Right edge of Left Wing */}
+                      <div className="absolute top-0 left-[102.5px] xl:left-[110px] right-0 h-[2px] bg-[#166534]" />
+
+                      {/* Column 1: Wilson Boy -> Juanito */}
+                      <div className="flex flex-col items-center">
+                        <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+                        {leftWingOfficials[0] && (
+                          <article
+                            onClick={() => setSelectedOfficialForModal(leftWingOfficials[0])}
+                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                            title={`Click to view profile of ${leftWingOfficials[0].name}`}
+                          >
+                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                              {leftWingOfficials[0].photoUrl ? (
+                                <img src={leftWingOfficials[0].photoUrl} alt={leftWingOfficials[0].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                              )}
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{leftWingOfficials[0].position || "BARANGAY KAGAWAD"}</span>
+                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={leftWingOfficials[0].name}>{leftWingOfficials[0].name}</h4>
+                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={leftWingOfficials[0].committee}>{leftWingOfficials[0].committee || "Council Member"}</p>
+                            </div>
+                          </article>
+                        )}
+                        <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
+                        {leftWingOfficials[2] && (
+                          <article
+                            onClick={() => setSelectedOfficialForModal(leftWingOfficials[2])}
+                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                            title={`Click to view profile of ${leftWingOfficials[2].name}`}
+                          >
+                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                              {leftWingOfficials[2].photoUrl ? (
+                                <img src={leftWingOfficials[2].photoUrl} alt={leftWingOfficials[2].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                              )}
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{leftWingOfficials[2].position || "BARANGAY KAGAWAD"}</span>
+                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={leftWingOfficials[2].name}>{leftWingOfficials[2].name}</h4>
+                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={leftWingOfficials[2].committee}>{leftWingOfficials[2].committee || "Council Member"}</p>
+                            </div>
+                          </article>
+                        )}
                       </div>
-                    );
-                  })}
+
+                      {/* Column 2: Garry -> Loreto */}
+                      <div className="flex flex-col items-center">
+                        <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+                        {leftWingOfficials[1] && (
+                          <article
+                            onClick={() => setSelectedOfficialForModal(leftWingOfficials[1])}
+                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                            title={`Click to view profile of ${leftWingOfficials[1].name}`}
+                          >
+                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                              {leftWingOfficials[1].photoUrl ? (
+                                <img src={leftWingOfficials[1].photoUrl} alt={leftWingOfficials[1].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                              )}
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{leftWingOfficials[1].position || "BARANGAY KAGAWAD"}</span>
+                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={leftWingOfficials[1].name}>{leftWingOfficials[1].name}</h4>
+                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={leftWingOfficials[1].committee}>{leftWingOfficials[1].committee || "Council Member"}</p>
+                            </div>
+                          </article>
+                        )}
+                        <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
+                        {leftWingOfficials[3] && (
+                          <article
+                            onClick={() => setSelectedOfficialForModal(leftWingOfficials[3])}
+                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                            title={`Click to view profile of ${leftWingOfficials[3].name}`}
+                          >
+                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                              {leftWingOfficials[3].photoUrl ? (
+                                <img src={leftWingOfficials[3].photoUrl} alt={leftWingOfficials[3].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                              )}
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{leftWingOfficials[3].position || "BARANGAY KAGAWAD"}</span>
+                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={leftWingOfficials[3].name}>{leftWingOfficials[3].name}</h4>
+                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={leftWingOfficials[3].committee}>{leftWingOfficials[3].committee || "Council Member"}</p>
+                            </div>
+                          </article>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* CENTRAL CONNECTOR AISLE */}
+                    <div className="flex flex-col items-center justify-between self-stretch px-3 relative min-w-[36px] sm:min-w-[48px]">
+                      {/* Horizontal Bus Bridge */}
+                      <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#166534]" />
+                      {/* Continuous Vertical Central Trunk */}
+                      <div className="absolute top-0 bottom-0 w-[2px] bg-[#166534]" />
+                    </div>
+
+                    {/* RIGHT WING: Col 3 & Col 4 */}
+                    <div className="relative flex items-start gap-3">
+                      {/* Continuous Horizontal Bus from Left edge to Col 4 center */}
+                      <div className="absolute top-0 left-0 right-[102.5px] xl:right-[110px] h-[2px] bg-[#166534]" />
+
+                      {/* Column 3: Judy -> Mercy Joy */}
+                      <div className="flex flex-col items-center">
+                        <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+                        {rightWingOfficials[0] && (
+                          <article
+                            onClick={() => setSelectedOfficialForModal(rightWingOfficials[0])}
+                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                            title={`Click to view profile of ${rightWingOfficials[0].name}`}
+                          >
+                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                              {rightWingOfficials[0].photoUrl ? (
+                                <img src={rightWingOfficials[0].photoUrl} alt={rightWingOfficials[0].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                              )}
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{rightWingOfficials[0].position || "BARANGAY KAGAWAD"}</span>
+                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={rightWingOfficials[0].name}>{rightWingOfficials[0].name}</h4>
+                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={rightWingOfficials[0].committee}>{rightWingOfficials[0].committee || "Council Member"}</p>
+                            </div>
+                          </article>
+                        )}
+                        <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
+                        {rightWingOfficials[2] && (
+                          <article
+                            onClick={() => setSelectedOfficialForModal(rightWingOfficials[2])}
+                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                            title={`Click to view profile of ${rightWingOfficials[2].name}`}
+                          >
+                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                              {rightWingOfficials[2].photoUrl ? (
+                                <img src={rightWingOfficials[2].photoUrl} alt={rightWingOfficials[2].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                              )}
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{rightWingOfficials[2].position || "BARANGAY KAGAWAD"}</span>
+                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={rightWingOfficials[2].name}>{rightWingOfficials[2].name}</h4>
+                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={rightWingOfficials[2].committee}>{rightWingOfficials[2].committee || "Council Member"}</p>
+                            </div>
+                          </article>
+                        )}
+                      </div>
+
+                      {/* Column 4: Ruben / Kobi -> Chrystophyr SK */}
+                      <div className="flex flex-col items-center">
+                        <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+                        {rightWingOfficials[1] && (
+                          <article
+                            onClick={() => setSelectedOfficialForModal(rightWingOfficials[1])}
+                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                            title={`Click to view profile of ${rightWingOfficials[1].name}`}
+                          >
+                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                              {rightWingOfficials[1].photoUrl ? (
+                                <img src={rightWingOfficials[1].photoUrl} alt={rightWingOfficials[1].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                              )}
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{rightWingOfficials[1].position || "BARANGAY KAGAWAD"}</span>
+                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={rightWingOfficials[1].name}>{rightWingOfficials[1].name}</h4>
+                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={rightWingOfficials[1].committee}>{rightWingOfficials[1].committee || "Council Member"}</p>
+                            </div>
+                          </article>
+                        )}
+                        <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
+                        {rightWingOfficials[3] && (
+                          <article
+                            onClick={() => setSelectedOfficialForModal(rightWingOfficials[3])}
+                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                            title={`Click to view profile of ${rightWingOfficials[3].name}`}
+                          >
+                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                              {rightWingOfficials[3].photoUrl ? (
+                                <img src={rightWingOfficials[3].photoUrl} alt={rightWingOfficials[3].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                              )}
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                              </div>
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-sky-100 text-sky-900 border-sky-300">{rightWingOfficials[3].position || "SK CHAIRMAN"}</span>
+                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={rightWingOfficials[3].name}>{rightWingOfficials[3].name}</h4>
+                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={rightWingOfficials[3].committee}>{rightWingOfficials[3].committee || "Sangguniang Kabataan"}</p>
+                            </div>
+                          </article>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Central Stem Line passing down to Staff */}
+                  <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+
+                  {/* Level 3: Secretary & Treasurer */}
+                  
+                  {/* ─── MOBILE VIEW (< lg): Responsive Staff Grid with Connected Stems ─── */}
+                  <div className="flex lg:hidden flex-col items-center w-full max-w-[620px] px-0.5">
+                    <div className="w-full flex flex-col items-center mb-3">
+                      <span className="inline-block text-[9px] font-black uppercase tracking-wider text-emerald-900 bg-emerald-100/90 border border-emerald-300/80 px-3 py-0.5 rounded-full shadow-2xs">
+                        Appointed Barangay Officials
+                      </span>
+                      <div className="w-[2px] h-3 bg-[#166534] mt-1" />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
+                      {secretary && (
+                        <article
+                          onClick={() => setSelectedOfficialForModal(secretary)}
+                          className="group relative flex items-center gap-2.5 rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] select-none text-left w-full"
+                          title={`Click to view profile of ${secretary.name}`}
+                        >
+                          <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                            {secretary.photoUrl ? (
+                              <img
+                                src={secretary.photoUrl}
+                                alt={secretary.name}
+                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
+                                <User size={18} className="text-slate-300" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="inline-flex items-center gap-1 text-[8px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">
+                              {secretary.position || "BARANGAY SECRETARY"}
+                            </span>
+                            <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={secretary.name}>
+                              {secretary.name}
+                            </h4>
+                            <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={secretary.committee}>
+                              {secretary.committee || "Administrative Records"}
+                            </p>
+                          </div>
+                        </article>
+                      )}
+
+                      {treasurer && (
+                        <article
+                          onClick={() => setSelectedOfficialForModal(treasurer)}
+                          className="group relative flex items-center gap-2.5 rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] select-none text-left w-full"
+                          title={`Click to view profile of ${treasurer.name}`}
+                        >
+                          <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                            {treasurer.photoUrl ? (
+                              <img
+                                src={treasurer.photoUrl}
+                                alt={treasurer.name}
+                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
+                                <User size={18} className="text-slate-300" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="inline-flex items-center gap-1 text-[8px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">
+                              {treasurer.position || "BARANGAY TREASURER"}
+                            </span>
+                            <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={treasurer.name}>
+                              {treasurer.name}
+                            </h4>
+                            <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={treasurer.committee}>
+                              {treasurer.committee || "Finance & Accounting"}
+                            </p>
+                          </div>
+                        </article>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* ─── DESKTOP VIEW (>= lg): Side-by-side with Connected Branch Line ─── */}
+                  <div className="hidden lg:flex flex-col items-center w-full">
+                    <div className="relative flex items-start gap-6 sm:gap-8">
+                      {/* Horizontal Bus linking Secretary center and Treasurer center */}
+                      <div className="absolute top-0 left-[105px] sm:left-[120px] right-[105px] sm:right-[120px] h-[2px] bg-[#166534]" />
+
+                      {/* Secretary Column */}
+                      {secretary && (
+                        <div className="flex flex-col items-center">
+                          <div className="w-[2px] h-4 sm:h-5 bg-[#166534]" />
+                          <article
+                            onClick={() => setSelectedOfficialForModal(secretary)}
+                            className="group relative flex items-center gap-3 w-[210px] sm:w-[240px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 sm:p-3 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                            title={`Click to view profile of ${secretary.name}`}
+                          >
+                            <div className="relative h-14 w-12 sm:h-16 sm:w-14 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                              {secretary.photoUrl ? (
+                                <img
+                                  src={secretary.photoUrl}
+                                  alt={secretary.name}
+                                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
+                                  <User size={18} className="text-slate-300" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="inline-flex items-center gap-1 text-[8.5px] sm:text-[9px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">
+                                {secretary.position || "BARANGAY SECRETARY"}
+                              </span>
+                              <h4 className="font-black text-[11px] sm:text-xs text-slate-900 leading-tight truncate" title={secretary.name}>
+                                {secretary.name}
+                              </h4>
+                              <p className="text-[8.5px] sm:text-[9px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={secretary.committee}>
+                                {secretary.committee || "Administrative Records"}
+                              </p>
+                            </div>
+                          </article>
+                        </div>
+                      )}
+
+                      {/* Treasurer Column */}
+                      {treasurer && (
+                        <div className="flex flex-col items-center">
+                          <div className="w-[2px] h-4 sm:h-5 bg-[#166534]" />
+                          <article
+                            onClick={() => setSelectedOfficialForModal(treasurer)}
+                            className="group relative flex items-center gap-3 w-[210px] sm:w-[240px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 sm:p-3 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                            title={`Click to view profile of ${treasurer.name}`}
+                          >
+                            <div className="relative h-14 w-12 sm:h-16 sm:w-14 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                              {treasurer.photoUrl ? (
+                                <img
+                                  src={treasurer.photoUrl}
+                                  alt={treasurer.name}
+                                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
+                                  <User size={18} className="text-slate-300" />
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="inline-flex items-center gap-1 text-[8.5px] sm:text-[9px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">
+                                {treasurer.position || "BARANGAY TREASURER"}
+                              </span>
+                              <h4 className="font-black text-[11px] sm:text-xs text-slate-900 leading-tight truncate" title={treasurer.name}>
+                                {treasurer.name}
+                              </h4>
+                              <p className="text-[8.5px] sm:text-[9px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={treasurer.committee}>
+                                {treasurer.committee || "Finance & Accounting"}
+                              </p>
+                            </div>
+                          </article>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -5290,13 +6038,60 @@ const UserDashboard = () => {
                 </button>
               </div>
 
+              {/* Batch Action Bar when rows are selected */}
+              {selectedLogIds.length > 0 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-rose-500/25 border border-rose-400/50 rounded-2xl px-4 py-2.5 mb-4 shadow-lg backdrop-blur-md animate-fadeIn">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500 text-white text-[11px] font-black">
+                      {selectedLogIds.length}
+                    </span>
+                    <span className="text-xs font-bold text-rose-100">
+                      {selectedLogIds.length} document log(s) selected
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLogIds([])}
+                      className="px-3 py-1 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition border border-white/20 cursor-pointer"
+                    >
+                      Deselect All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteSelectedLogsAction}
+                      disabled={deletingLogs}
+                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-black shadow-md transition border border-rose-400/50 cursor-pointer disabled:opacity-50"
+                    >
+                      {deletingLogs ? <Loader size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                      <span>Delete Selected ({selectedLogIds.length})</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="overflow-x-auto rounded-2xl border border-white/15 bg-emerald-950/30 backdrop-blur-xl">
                 {requests.length === 0 ? (
                   <p className="text-xs text-emerald-200/70 text-center py-10 font-bold">No clearance applications submitted.</p>
                 ) : (
-                  <table className="w-full text-left text-xs min-w-[600px]">
+                  <table className="w-full text-left text-xs min-w-[640px]">
                     <thead>
                       <tr className="border-b font-bold uppercase tracking-wider text-xs border-white/15 bg-white/10 text-emerald-200">
+                        <th className="px-3 py-3 w-10 text-center">
+                          <input
+                            type="checkbox"
+                            checked={requests.length > 0 && selectedLogIds.length === requests.length}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedLogIds(requests.map((r) => r.id));
+                              } else {
+                                setSelectedLogIds([]);
+                              }
+                            }}
+                            className="h-4 w-4 rounded border-white/30 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#10b981]"
+                            title="Select all logs"
+                          />
+                        </th>
                         <th className="px-4 py-3">Document Type</th>
                         <th className="px-4 py-3">Date Applied</th>
                         <th className="px-4 py-3">Last Updated</th>
@@ -5309,9 +6104,21 @@ const UserDashboard = () => {
                         const expired = isRequestExpired(req);
                         const displayStatus = expired ? "Expired" : req.status;
                         const isPending = !expired && req.status === "Pending";
-                        const isCancelled = req.status === "Cancelled";
+                        const isSelected = selectedLogIds.includes(req.id);
                         return (
-                          <tr key={req.id} className="transition hover:bg-white/10">
+                          <tr key={req.id} className={`transition hover:bg-white/10 ${isSelected ? "bg-white/15" : ""}`}>
+                            <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  setSelectedLogIds((prev) =>
+                                    prev.includes(req.id) ? prev.filter((id) => id !== req.id) : [...prev, req.id]
+                                  );
+                                }}
+                                className="h-4 w-4 rounded border-white/30 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#10b981]"
+                              />
+                            </td>
                             <td className="px-4 py-3 font-black text-white">{req.document_type}</td>
                             <td className="px-4 py-3 text-emerald-200/80">{new Date(req.created_at).toLocaleDateString()}</td>
                             <td className="px-4 py-3 text-emerald-200/80">{new Date(req.updated_at || req.created_at).toLocaleDateString()}</td>
@@ -5347,21 +6154,15 @@ const UserDashboard = () => {
                                   </>
                                 )}
 
-                                {isCancelled && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteRequestAction(req)}
-                                    className="flex items-center gap-1 px-2 py-1 rounded-xl bg-slate-500/20 hover:bg-slate-500/30 text-slate-200 text-xs font-bold transition border border-white/20"
-                                    title="Delete Record"
-                                  >
-                                    <Trash2 size={12} />
-                                    <span>Delete</span>
-                                  </button>
-                                )}
-
-                                {!isPending && !isCancelled && (
-                                  <span className="text-[11px] text-emerald-300/70 font-medium">No actions</span>
-                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteRequestAction(req)}
+                                  className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold transition border border-rose-400/30 cursor-pointer shadow-2xs"
+                                  title="Delete Document Log"
+                                >
+                                  <Trash2 size={12} />
+                                  <span>Delete</span>
+                                </button>
                               </div>
                             </td>
                           </tr>
@@ -5645,11 +6446,21 @@ const UserDashboard = () => {
           {/* TAB: PERSONAL INFORMATION */}
           {activeNav === "personal_info" && (
             <div className="border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn bg-white text-slate-900">
-              <div className="border-b pb-3 mb-6 border-slate-100">
-                <h2 className="text-base font-black uppercase tracking-wider text-[#0B5D3B]">
-                  Personal Information Registry
-                </h2>
-                <p className="text-sm text-slate-500 font-bold mt-0.5">Demographic registry synchronized with administrative records.</p>
+              <div className="border-b pb-3 mb-6 border-slate-100 flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-black uppercase tracking-wider text-[#0B5D3B]">
+                    Personal Information Registry
+                  </h2>
+                  <p className="text-sm text-slate-500 font-bold mt-0.5">Demographic registry synchronized with administrative records.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCancelPersonalInfo}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 text-xs font-bold transition shadow-2xs cursor-pointer active:scale-95 shrink-0"
+                >
+                  <ArrowLeft size={14} className="text-slate-600" />
+                  <span>Back</span>
+                </button>
               </div>
 
               <form onSubmit={handleProfileUpdate} className="space-y-6">
@@ -5856,7 +6667,7 @@ const UserDashboard = () => {
                     </label>
                     <div>
                       <label className="block text-xs font-bold text-slate-700">
-                        Occupation / Livelihood
+                        Occupation
                         <select
                           value={
                             !profileForm.occupation
@@ -5991,50 +6802,19 @@ const UserDashboard = () => {
                   </div>
                 )}
 
-                <div className="flex gap-2.5 pt-4 border-t border-slate-100 dark:border-slate-800 dark:border-slate-800">
+                <div className="flex gap-2.5 pt-4 border-t border-slate-100">
                   <button
                     type="submit"
                     disabled={savingProfile}
-                    className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#0B5D3B] to-[#157347] px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:scale-101 transition disabled:opacity-50"
+                    className="flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-[#0B5D3B] to-[#157347] px-5 py-2.5 text-xs font-bold text-white shadow-xs hover:scale-101 transition disabled:opacity-50 cursor-pointer"
                   >
                     {savingProfile ? <Loader size={12} className="animate-spin" /> : <FileCheck2 size={12} />}
                     Save Changes
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (resident) {
-                        setProfileForm({
-                          ...profileForm,
-                          first_name: resident.first_name || "",
-                          middle_name: resident.middle_name || "",
-                          last_name: resident.last_name || "",
-                          suffix: resident.suffix || "",
-                          sex: resident.sex || resident.gender || "Male",
-                          birthday: resident.birthday || "",
-                          age: resident.age ?? "",
-                          civil_status: resident.civil_status || "Single",
-                          birthplace: resident.birthplace || "",
-                          phone: resident.phone || "",
-                          email: resident.email || "",
-                          house_no: resident.house_no || "",
-                          purok: resident.purok || "",
-                          address: resident.address || "",
-                          household_no: resident.household_no || "",
-                          relationship_to_household_head: resident.relationship_to_household_head || "Head",
-                          occupation: resident.occupation || "",
-                          educational_attainment: resident.educational_attainment || "",
-                          is_pwd: Boolean(resident.is_pwd),
-                          pwd_type: resident.pwd_type || "",
-                          is_solo_parent: Boolean(resident.is_solo_parent),
-                          is_4ps_member: Boolean(resident.is_4ps_member),
-                        });
-                      }
-                      setProfileMessage(null);
-                    }}
-                    className={`px-4 py-2.5 rounded-xl border font-bold text-xs transition ${
-                      isDarkMode ? "border-slate-800 text-slate-400 dark:text-slate-500 hover:bg-slate-800" : "border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 dark:text-slate-500 hover:bg-slate-50 dark:bg-slate-950"
-                    }`}
+                    onClick={handleCancelPersonalInfo}
+                    className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 font-bold text-xs transition cursor-pointer shadow-xs active:scale-95"
                   >
                     Cancel
                   </button>
@@ -6044,76 +6824,571 @@ const UserDashboard = () => {
             </div>
           )}
 
-          {/* TAB: BARANGAY OFFICIALS - TRANSLUCENT EMERALD GLASS */}
+          {/* TAB: BARANGAY OFFICIALS */}
           {activeNav === "officials" && (
-            <div className="bg-emerald-950/35 backdrop-blur-2xl border-2 border-white/20 rounded-[2.2rem] p-6 shadow-2xl animate-fadeIn text-white">
-              <div className="bg-gradient-to-r from-[#044E35] via-[#057A55] to-[#046C4E] text-white px-4 py-3.5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 shadow-md mb-6 border border-emerald-400/30 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-transparent pointer-events-none" />
-                <div className="relative z-10">
-                  <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
-                    Barangay Officials & Directory
-                  </h2>
-                  <p className="text-[10px] text-emerald-200 font-bold mt-0.5">Click any official photo to view complete governance details.</p>
+            <div className="bg-gradient-to-b from-[#e0f2fe]/80 via-[#f0f9ff] to-[#ffffff] border-2 border-sky-300 rounded-3xl p-3.5 sm:p-6 md:p-8 shadow-2xl animate-fadeIn text-slate-900 overflow-hidden max-w-[980px] mx-auto relative backdrop-blur-md">
+              {/* Subtle Grid Pattern */}
+              <div className="pointer-events-none absolute inset-0 rounded-3xl bg-[radial-gradient(#93c5fd_1px,transparent_1px)] [background-size:18px_18px] opacity-40" />
+
+              {/* Header Bar */}
+              <div className="relative z-10 flex items-center justify-between gap-2 sm:gap-4 w-full mb-4 sm:mb-6 pb-2 px-1 sm:px-4">
+                {/* Left: Municipality of Aleosan Seal */}
+                <div className="flex items-center shrink-0">
+                  <div className="flex h-11 w-11 sm:h-16 sm:w-16 md:h-20 md:w-20 items-center justify-center rounded-2xl bg-white/90 p-1 shadow-sm border border-sky-200">
+                    <img
+                      src="/aleosan.logo.png"
+                      alt="Municipality of Aleosan Seal"
+                      className="h-full w-full object-contain drop-shadow-xs"
+                      onError={(e) => {
+                        e.target.src = "/aleosan logo.png";
+                      }}
+                    />
+                  </div>
                 </div>
-                <span className="text-xs font-black uppercase tracking-widest text-white bg-white/20 border border-white/30 px-3.5 py-1 rounded-full backdrop-blur-xs relative z-10">
-                  {officials.length} Officials Listed
-                </span>
+
+                {/* Center Title */}
+                <div className="flex flex-col items-center text-center flex-1 min-w-0 px-1">
+                  <h1 className="text-sm sm:text-2xl md:text-3xl lg:text-4xl font-black uppercase tracking-normal sm:tracking-wide text-[#064e3b] leading-tight drop-shadow-2xs">
+                    BARANGAY UPPER MINGADING
+                  </h1>
+                  <h2 className="text-[9px] sm:text-xs md:text-sm font-black uppercase tracking-[0.12em] sm:tracking-[0.25em] text-[#16a34a] mt-0.5 sm:mt-1.5 flex items-center justify-center gap-1.5 sm:gap-2.5">
+                    <span className="h-0.5 w-3 sm:w-8 md:w-12 bg-[#16a34a] inline-block" />
+                    <span>OFFICIAL ORGANIZATIONAL CHART</span>
+                    <span className="h-0.5 w-3 sm:w-8 md:w-12 bg-[#16a34a] inline-block" />
+                  </h2>
+                </div>
+
+                {/* Right: Barangay Upper Mingading Seal */}
+                <div className="flex items-center shrink-0">
+                  <div className="flex h-11 w-11 sm:h-16 sm:w-16 md:h-20 md:w-20 items-center justify-center rounded-2xl bg-white/90 p-1 shadow-sm border border-sky-200">
+                    <img
+                      src="/logo.png"
+                      alt="Barangay Upper Mingading Seal"
+                      className="h-full w-full object-contain drop-shadow-xs"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="grid gap-5 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                {officials.map((off) => {
-                  const initials = off.name
-                    ? off.name
-                        .split(" ")
-                        .map((n) => n[0])
-                        .join("")
-                        .substring(0, 2)
-                        .toUpperCase()
-                    : "OF";
-                  return (
+              {/* ─── HIERARCHICAL FLOWCHART TREE ─── */}
+              <div className="relative z-10 flex flex-col items-center w-full mx-auto pb-2">
+                {/* Level 1: Punong Barangay */}
+                {captain && (
+                  <div className="relative flex flex-col items-center w-full">
                     <article
-                      key={off.id}
-                      onClick={() => setSelectedOfficialForModal(off)}
-                      className="group relative flex flex-col items-center justify-center p-2.5 rounded-3xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 hover:border-emerald-400/60 shadow-md hover:shadow-xl hover:scale-[1.04] transition-all duration-300 cursor-pointer aspect-square overflow-hidden text-white"
-                      title={`Click to view profile of ${off.name}`}
+                      onClick={() => setSelectedOfficialForModal(captain)}
+                      className="group relative flex items-center gap-2.5 sm:gap-3.5 w-full max-w-[290px] sm:max-w-[340px] rounded-2xl bg-white border-2 border-[#166534] ring-2 ring-emerald-400/30 p-2.5 sm:p-3 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] select-none text-left"
+                      title={`Click to view profile of ${captain.name}`}
                     >
-                      <div className="h-full w-full rounded-2xl overflow-hidden bg-emerald-900/40 flex items-center justify-center border border-white/20 relative">
-                        {off.photoUrl ? (
-                          <img src={off.photoUrl} alt={off.name} className="h-full w-full object-cover rounded-2xl group-hover:scale-108 transition-transform duration-500" />
+                      <div className="relative h-14 w-12 sm:h-16 sm:w-14 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                        {captain.photoUrl ? (
+                          <img
+                            src={captain.photoUrl}
+                            alt={captain.name}
+                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          />
                         ) : (
-                          <div className="flex flex-col items-center justify-center text-center p-2 text-emerald-200">
-                            <User size={38} className="mb-1 opacity-85" />
-                            <span className="text-xs font-black">{initials}</span>
+                          <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs sm:text-sm">
+                            <Crown size={22} className="text-amber-400" />
                           </div>
                         )}
-                        
-                        {/* Glass overlay on hover */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3 text-center text-white backdrop-blur-[2px]">
-                          <span className="text-xs font-black uppercase tracking-wider text-emerald-300 truncate">
-                            {off.name}
-                          </span>
-                          <span className="text-[9.5px] font-bold text-slate-200 truncate mt-0.5">
-                            {off.position || "Council Officer"}
-                          </span>
-                          <span className="text-[8.5px] text-emerald-200/90 font-black tracking-wider uppercase mt-1">
-                            Click details
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                          <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow">
+                            <Eye size={9} />
+                            <span>Details</span>
                           </span>
                         </div>
                       </div>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <span className="inline-flex items-center gap-1 text-[8px] sm:text-[9px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-amber-100 text-amber-900 border-amber-300">
+                          <Crown size={10} className="text-amber-600" />
+                          <span>PUNONG BARANGAY</span>
+                        </span>
+                        <h4 className="font-black text-xs sm:text-[13.5px] text-slate-900 leading-tight truncate" title={captain.name}>
+                          {captain.name}
+                        </h4>
+                        <p className="text-[8.5px] sm:text-[9px] text-slate-500 font-semibold leading-tight mt-0.5 truncate">
+                          {captain.committee || "Executive Leadership"}
+                        </p>
+                      </div>
                     </article>
-                  );
-                })}
+                  </div>
+                )}
+
+                {/* Central Stem Line from Captain */}
+                <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+
+                {/* Level 2: Sangguniang Barangay (Desktop: Connected 4-Column Tree / Mobile: Responsive Grid) */}
+                
+                {/* ─── MOBILE VIEW (< lg): Roomy Responsive Grid with Connected Stems ─── */}
+                <div className="flex lg:hidden flex-col items-center w-full max-w-[620px] px-0.5">
+                  <div className="w-full flex flex-col items-center mb-3">
+                    <span className="inline-block text-[9px] font-black uppercase tracking-wider text-emerald-900 bg-emerald-100/90 border border-emerald-300/80 px-3 py-0.5 rounded-full shadow-2xs">
+                      Sangguniang Barangay Council
+                    </span>
+                    <div className="w-[2px] h-3 bg-[#166534] mt-1" />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
+                    {[...leftWingOfficials, ...rightWingOfficials].map((off) => {
+                      const isSK = off.id?.includes("sk") || off.level === "sk";
+                      return (
+                        <article
+                          key={off.id || off.name}
+                          onClick={() => setSelectedOfficialForModal(off)}
+                          className="group relative flex items-center gap-2.5 rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] select-none text-left w-full"
+                          title={`Click to view profile of ${off.name}`}
+                        >
+                          <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                            {off.photoUrl ? (
+                              <img
+                                src={off.photoUrl}
+                                alt={off.name}
+                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
+                                <User size={18} className="text-slate-300" />
+                              </div>
+                            )}
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-slate-900 shadow">
+                                <Eye size={8} />
+                                <span>Details</span>
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span
+                              className={`inline-flex items-center gap-1 text-[8px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border ${
+                                isSK
+                                  ? "bg-sky-100 text-sky-900 border-sky-300"
+                                  : "bg-emerald-100 text-emerald-900 border-emerald-300"
+                              }`}
+                            >
+                              {off.position || (isSK ? "SK CHAIRMAN" : "BARANGAY KAGAWAD")}
+                            </span>
+                            <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={off.name}>
+                              {off.name}
+                            </h4>
+                            <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={off.committee}>
+                              {off.committee || (isSK ? "Sangguniang Kabataan" : "Council Member")}
+                            </p>
+                          </div>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* ─── DESKTOP VIEW (>= lg): Connected 4-Column Flowchart Tree ─── */}
+                <div className="hidden lg:flex items-start justify-center w-full max-w-[980px]">
+                  {/* LEFT WING: Col 1 & Col 2 */}
+                  <div className="relative flex items-start gap-3">
+                    {/* Continuous Horizontal Bus from Col 1 center to Right edge of Left Wing */}
+                    <div className="absolute top-0 left-[102.5px] xl:left-[110px] right-0 h-[2px] bg-[#166534]" />
+
+                    {/* Column 1: Wilson Boy -> Juanito */}
+                    <div className="flex flex-col items-center">
+                      <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+                      {leftWingOfficials[0] && (
+                        <article
+                          onClick={() => setSelectedOfficialForModal(leftWingOfficials[0])}
+                          className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                          title={`Click to view profile of ${leftWingOfficials[0].name}`}
+                        >
+                          <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                            {leftWingOfficials[0].photoUrl ? (
+                              <img src={leftWingOfficials[0].photoUrl} alt={leftWingOfficials[0].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                            )}
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{leftWingOfficials[0].position || "BARANGAY KAGAWAD"}</span>
+                            <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={leftWingOfficials[0].name}>{leftWingOfficials[0].name}</h4>
+                            <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={leftWingOfficials[0].committee}>{leftWingOfficials[0].committee || "Council Member"}</p>
+                          </div>
+                        </article>
+                      )}
+                      <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
+                      {leftWingOfficials[2] && (
+                        <article
+                          onClick={() => setSelectedOfficialForModal(leftWingOfficials[2])}
+                          className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                          title={`Click to view profile of ${leftWingOfficials[2].name}`}
+                        >
+                          <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                            {leftWingOfficials[2].photoUrl ? (
+                              <img src={leftWingOfficials[2].photoUrl} alt={leftWingOfficials[2].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                            )}
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{leftWingOfficials[2].position || "BARANGAY KAGAWAD"}</span>
+                            <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={leftWingOfficials[2].name}>{leftWingOfficials[2].name}</h4>
+                            <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={leftWingOfficials[2].committee}>{leftWingOfficials[2].committee || "Council Member"}</p>
+                          </div>
+                        </article>
+                      )}
+                    </div>
+
+                    {/* Column 2: Garry -> Loreto */}
+                    <div className="flex flex-col items-center">
+                      <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+                      {leftWingOfficials[1] && (
+                        <article
+                          onClick={() => setSelectedOfficialForModal(leftWingOfficials[1])}
+                          className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                          title={`Click to view profile of ${leftWingOfficials[1].name}`}
+                        >
+                          <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                            {leftWingOfficials[1].photoUrl ? (
+                              <img src={leftWingOfficials[1].photoUrl} alt={leftWingOfficials[1].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                            )}
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{leftWingOfficials[1].position || "BARANGAY KAGAWAD"}</span>
+                            <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={leftWingOfficials[1].name}>{leftWingOfficials[1].name}</h4>
+                            <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={leftWingOfficials[1].committee}>{leftWingOfficials[1].committee || "Council Member"}</p>
+                          </div>
+                        </article>
+                      )}
+                      <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
+                      {leftWingOfficials[3] && (
+                        <article
+                          onClick={() => setSelectedOfficialForModal(leftWingOfficials[3])}
+                          className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                          title={`Click to view profile of ${leftWingOfficials[3].name}`}
+                        >
+                          <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                            {leftWingOfficials[3].photoUrl ? (
+                              <img src={leftWingOfficials[3].photoUrl} alt={leftWingOfficials[3].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                            )}
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{leftWingOfficials[3].position || "BARANGAY KAGAWAD"}</span>
+                            <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={leftWingOfficials[3].name}>{leftWingOfficials[3].name}</h4>
+                            <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={leftWingOfficials[3].committee}>{leftWingOfficials[3].committee || "Council Member"}</p>
+                          </div>
+                        </article>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* CENTRAL CONNECTOR AISLE */}
+                  <div className="flex flex-col items-center justify-between self-stretch px-3 relative min-w-[36px] sm:min-w-[48px]">
+                    {/* Horizontal Bus Bridge */}
+                    <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#166534]" />
+                    {/* Continuous Vertical Central Trunk */}
+                    <div className="absolute top-0 bottom-0 w-[2px] bg-[#166534]" />
+                  </div>
+
+                  {/* RIGHT WING: Col 3 & Col 4 */}
+                  <div className="relative flex items-start gap-3">
+                    {/* Continuous Horizontal Bus from Left edge to Col 4 center */}
+                    <div className="absolute top-0 left-0 right-[102.5px] xl:right-[110px] h-[2px] bg-[#166534]" />
+
+                    {/* Column 3: Judy -> Mercy Joy */}
+                    <div className="flex flex-col items-center">
+                      <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+                      {rightWingOfficials[0] && (
+                        <article
+                          onClick={() => setSelectedOfficialForModal(rightWingOfficials[0])}
+                          className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                          title={`Click to view profile of ${rightWingOfficials[0].name}`}
+                        >
+                          <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                            {rightWingOfficials[0].photoUrl ? (
+                              <img src={rightWingOfficials[0].photoUrl} alt={rightWingOfficials[0].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                            )}
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{rightWingOfficials[0].position || "BARANGAY KAGAWAD"}</span>
+                            <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={rightWingOfficials[0].name}>{rightWingOfficials[0].name}</h4>
+                            <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={rightWingOfficials[0].committee}>{rightWingOfficials[0].committee || "Council Member"}</p>
+                          </div>
+                        </article>
+                      )}
+                      <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
+                      {rightWingOfficials[2] && (
+                        <article
+                          onClick={() => setSelectedOfficialForModal(rightWingOfficials[2])}
+                          className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                          title={`Click to view profile of ${rightWingOfficials[2].name}`}
+                        >
+                          <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                            {rightWingOfficials[2].photoUrl ? (
+                              <img src={rightWingOfficials[2].photoUrl} alt={rightWingOfficials[2].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                            )}
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{rightWingOfficials[2].position || "BARANGAY KAGAWAD"}</span>
+                            <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={rightWingOfficials[2].name}>{rightWingOfficials[2].name}</h4>
+                            <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={rightWingOfficials[2].committee}>{rightWingOfficials[2].committee || "Council Member"}</p>
+                          </div>
+                        </article>
+                      )}
+                    </div>
+
+                    {/* Column 4: Ruben / Kobi -> Chrystophyr SK */}
+                    <div className="flex flex-col items-center">
+                      <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+                      {rightWingOfficials[1] && (
+                        <article
+                          onClick={() => setSelectedOfficialForModal(rightWingOfficials[1])}
+                          className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                          title={`Click to view profile of ${rightWingOfficials[1].name}`}
+                        >
+                          <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                            {rightWingOfficials[1].photoUrl ? (
+                              <img src={rightWingOfficials[1].photoUrl} alt={rightWingOfficials[1].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                            )}
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{rightWingOfficials[1].position || "BARANGAY KAGAWAD"}</span>
+                            <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={rightWingOfficials[1].name}>{rightWingOfficials[1].name}</h4>
+                            <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={rightWingOfficials[1].committee}>{rightWingOfficials[1].committee || "Council Member"}</p>
+                          </div>
+                        </article>
+                      )}
+                      <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
+                      {rightWingOfficials[3] && (
+                        <article
+                          onClick={() => setSelectedOfficialForModal(rightWingOfficials[3])}
+                          className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                          title={`Click to view profile of ${rightWingOfficials[3].name}`}
+                        >
+                          <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                            {rightWingOfficials[3].photoUrl ? (
+                              <img src={rightWingOfficials[3].photoUrl} alt={rightWingOfficials[3].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
+                            )}
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-sky-100 text-sky-900 border-sky-300">{rightWingOfficials[3].position || "SK CHAIRMAN"}</span>
+                            <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={rightWingOfficials[3].name}>{rightWingOfficials[3].name}</h4>
+                            <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={rightWingOfficials[3].committee}>{rightWingOfficials[3].committee || "Sangguniang Kabataan"}</p>
+                          </div>
+                        </article>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Central Stem Line passing down to Staff */}
+                <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
+
+                {/* Level 3: Secretary & Treasurer */}
+                
+                {/* ─── MOBILE VIEW (< lg): Responsive Staff Grid with Connected Stems ─── */}
+                <div className="flex lg:hidden flex-col items-center w-full max-w-[620px] px-0.5">
+                  <div className="w-full flex flex-col items-center mb-3">
+                    <span className="inline-block text-[9px] font-black uppercase tracking-wider text-emerald-900 bg-emerald-100/90 border border-emerald-300/80 px-3 py-0.5 rounded-full shadow-2xs">
+                      Appointed Barangay Officials
+                    </span>
+                    <div className="w-[2px] h-3 bg-[#166534] mt-1" />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
+                    {secretary && (
+                      <article
+                        onClick={() => setSelectedOfficialForModal(secretary)}
+                        className="group relative flex items-center gap-2.5 rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] select-none text-left w-full"
+                        title={`Click to view profile of ${secretary.name}`}
+                      >
+                        <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                          {secretary.photoUrl ? (
+                            <img
+                              src={secretary.photoUrl}
+                              alt={secretary.name}
+                              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
+                              <User size={18} className="text-slate-300" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <span className="inline-flex items-center gap-1 text-[8px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">
+                            {secretary.position || "BARANGAY SECRETARY"}
+                          </span>
+                          <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={secretary.name}>
+                            {secretary.name}
+                          </h4>
+                          <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={secretary.committee}>
+                            {secretary.committee || "Administrative Records"}
+                          </p>
+                        </div>
+                      </article>
+                    )}
+
+                    {treasurer && (
+                      <article
+                        onClick={() => setSelectedOfficialForModal(treasurer)}
+                        className="group relative flex items-center gap-2.5 rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] select-none text-left w-full"
+                        title={`Click to view profile of ${treasurer.name}`}
+                      >
+                        <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                          {treasurer.photoUrl ? (
+                            <img
+                              src={treasurer.photoUrl}
+                              alt={treasurer.name}
+                              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
+                              <User size={18} className="text-slate-300" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <span className="inline-flex items-center gap-1 text-[8px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">
+                            {treasurer.position || "BARANGAY TREASURER"}
+                          </span>
+                          <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={treasurer.name}>
+                            {treasurer.name}
+                          </h4>
+                          <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={treasurer.committee}>
+                            {treasurer.committee || "Finance & Accounting"}
+                          </p>
+                        </div>
+                      </article>
+                    )}
+                  </div>
+                </div>
+
+                {/* ─── DESKTOP VIEW (>= lg): Side-by-side with Connected Branch Line ─── */}
+                <div className="hidden lg:flex flex-col items-center w-full">
+                  <div className="relative flex items-start gap-6 sm:gap-8">
+                    {/* Horizontal Bus linking Secretary center and Treasurer center */}
+                    <div className="absolute top-0 left-[105px] sm:left-[120px] right-[105px] sm:right-[120px] h-[2px] bg-[#166534]" />
+
+                    {/* Secretary Column */}
+                    {secretary && (
+                      <div className="flex flex-col items-center">
+                        <div className="w-[2px] h-4 sm:h-5 bg-[#166534]" />
+                        <article
+                          onClick={() => setSelectedOfficialForModal(secretary)}
+                          className="group relative flex items-center gap-3 w-[210px] sm:w-[240px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 sm:p-3 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                          title={`Click to view profile of ${secretary.name}`}
+                        >
+                          <div className="relative h-14 w-12 sm:h-16 sm:w-14 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                            {secretary.photoUrl ? (
+                              <img
+                                src={secretary.photoUrl}
+                                alt={secretary.name}
+                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
+                                <User size={18} className="text-slate-300" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="inline-flex items-center gap-1 text-[8.5px] sm:text-[9px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">
+                              {secretary.position || "BARANGAY SECRETARY"}
+                            </span>
+                            <h4 className="font-black text-[11px] sm:text-xs text-slate-900 leading-tight truncate" title={secretary.name}>
+                              {secretary.name}
+                            </h4>
+                            <p className="text-[8.5px] sm:text-[9px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={secretary.committee}>
+                              {secretary.committee || "Administrative Records"}
+                            </p>
+                          </div>
+                        </article>
+                      </div>
+                    )}
+
+                    {/* Treasurer Column */}
+                    {treasurer && (
+                      <div className="flex flex-col items-center">
+                        <div className="w-[2px] h-4 sm:h-5 bg-[#166534]" />
+                        <article
+                          onClick={() => setSelectedOfficialForModal(treasurer)}
+                          className="group relative flex items-center gap-3 w-[210px] sm:w-[240px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 sm:p-3 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
+                          title={`Click to view profile of ${treasurer.name}`}
+                        >
+                          <div className="relative h-14 w-12 sm:h-16 sm:w-14 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
+                            {treasurer.photoUrl ? (
+                              <img
+                                src={treasurer.photoUrl}
+                                alt={treasurer.name}
+                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
+                                <User size={18} className="text-slate-300" />
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="inline-flex items-center gap-1 text-[8.5px] sm:text-[9px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">
+                              {treasurer.position || "BARANGAY TREASURER"}
+                            </span>
+                            <h4 className="font-black text-[11px] sm:text-xs text-slate-900 leading-tight truncate" title={treasurer.name}>
+                              {treasurer.name}
+                            </h4>
+                            <p className="text-[8.5px] sm:text-[9px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={treasurer.committee}>
+                              {treasurer.committee || "Finance and Accountability"}
+                            </p>
+                          </div>
+                        </article>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}
 
           {/* TAB: SYSTEM SETTINGS */}
           {activeNav === "settings" && (
-            <div className="border border-slate-200 rounded-2xl p-6 shadow-xs animate-fadeIn bg-white text-slate-900">
+            <div className="border border-slate-200 rounded-2xl p-4 sm:p-6 shadow-xs animate-fadeIn bg-white text-slate-900">
               
-              <div className="flex flex-col md:flex-row gap-7">
-                {/* Left settings sidebar */}
-                <div className="w-full md:w-56 shrink-0 flex flex-col gap-1.5">
+              <div className="flex flex-col md:flex-row gap-6 md:gap-7">
+                {/* Settings menu list */}
+                <div className={`w-full md:w-56 shrink-0 flex flex-col gap-2 ${mobileSettingsOpen ? "hidden md:flex" : "flex"}`}>
+                  <div className="md:hidden pb-2 mb-1 border-b border-slate-100">
+                    <p className="text-xs font-black uppercase tracking-wider text-slate-800">Settings & Preferences</p>
+                    <p className="text-[11px] text-slate-500 font-bold mt-0.5">Select a category to manage your account.</p>
+                  </div>
                   {[
                     { key: "security", label: "Account & Security", icon: KeyRound, desc: "Change username/password." },
                     { key: "notifications", label: "Alerts & Notifications", icon: Bell, desc: "SMS and update configuration." },
@@ -6122,24 +7397,41 @@ const UserDashboard = () => {
                     <button
                       key={tabItem.key}
                       type="button"
-                      onClick={() => setSettingsTab(tabItem.key)}
-                      className={`w-full flex items-start text-left gap-3 px-4 py-3 rounded-xl border transition-all ${
+                      onClick={() => {
+                        setSettingsTab(tabItem.key);
+                        setMobileSettingsOpen(true);
+                      }}
+                      className={`w-full flex items-center justify-between text-left gap-3 px-4 py-3.5 rounded-2xl border transition-all cursor-pointer ${
                         settingsTab === tabItem.key
-                          ? "bg-[#14532D]/10 border-[#14532D]/20 text-[#14532D] font-black"
-                          : "border-transparent text-slate-600 hover:bg-slate-50 font-semibold"
+                          ? "bg-[#14532D]/10 border-[#14532D]/30 text-[#14532D] font-black shadow-xs"
+                          : "border-slate-200/80 bg-slate-50/70 text-slate-700 hover:bg-slate-100/80 font-semibold"
                       }`}
                     >
-                      <tabItem.icon size={15} className="mt-0.5 shrink-0 text-[#14532D]" />
-                      <div className="min-w-0">
-                        <p className="text-xs font-bold leading-none">{tabItem.label}</p>
-                        <p className="text-xs text-slate-500 font-medium mt-1 leading-normal">{tabItem.desc}</p>
+                      <div className="flex items-start gap-3 min-w-0">
+                        <tabItem.icon size={16} className="mt-0.5 shrink-0 text-[#14532D]" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-black leading-tight text-slate-900">{tabItem.label}</p>
+                          <p className="text-[11px] text-slate-500 font-medium mt-1 leading-normal">{tabItem.desc}</p>
+                        </div>
                       </div>
+                      <ChevronRight size={14} className="text-slate-400 shrink-0 md:hidden" />
                     </button>
                   ))}
                 </div>
 
-                {/* Right settings content */}
-                <div className="flex-1 w-full min-w-0">
+                {/* Settings detail content */}
+                <div className={`flex-1 w-full min-w-0 ${!mobileSettingsOpen ? "hidden md:block" : "block"}`}>
+                  {/* Mobile Back Button */}
+                  <div className="md:hidden mb-4 pb-2 border-b border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setMobileSettingsOpen(false)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-black transition cursor-pointer shadow-2xs"
+                    >
+                      <ChevronLeft size={14} className="text-[#14532D]" />
+                      <span>Back to Settings Menu</span>
+                    </button>
+                  </div>
                   
                   {/* SUBTAB 1: ACCOUNT SECURITY */}
                   {settingsTab === "security" && (
@@ -6511,20 +7803,26 @@ const UserDashboard = () => {
                           <div className="flex-1 pr-4">
                             <p className="text-xs font-bold text-slate-900">Browser Push Notifications</p>
                             <p className="text-xs text-slate-500 font-medium mt-1">
-                              Show floating desktop and mobile push alerts for announcements. Current status: <span className="font-extrabold uppercase text-[#14532D]">{typeof window !== "undefined" && "Notification" in window ? Notification.permission : "Not Supported"}</span>
+                              Show floating desktop and mobile push alerts for announcements. Current status: <span className="font-extrabold uppercase text-[#14532D]">{isNotificationSupported() ? getNotificationPermission() : "Not Supported"}</span>
                             </p>
-                            {typeof window !== "undefined" && "Notification" in window && Notification.permission === "denied" && (
+                            {isNotificationSupported() && getNotificationPermission() === "denied" && (
                               <span className="block text-[11px] text-rose-500 mt-1.5 font-bold">
                                 ⚠️ Permission is blocked. Please click the lock icon next to the browser website address URL and change "Notification" settings to "Allow".
                               </span>
                             )}
                           </div>
-                          {typeof window !== "undefined" && "Notification" in window && Notification.permission !== "granted" && (
+                          {isNotificationSupported() && getNotificationPermission() !== "granted" && (
                             <button
                               type="button"
                               onClick={async () => {
-                                await Notification.requestPermission();
-                                window.location.reload();
+                                try {
+                                  if (isNotificationSupported() && window.Notification.requestPermission) {
+                                    await window.Notification.requestPermission();
+                                    window.location.reload();
+                                  }
+                                } catch (e) {
+                                  console.warn("Notification request permission failed:", e);
+                                }
                               }}
                               className="px-3.5 py-2 text-xs font-black rounded-lg bg-[#14532D] text-white transition active:scale-95 shadow-sm"
                             >
@@ -6598,6 +7896,9 @@ const UserDashboard = () => {
             </div>
           )}
 
+        </div>
+      </main>
+
       {/* 6. PASSWORD CONFIRMATION MODAL */}
       <AnimatePresence>
         {passwordConfirmOpen && (
@@ -6657,12 +7958,11 @@ const UserDashboard = () => {
                     {confirmPasswordError}
                   </div>
                 )}
-
                 <div className="flex gap-2.5 pt-2">
                   <button
                     type="submit"
                     disabled={savingProfile}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#14532D] to-[#0F4324] py-2.5 text-xs font-bold text-white shadow-xs disabled:opacity-50 hover:scale-101 transition"
+                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#14532D] to-[#0F4324] py-2.5 text-xs font-bold text-white shadow-xs disabled:opacity-50 hover:scale-101 transition cursor-pointer"
                   >
                     {savingProfile ? <Loader size={12} className="animate-spin" /> : <CheckCircle size={12} />}
                     Confirm & Update
@@ -6670,7 +7970,7 @@ const UserDashboard = () => {
                   <button
                     type="button"
                     onClick={() => setPasswordConfirmOpen(false)}
-                    className="px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 font-bold text-xs hover:bg-slate-100 transition"
+                    className="px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 font-bold text-xs hover:bg-slate-100 transition cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -6681,102 +7981,8 @@ const UserDashboard = () => {
         )}
       </AnimatePresence>
 
-        </div>
-      </main>
-
-      {/* 5. Floating 3D AI Robot Assistant Levitating Avatar & Typewriter Speech Bubble (Strict Vertical Alignment & Responsive Sizes) */}
-      <AnimatePresence>
-        {!assistantOpen && robotVisible && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.8, y: 15 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.8, y: 15 }}
-            transition={{ duration: 0.45, ease: "easeOut" }}
-            className="fixed bottom-[8rem] right-3 sm:bottom-24 sm:right-6 z-[9945] w-16 sm:w-20 flex items-center justify-center pointer-events-auto"
-          >
-            <div className="relative w-full flex items-center justify-center">
-              {/* Animated Typewriter Speech Bubble (Transparent White Glassmorphism) */}
-              <div
-                className="absolute right-[calc(100%+8px)] bottom-1.5 sm:bottom-2 w-[180px] sm:w-[260px] max-w-[calc(100vw-5.5rem)] bg-white/95 backdrop-blur-2xl border border-white/95 text-slate-900 p-2.5 sm:p-3 rounded-2xl shadow-xl sm:shadow-2xl shadow-slate-950/25 z-20 text-left pointer-events-auto select-none cursor-pointer"
-                onClick={() => setAssistantOpen(true)}
-                title="Click to chat with KaagapAI Virtual Assistant"
-              >
-                {/* Chat Bubble Tail Pointer */}
-                <div className="absolute -right-2 bottom-4 sm:bottom-5 w-0 h-0 border-t-[5px] sm:border-t-[6px] border-t-transparent border-l-[7px] sm:border-l-[8px] border-l-white/95 border-b-[5px] sm:border-b-[6px] border-b-transparent" />
-                
-                {/* Speech Bubble Header */}
-                <div className="flex items-center justify-between pb-1 sm:pb-1.5 mb-1 sm:mb-1.5 border-b border-slate-200/80">
-                  <div className="flex items-center gap-1.5">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
-                    </span>
-                    <span className="text-[9.5px] sm:text-[10px] font-black uppercase tracking-wider text-emerald-800">KaagapAI Robot</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setRobotVisible(false);
-                      setRobotDismissed(true);
-                      try {
-                        localStorage.setItem("kaagapai_robot_dismissed", "true");
-                      } catch {}
-                    }}
-                    className="text-slate-400 hover:text-slate-900 text-xs font-bold px-1.5 py-0.5 hover:bg-slate-200/80 rounded transition cursor-pointer"
-                    title="Dismiss permanently"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                {/* Typewriter Text */}
-                <p className="text-[10.5px] sm:text-xs font-black leading-relaxed text-slate-900 font-sans">
-                  {robotTypedText}
-                  {robotTypedText.length < (robotSayings[robotMessageIndex]?.length || 0) && (
-                    <span className="inline-block w-1 h-3 ml-0.5 bg-emerald-600 animate-pulse" />
-                  )}
-                </p>
-
-                <div className="mt-1.5 pt-1 sm:pt-1.5 border-t border-slate-200/80 flex justify-between items-center text-[9px] sm:text-[9.5px] font-bold">
-                  <span className="text-emerald-700 font-black">Click to chat</span>
-                  <span className="text-amber-700">24/7 AI ⚡</span>
-                </div>
-              </div>
-
-              {/* Levitating 3D Robot Avatar Image (Optimal, clearly visible on Mobile & Laptop) */}
-              <motion.div
-                animate={{ 
-                  y: [0, -7, 0],
-                  rotate: [0, -1.5, 1.5, 0]
-                }}
-                transition={{ 
-                  duration: 3.5, 
-                  repeat: Infinity, 
-                  repeatType: "mirror",
-                  ease: "easeInOut" 
-                }}
-                onClick={() => setAssistantOpen(true)}
-                className="relative cursor-pointer group shrink-0 flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20"
-                title="Click KaagapAI Robot to open Assistant"
-              >
-                {/* Soft Ambient Glow Halo */}
-                <div className="absolute -inset-2 bg-gradient-to-r from-emerald-500/25 via-teal-400/25 to-cyan-500/25 rounded-full blur-md opacity-75 group-hover:opacity-100 transition duration-300 animate-pulse pointer-events-none" />
-
-                {/* 3D Robot Image */}
-                <img
-                  src="/ai-robot.webp"
-                  alt="KaagapAI Floating Robot Assistant"
-                  className="w-16 h-16 sm:w-20 sm:h-20 max-w-full max-h-full object-contain drop-shadow-[0_10px_16px_rgba(0,0,0,0.5)] relative z-10 transition-transform duration-300 group-hover:scale-110"
-                  onError={(e) => {
-                    e.target.src = "/robot/Robot.cutout.png";
-                  }}
-                />
-              </motion.div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* 5. Floating 3D AI Robot Assistant Levitating Avatar & Typewriter Speech Bubble */}
+      <FloatingRobotWidget assistantOpen={assistantOpen} onOpenAssistant={() => setAssistantOpen(true)} />
 
       {/* 6. Floating AI Assistant FAB Button */}
       <div className="fixed bottom-16 right-3 sm:bottom-6 sm:right-6 z-[9950] w-12 sm:w-16 flex items-center justify-center pointer-events-auto">
@@ -6887,18 +8093,24 @@ const UserDashboard = () => {
                         stopAssistantSpeech();
                         setSpeakingChatId(null);
                         setVoiceEnabled(false);
+                        try {
+                          localStorage.setItem("kaagapai_chatbot_voice_enabled", "false");
+                        } catch {}
                       } else {
                         setVoiceEnabled(true);
+                        try {
+                          localStorage.setItem("kaagapai_chatbot_voice_enabled", "true");
+                        } catch {}
                       }
                     }}
-                    className={`flex items-center justify-center p-1.5 rounded-xl text-xs font-bold transition border border-white/10 active:scale-95 ${
+                    className={`flex items-center justify-center p-1.5 rounded-xl text-xs font-bold transition border active:scale-95 cursor-pointer ${
                       voiceEnabled
-                        ? "bg-emerald-500/30 text-white border-emerald-400/40"
-                        : "bg-white/10 text-white/60 hover:text-white"
+                        ? "bg-emerald-500/30 text-emerald-200 border-emerald-400/40 hover:bg-emerald-500/40 shadow-xs"
+                        : "bg-rose-500/20 text-rose-300 border-rose-400/30 hover:bg-rose-500/30"
                     }`}
-                    title={voiceEnabled ? "Voice Assistant Enabled (Click to Mute Voice)" : "Voice Assistant Muted (Click to Enable Voice)"}
+                    title={voiceEnabled ? "Voice Output is ON (Click to Mute Voice)" : "Voice Output is MUTED (Click to Unmute Voice)"}
                   >
-                    {voiceEnabled ? <Volume2 size={16} className="text-emerald-300 animate-pulse" /> : <VolumeX size={16} />}
+                    {voiceEnabled ? <Volume2 size={16} className="text-emerald-300 animate-pulse" /> : <VolumeX size={16} className="text-rose-300" />}
                   </button>
 
                   {/* New Chat Button */}
@@ -8097,6 +9309,92 @@ const UserDashboard = () => {
           );
         })()}
       </AnimatePresence>
+
+      {/* Official Governance Profile Detail Modal */}
+      {selectedOfficialForModal && (
+        <FloatingModal
+          open={Boolean(selectedOfficialForModal)}
+          onClose={() => setSelectedOfficialForModal(null)}
+          title={selectedOfficialForModal.name || "Barangay Official Profile"}
+          eyebrow="BARANGAY OFFICIAL DIRECTORY"
+          maxWidth="max-w-md"
+        >
+          <div className="space-y-4 text-slate-800 dark:text-slate-100">
+            <div className="flex items-center gap-4 bg-slate-50 dark:bg-slate-900/80 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+              <div className="h-20 w-16 shrink-0 overflow-hidden rounded-xl bg-slate-200 border border-slate-300/80 shadow-sm">
+                {selectedOfficialForModal.photoUrl ? (
+                  <img
+                    src={selectedOfficialForModal.photoUrl}
+                    alt={selectedOfficialForModal.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-sm">
+                    {selectedOfficialForModal.level === "captain" ? "PB" : "BO"}
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="inline-block rounded-full bg-[#881337]/10 text-[#881337] dark:bg-rose-950/50 dark:text-rose-300 border border-[#881337]/20 px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider">
+                  {selectedOfficialForModal.position || "Council Member"}
+                </span>
+                <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white mt-1 leading-snug truncate">
+                  {selectedOfficialForModal.name}
+                </h3>
+                <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400 mt-0.5">
+                  {selectedOfficialForModal.committee || "Sangguniang Barangay Council"}
+                </p>
+              </div>
+            </div>
+
+            {selectedOfficialForModal.focusArea && (
+              <div className="rounded-xl bg-emerald-50 dark:bg-emerald-950/40 p-3 border border-emerald-200/80 dark:border-emerald-800/60 text-xs space-y-1">
+                <p className="font-bold text-emerald-800 dark:text-emerald-300">Focus & Key Responsibilities:</p>
+                <p className="font-medium text-emerald-950 dark:text-emerald-100 leading-relaxed">
+                  {selectedOfficialForModal.focusArea}
+                </p>
+              </div>
+            )}
+
+            {selectedOfficialForModal.background && (
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-900/60 p-3 border border-slate-200/80 dark:border-slate-800 text-xs space-y-1">
+                <p className="font-bold text-slate-500 dark:text-slate-400">Public Service Overview:</p>
+                <p className="font-medium text-slate-700 dark:text-slate-300 leading-relaxed">
+                  {selectedOfficialForModal.background}
+                </p>
+              </div>
+            )}
+
+            {(selectedOfficialForModal.contact || selectedOfficialForModal.email) && (
+              <div className="rounded-xl bg-slate-50 dark:bg-slate-900/60 p-3 border border-slate-200/80 dark:border-slate-800 text-xs space-y-1.5">
+                <p className="font-bold text-slate-500 dark:text-slate-400">Official Contact Information:</p>
+                {selectedOfficialForModal.contact && (
+                  <p className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-bold">
+                    <Phone size={13} className="text-emerald-600" />
+                    <span>{selectedOfficialForModal.contact}</span>
+                  </p>
+                )}
+                {selectedOfficialForModal.email && (
+                  <p className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-bold">
+                    <Mail size={13} className="text-emerald-600" />
+                    <span>{selectedOfficialForModal.email}</span>
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedOfficialForModal(null)}
+                className="px-5 py-2 text-xs font-black rounded-xl bg-[#14532D] hover:bg-[#0f3e21] text-white transition active:scale-95 cursor-pointer shadow-md"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </FloatingModal>
+      )}
 
       {/* Announcement Detail Modal */}
       {selectedAnnouncementModal && (

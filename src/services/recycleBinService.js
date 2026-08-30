@@ -153,17 +153,42 @@ export async function restoreFromRecycleBin(binEntryId) {
   const payload = prepareRestorePayload(entry.snapshot);
 
   // Re-insert into Supabase using upsert (in case the ID still exists)
-  const { data, error } = await supabase
-    .from(entry.tableName)
-    .upsert([payload], { onConflict: "id" })
-    .select()
-    .limit(1)
-    .maybeSingle();
+  let restoredData = null;
+  try {
+    const { data, error } = await supabase
+      .from(entry.tableName)
+      .upsert([payload], { onConflict: "id" })
+      .select()
+      .limit(1)
+      .maybeSingle();
 
-  if (error) {
-    throw new Error(
-      `Unable to restore ${entry.displayName}: ${error.message}`
-    );
+    if (error) {
+      if (entry.tableName !== "document_templates") {
+        throw new Error(`Unable to restore ${entry.displayName}: ${error.message}`);
+      }
+    } else {
+      restoredData = data;
+    }
+  } catch (dbErr) {
+    if (entry.tableName !== "document_templates") {
+      throw dbErr;
+    }
+  }
+
+  // If restoring a document template, ensure local storage cache is re-seeded
+  if (entry.tableName === "document_templates") {
+    try {
+      const LOCAL_KEY = "kaagapai_document_templates_v1";
+      const raw = typeof window !== "undefined" ? window.localStorage?.getItem(LOCAL_KEY) : null;
+      const map = raw ? JSON.parse(raw) : {};
+      map[entry.recordId] = entry.snapshot;
+      if (typeof window !== "undefined") {
+        window.localStorage?.setItem(LOCAL_KEY, JSON.stringify(map));
+      }
+      restoredData = entry.snapshot;
+    } catch (e) {
+      console.warn("Notice restoring template to local cache:", e);
+    }
   }
 
   // Remove from recycle bin
@@ -177,7 +202,7 @@ export async function restoreFromRecycleBin(binEntryId) {
     source: "Local",
   });
 
-  return data;
+  return restoredData || entry.snapshot;
 }
 
 /**
@@ -337,8 +362,12 @@ function extractTitle(tableName, record) {
       return record.title || "Untitled Announcement";
     case "livelihood_posts":
       return record.title || "Untitled Post";
-    case "document_requests":
-      return `${record.document_type || "Document"} Request`;
+    case "document_requests": {
+      const resName = record.residents?.full_name || record.resident_name || "";
+      return resName
+        ? `${record.document_type || "Document"} Request (${resName})`
+        : `${record.document_type || "Document"} Request`;
+    }
     case "document_templates":
       return record.template_name || record.document_type || "Template";
     case "ai_knowledge_items":

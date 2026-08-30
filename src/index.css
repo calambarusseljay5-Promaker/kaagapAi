@@ -3606,7 +3606,7 @@ div.rounded-lg.bg-white {
   padding: 10px 16px !important;
   border-radius: 12px !important;
   border: 1px solid rgba(52, 211, 153, 0.35) !important;
-  box-shadow: 0 4px 12px rgba(4, 78, 53, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+  box-shadow: 0 4px 14px rgba(4, 78, 53, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
   position: relative !important;
   overflow: hidden !important;
 }
@@ -3645,33 +3645,90 @@ div.rounded-lg.bg-white {
   color: #ffffff !important;
 }
 
-/* Keyframe animations for admin charts */
+/* Keyframe entrance animations for 3 admin analytics charts */
+@keyframes curveLineDraw {
+  0% {
+    stroke-dashoffset: 650;
+  }
+  100% {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes areaFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dotPopIn {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.35);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
 @keyframes chartBarGrow {
-  0% { transform: scaleY(0); transform-origin: bottom; }
-  100% { transform: scaleY(1); transform-origin: bottom; }
+  0% {
+    transform: scaleY(0);
+    transform-origin: bottom;
+    opacity: 0.2;
+  }
+  100% {
+    transform: scaleY(1);
+    transform-origin: bottom;
+    opacity: 1;
+  }
 }
 
 @keyframes donutDraw {
-  0% { stroke-dashoffset: 238; }
+  0% {
+    stroke-dashoffset: 238;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+  }
 }
 
-@keyframes colorShiftStroke {
-  0%, 100% { stroke: #10B981; filter: drop-shadow(0 4px 8px rgba(16, 185, 129, 0.4)); }
-  25% { stroke: #06B6D4; filter: drop-shadow(0 4px 8px rgba(6, 182, 212, 0.4)); }
-  50% { stroke: #8B5CF6; filter: drop-shadow(0 4px 8px rgba(139, 92, 246, 0.4)); }
-  75% { stroke: #F59E0B; filter: drop-shadow(0 4px 8px rgba(245, 158, 11, 0.4)); }
+.animate-curve-draw {
+  stroke-dasharray: 650;
+  stroke-dashoffset: 650;
+  animation: curveLineDraw 1.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-area-fade {
+  animation: areaFadeIn 1.4s ease-out forwards;
+}
+
+.animate-dot-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dotPopIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
 }
 
 .animate-bar-grow {
-  animation: chartBarGrow 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: chartBarGrow 0.85s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .animate-donut-draw {
-  animation: donutDraw 1.2s ease-out forwards;
-}
-
-.animate-chart-color-shift {
-  animation: colorShiftStroke 8s ease-in-out infinite;
+  animation: donutDraw 1.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .strict-desc {
@@ -5220,27 +5277,33 @@ select {
   font-size: 7pt;
   font-weight: 700;
   text-transform: uppercase;
-  padding: 2px 1px;
+  padding: 3px 3px;
   border: 1px solid #cbd5e1;
   text-align: center;
   vertical-align: middle;
-  line-height: 1.1;
+  line-height: 1.15;
+  white-space: nowrap !important;
+}
+
+.gov-report-table thead th:first-child,
+.gov-report-table tbody td:first-child,
+.gov-report-table tfoot td:first-child {
+  white-space: nowrap !important;
+  text-align: left;
 }
 
 .gov-report-table tbody td {
-  padding: 2px 1px;
+  padding: 2.5px 3px;
   border: 0.5px solid #cbd5e1;
   color: #1f2937;
   font-size: 7pt;
   vertical-align: middle;
-  line-height: 1.1;
+  line-height: 1.15;
 }
 
 .gov-report-table th,
 .gov-report-table td {
-  white-space: normal !important;
-  word-break: break-word !important;
-  word-wrap: break-word !important;
+  word-break: normal !important;
 }
 
 /* Alternating rows */
@@ -5326,7 +5389,7 @@ select {
 
 /* ---- Signatories Footer ---- */
 .gov-report-footer {
-  margin-top: 10px;
+  margin-top: 26px;
   display: flex;
   justify-content: space-around;
   align-items: flex-start;
@@ -5338,45 +5401,63 @@ select {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  width: 40%;
+  width: 42%;
 }
 
 .gov-report-signatory p {
-  font-size: 7.5pt;
-  color: #4b5563;
-  margin: 0 0 18px;
+  font-size: 8pt;
+  color: #374151;
+  margin: 0 0 38px;
   font-weight: 600;
 }
 
 .gov-report-signatory-name {
-  font-size: 9pt;
+  font-size: 8.5pt;
   font-weight: 800;
   color: #111827;
   text-transform: uppercase;
   border-bottom: 1.5px solid #111827;
-  padding-bottom: 2px;
-  width: 80%;
+  padding-bottom: 3px;
+  margin-bottom: 3px;
+  width: 85%;
   text-align: center;
-  min-width: 160px;
+  min-width: 180px;
 }
 
 .gov-report-signatory-title {
-  font-size: 7pt;
+  font-size: 7.5pt;
   color: #4b5563;
   font-style: italic;
-  margin-top: 3px;
-  font-weight: 500;
+  margin-top: 2px;
+  font-weight: 600;
 }
 
 /* ---- Print Customizations ---- */
 @media print {
   /* Zero margins strip browser headers/footers (URL, dates) */
   @page {
-    margin: 0 !important;
+    size: auto;
+    margin: 0mm !important;
   }
 
-  /* Force background colors to print */
-  html, body {
+  /* Completely suppress scrollbars in print */
+  ::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+  * {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Force background colors to print clean */
+  html, body, #root, .min-h-screen {
+    background: #ffffff !important;
     background-color: #ffffff !important;
     color: #000000 !important;
     width: 100% !important;
@@ -5384,7 +5465,6 @@ select {
     overflow: visible !important;
     margin: 0 !important;
     padding: 0 !important;
-    font-size: 7pt !important;
   }
 
   /* Hide screen elements entirely */
@@ -5403,31 +5483,61 @@ select {
     display: none !important;
   }
 
-  /* Target report elements for print size */
+  /* Target report elements for print size & remove scroll containers */
+  .fixed.inset-0 {
+    position: static !important;
+    inset: auto !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    backdrop-filter: none !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    width: 100% !important;
+  }
+
   .report-preview-workspace {
     padding: 0 !important;
-    background: none !important;
+    background: #ffffff !important;
+    background-color: #ffffff !important;
     min-height: 0 !important;
     overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    display: block !important;
+    width: 100% !important;
   }
 
   .report-layout-container {
-    margin: 0 !important;
-    padding: 0 !important;
+    margin: 0 auto !important;
+    padding: 4mm 10mm !important;
     border: none !important;
     box-shadow: none !important;
     width: 100% !important;
     max-width: 100% !important;
+    box-sizing: border-box !important;
     border-radius: 0 !important;
     background-color: #ffffff !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
-  /* Gov report table — force background colors to print */
+  /* Gov report table — force background colors to print & avoid row clipping */
   .gov-report-table {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     border-collapse: collapse !important;
     width: 100% !important;
+    page-break-inside: auto !important;
+  }
+
+  .gov-report-table thead {
+    display: table-header-group !important;
+  }
+
+  .gov-report-table tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   .gov-report-table th,
@@ -5437,8 +5547,15 @@ select {
     border: 1px solid #9ca3af !important;
   }
 
+  .gov-report-summary-box {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
   .gov-report-footer {
     page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-top: 20px !important;
   }
 
   .print-family-purok-summary-boxes > div > div strong {

@@ -144,7 +144,7 @@ const Welcome = () => {
         {/* Top subtle sheen */}
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent" />
 
-        {/* 3D Admin Avatar & Logo Badge */}
+        {/* Official Barangay Seal Emblem */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -153,22 +153,14 @@ const Welcome = () => {
             duration: shouldReduceMotion ? 0 : 0.4,
             ease: smoothEase,
           }}
-          className="mx-auto relative flex flex-col items-center justify-center"
+          className="mx-auto relative flex flex-col items-center justify-center mb-1"
         >
-          <div className="relative h-24 w-24 sm:h-28 sm:w-28 rounded-2xl border-2 border-emerald-400/40 bg-gradient-to-b from-emerald-900/60 to-emerald-950/90 p-1 shadow-xl shadow-emerald-950/50 overflow-hidden ring-4 ring-emerald-500/20">
+          <div className="relative h-24 w-24 sm:h-28 sm:w-28 rounded-full border-2 border-emerald-400/60 bg-gradient-to-b from-emerald-900/80 via-[#01281B] to-[#011810] p-2.5 shadow-2xl shadow-emerald-950/80 ring-4 ring-emerald-500/25 flex items-center justify-center backdrop-blur-md">
             <img
-              src="/admin-3d-avatar.png"
-              alt="Admin 3D Avatar"
-              className="h-full w-full object-cover object-top rounded-xl brightness-105"
-              onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = "/logo.png";
-              }}
+              src="/logo.png"
+              alt="Barangay Upper Mingading Seal"
+              className="h-full w-full object-contain filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.7)]"
             />
-          </div>
-          {/* Floating Logo Pill */}
-          <div className="-mt-3.5 z-10 flex h-7 w-7 items-center justify-center rounded-full border border-emerald-400/50 bg-[#011C13] p-0.5 shadow-md ring-2 ring-emerald-500/30">
-            <img src="/logo.png" alt="Logo" className="h-full w-full object-contain" />
           </div>
         </motion.div>
 

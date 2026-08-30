@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   createDocumentRequest,
@@ -27,7 +27,10 @@ import {
 import {
   getOrganizationOfficials,
   fetchOrganizationOfficials,
+  getActiveCaptain,
+  getActiveSecretary,
 } from "../services/organizationService";
+import { showAdminSystemToast } from "../utils/toast";
 import {
   AlertCircle,
   AlignCenter,
@@ -39,9 +42,11 @@ import {
   Check,
   CheckCircle,
   CheckSquare,
+  ChevronDown,
   ClipboardList,
   Download,
   Eye,
+  FilePlus,
   FileText,
   Filter,
   Italic,
@@ -260,8 +265,8 @@ const buildResidentFields = (
     email: resident?.email || "",
     pwdStatus: resident?.is_pwd ? "Yes" : "No",
     pwdType: resident?.pwd_type || "",
-    orNumber: savedFields.orNumber || (is4ps ? "2578557" : ""),
-    dateIssued: savedFields.dateIssued || (is4ps ? todayInputValue() : ""),
+    orNumber: savedFields.orNumber === "2578557" ? "" : (savedFields.orNumber || ""),
+    dateIssued: savedFields.dateIssued || "",
     ctcNumber: savedFields.ctcNumber || "",
     ctcDateIssued: savedFields.ctcDateIssued || "",
     purpose: savedFields.purpose || defaultPurpose,
@@ -346,10 +351,21 @@ const DocumentManagement = () => {
     [officials]
   );
 
-  const [message, setMessage] = useState(null);
+  const [message, _setMessage] = useState(null);
+  const setMessage = useCallback((msg) => {
+    if (msg) {
+      if (typeof msg === "string") {
+        showAdminSystemToast(msg, "success");
+      } else if (msg.text) {
+        showAdminSystemToast(msg.text, msg.type || "success", msg.title);
+      }
+    }
+  }, []);
   const [statusFilter, setStatusFilter] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRowIds, setSelectedRowIds] = useState([]);
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const selectedRowIdsSet = useMemo(() => new Set(selectedRowIds), [selectedRowIds]);
   const [deletingSelected, setDeletingSelected] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -378,6 +394,21 @@ const DocumentManagement = () => {
   });
   const [walkInResidentSearchOpen, setWalkInResidentSearchOpen] = useState(false);
   const [showWalkInModal, setShowWalkInModal] = useState(false);
+  const [docDropdownOpen, setDocDropdownOpen] = useState(false);
+  const docDropdownRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (docDropdownRef.current && !docDropdownRef.current.contains(event.target)) {
+        setDocDropdownOpen(false);
+      }
+    };
+    if (docDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [docDropdownOpen]);
+
   const [documentFields, setDocumentFields] = useState(() => buildResidentFields(null, null, null));
   const [creatingWalkIn, setCreatingWalkIn] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -534,52 +565,60 @@ const DocumentManagement = () => {
     }
   };
 
-  const loadData = async ({ showLoading = false } = {}) => {
+  const loadData = useCallback(async ({ showLoading = false } = {}) => {
     if (showLoading) {
       setLoading(true);
     }
 
     try {
-      const userData = await getCurrentUserWithProfile();
+      const [userData, results] = await Promise.all([
+        getCurrentUserWithProfile(),
+        Promise.allSettled([
+          fetchDocumentRequests({ status: statusFilter, limit: 300 }),
+          fetchDocumentTemplates(),
+          fetchResidents("", "", { withAccounts: false, excludeArchived: true }),
+          fetchOrganizationOfficials(),
+        ]),
+      ]);
+
       if (!userData || userData.profile?.role !== "admin") {
         navigate("/");
         return;
       }
 
-      const [requestResult, templateResult, residentResult] = await Promise.allSettled([
-        fetchDocumentRequests({ status: statusFilter, limit: 300 }),
-        fetchDocumentTemplates(),
-        fetchResidents(""),
-      ]);
+      const requestResult = results[0];
+      const templateResult = results[1];
+      const residentResult = results[2];
+      const officialResult = results[3];
 
-      if (requestResult.status === "fulfilled") {
-        setRequests(requestResult.value.data || []);
+      if (officialResult?.status === "fulfilled" && Array.isArray(officialResult.value)) {
+        setOfficials(officialResult.value);
+      }
+
+      if (requestResult?.status === "fulfilled") {
+        setRequests(requestResult.value?.data || []);
       } else {
         setRequests([]);
         setMessage({
           type: "error",
-          text: requestResult.reason?.message || "Failed to load document requests.",
+          text: requestResult?.reason?.message || "Failed to load document requests.",
         });
       }
 
-      if (templateResult.status === "fulfilled") {
-        setTemplates(templateResult.value);
+      if (templateResult?.status === "fulfilled") {
+        setTemplates(templateResult.value || []);
       } else {
         setTemplates([]);
         setMessage({
           type: "error",
-          text: templateResult.reason?.message || "Failed to load document templates.",
+          text: templateResult?.reason?.message || "Failed to load document templates.",
         });
       }
 
-      if (residentResult.status === "fulfilled") {
-        setResidents(residentResult.value);
+      if (residentResult?.status === "fulfilled") {
+        setResidents(residentResult.value || []);
       } else {
         setResidents([]);
-        setMessage({
-          type: "error",
-          text: residentResult.reason?.message || "Failed to load resident records.",
-        });
       }
     } catch (err) {
       console.error("Error loading data:", err);
@@ -587,74 +626,25 @@ const DocumentManagement = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [navigate, statusFilter]);
 
   useEffect(() => {
     let isMounted = true;
+    loadData({ showLoading: false });
 
-    const loadInitialData = async () => {
-      try {
-        const userData = await getCurrentUserWithProfile();
-        if (!userData || userData.profile?.role !== "admin") {
-          navigate("/");
-          return;
-        }
-
-        const [requestResult, templateResult, residentResult] = await Promise.allSettled([
-          fetchDocumentRequests({ status: statusFilter, limit: 300 }),
-          fetchDocumentTemplates(),
-          fetchResidents(""),
-        ]);
-
-        if (!isMounted) return;
-
-        if (requestResult.status === "fulfilled") {
-          setRequests(requestResult.value.data || []);
-        } else {
-          setRequests([]);
-          setMessage({
-            type: "error",
-            text: requestResult.reason?.message || "Failed to load document requests.",
-          });
-        }
-
-        if (templateResult.status === "fulfilled") {
-          setTemplates(templateResult.value);
-        } else {
-          setTemplates([]);
-          setMessage({
-            type: "error",
-            text: templateResult.reason?.message || "Failed to load document templates.",
-          });
-        }
-
-        if (residentResult.status === "fulfilled") {
-          setResidents(residentResult.value);
-        } else {
-          setResidents([]);
-          setMessage({
-            type: "error",
-            text: residentResult.reason?.message || "Failed to load resident records.",
-          });
-        }
-      } catch (err) {
-        if (isMounted) {
-          console.error("Error loading data:", err);
-          setMessage({ type: "error", text: err.message || "Failed to load document requests." });
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
+    const handleOfficialsUpdate = (event) => {
+      if (isMounted && event.detail?.length) {
+        setOfficials(event.detail);
       }
     };
 
-    loadInitialData();
+    window.addEventListener("organization_officials_updated", handleOfficialsUpdate);
 
     return () => {
       isMounted = false;
+      window.removeEventListener("organization_officials_updated", handleOfficialsUpdate);
     };
-  }, [navigate, searchTerm, statusFilter]);
+  }, [loadData]);
 
   const openRequest = (request) => {
     if (isRequestExpired(request)) {
@@ -717,7 +707,6 @@ const DocumentManagement = () => {
           next.purpose = next.purpose || "Solo Parent ID and Benefits Application";
         } else if (docKey === "4ps") {
           next.fourPsSpouse = next.fourPsSpouse || "Maria Balad";
-          next.orNumber = next.orNumber || "2578557";
           next.purpose = next.purpose || "Pantawid Pamilyang Pilipino Program (4Ps) Requirement";
         } else if (docKey === "rsbsa") {
           next.cropsText = next.cropsText || "Rice Field ½ hectare, and Fruits Crops 1 hectare";
@@ -787,7 +776,6 @@ const DocumentManagement = () => {
         next.purpose = next.purpose || "Solo Parent ID and Benefits Application";
       } else if (docKey === "4ps") {
         next.fourPsSpouse = next.fourPsSpouse || "Maria Balad";
-        next.orNumber = next.orNumber || "2578557";
         next.purpose = next.purpose || "Pantawid Pamilyang Pilipino Program (4Ps) Requirement";
       } else if (docKey === "rsbsa") {
         next.cropsText = next.cropsText || "Rice Field ½ hectare, and Fruits Crops 1 hectare";
@@ -855,7 +843,7 @@ const DocumentManagement = () => {
         {
           purpose: finalPurpose,
           residencyRecommendation: docKey === "residency" ? (walkInForm.residencyRecommendation || finalPurpose || "job and application") : undefined,
-          orNumber: walkInForm.orNumber || (docKey === "4ps" ? "2578557" : ""),
+          orNumber: walkInForm.orNumber || "",
           dateIssued: walkInForm.dateIssued || "",
           ctcNumber: walkInForm.ctcNumber || "",
           signatoryKey: "captain",
@@ -1472,37 +1460,64 @@ const DocumentManagement = () => {
 
 
 
-  const columns = [
-    {
+  const columns = useMemo(() => {
+    const cols = [];
+
+    cols.push({
       field: "__selection__",
-      headerName: "",
-      width: 54,
+      headerName: "Select",
+      width: 125,
       sortable: false,
       filterable: false,
       disableColumnMenu: true,
-      headerAlign: "center",
-      align: "center",
       renderHeader: () => (
-        <div className="flex items-center justify-center w-full" onClick={(e) => e.stopPropagation()}>
-          <input
-            type="checkbox"
-            checked={isAllFilteredSelected && filteredRequests.length > 0}
-            onChange={(e) => {
-              e.stopPropagation();
-              if (isAllFilteredSelected) {
-                handleDeselectAll();
-              } else {
-                handleSelectAllFiltered();
-              }
-            }}
-            className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#10b981]"
-            title={isAllFilteredSelected ? "Deselect All" : "Select All"}
-          />
+        <div className="flex items-center gap-1.5 py-1" onClick={(e) => e.stopPropagation()}>
+          {!isSelectMode ? (
+            <button
+              type="button"
+              onClick={() => setIsSelectMode(true)}
+              className="text-[11px] font-black uppercase tracking-wider text-emerald-800 hover:text-emerald-950 bg-emerald-100/80 hover:bg-emerald-200 px-2 py-0.5 rounded cursor-pointer transition shadow-2xs leading-none"
+              title="Click to enable multi-select checkboxes"
+            >
+              SELECT
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <label className="flex items-center gap-1 cursor-pointer select-none text-[10px] font-extrabold text-emerald-950">
+                <input
+                  type="checkbox"
+                  checked={isAllFilteredSelected && filteredRequests.length > 0}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    if (isAllFilteredSelected || selectedRowIds.length > 0) {
+                      handleDeselectAll();
+                    } else {
+                      handleSelectAllFiltered();
+                    }
+                  }}
+                  className="h-3.5 w-3.5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#10b981]"
+                />
+                <span className="uppercase text-[10px] tracking-wide font-black">SELECT ALL</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSelectMode(false);
+                  setSelectedRowIds([]);
+                }}
+                className="text-[11px] font-black text-slate-400 hover:text-rose-600 px-1 cursor-pointer"
+                title="Cancel selection"
+              >
+                ✕
+              </button>
+            </div>
+          )}
         </div>
       ),
       renderCell: (params) => {
+        if (!isSelectMode) return null;
         const id = params.row.id;
-        const isSelected = selectedRowIds.includes(id);
+        const isSelected = selectedRowIdsSet.has(id);
         return (
           <div
             className="flex items-center justify-center w-full h-full"
@@ -1520,242 +1535,191 @@ const DocumentManagement = () => {
           </div>
         );
       },
-    },
-    {
-      field: "resident",
-      headerName: "Resident",
-      flex: 1.5,
-      renderCell: (params) => {
-        const request = params.row;
-        return getNestedResident(request.residents)?.full_name || "N/A";
+    });
+
+    cols.push(
+      {
+        field: "resident",
+        headerName: "Resident",
+        flex: 1.5,
+        renderCell: (params) => {
+          const request = params.row;
+          return getNestedResident(request.residents)?.full_name || "N/A";
+        }
+      },
+      {
+        field: "document_type",
+        headerName: "Document Type",
+        flex: 1.5,
+        renderCell: (params) => params.row.document_type
+      },
+      {
+        field: "status",
+        headerName: "Status",
+        flex: 1.2,
+        renderCell: (params) => {
+          const request = params.row;
+          const displayStatus = isRequestExpired(request) ? "Expired" : request.status;
+          const label = displayStatus === "Completed" ? "Ready for Pick-up" : displayStatus;
+          return (
+            <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold" style={getStatusBadgeStyle(displayStatus)}>
+              {displayStatus === "Completed" && <CheckCircle size={12} className="stroke-[2.5]" />}
+              {displayStatus === "Released" && <Check size={12} className="stroke-[3]" />}
+              {label}
+            </span>
+          );
+        }
+      },
+      {
+        field: "created_at",
+        headerName: "Requested",
+        flex: 1.2,
+        renderCell: (params) => formatDate(params.row.created_at)
+      },
+      {
+        field: "actions",
+        headerName: "Actions",
+        flex: 1,
+        headerAlign: "right",
+        align: "right",
+        renderCell: (params) => {
+          const request = params.row;
+          const expired = isRequestExpired(request);
+          return (
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => openRequest(request)}
+                disabled={expired}
+                className={`gov-action-btn view ${expired ? "opacity-50 cursor-not-allowed" : ""}`}
+                title={expired ? "Expired" : "Open template and preview"}
+              >
+                <Eye size={18} />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteRequest(request.id)}
+                className="gov-action-btn delete"
+                title="Delete"
+              >
+                <Trash2 size={18} />
+              </button>
+            </div>
+          );
+        }
       }
-    },
-    {
-      field: "document_type",
-      headerName: "Document Type",
-      flex: 1.5,
-      renderCell: (params) => params.row.document_type
-    },
-    {
-      field: "status",
-      headerName: "Status",
-      flex: 1.2,
-      renderCell: (params) => {
-        const request = params.row;
-        const displayStatus = isRequestExpired(request) ? "Expired" : request.status;
-        const label = displayStatus === "Completed" ? "Ready for Pick-up" : displayStatus;
-        return (
-          <span className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold" style={getStatusBadgeStyle(displayStatus)}>
-            {displayStatus === "Completed" && <CheckCircle size={12} className="stroke-[2.5]" />}
-            {displayStatus === "Released" && <Check size={12} className="stroke-[3]" />}
-            {label}
-          </span>
-        );
-      }
-    },
-    {
-      field: "created_at",
-      headerName: "Requested",
-      flex: 1.2,
-      renderCell: (params) => formatDate(params.row.created_at)
-    },
-    {
-      field: "actions",
-      headerName: "Actions",
-      flex: 1,
-      headerAlign: "right",
-      align: "right",
-      renderCell: (params) => {
-        const request = params.row;
-        const expired = isRequestExpired(request);
-        return (
-          <div className="flex gap-2 justify-end">
-            <button
-              type="button"
-              onClick={() => openRequest(request)}
-              disabled={expired}
-              className={`gov-action-btn view ${expired ? "opacity-50 cursor-not-allowed" : ""}`}
-              title={expired ? "Expired" : "Open template and preview"}
-            >
-              <Eye size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDeleteRequest(request.id)}
-              className="gov-action-btn delete"
-              title="Delete"
-            >
-              <Trash2 size={18} />
-            </button>
-          </div>
-        );
-      }
-    }
-  ];
+    );
+
+    return cols;
+  }, [filteredRequests, isAllFilteredSelected, isSelectMode, selectedRowIdsSet]);
 
   return (
     <>
       <PageWrapper title="Document Management" description="Review requests, generate certificates, and print documents">
-          {message && (
-            <div
-              className={`mb-6 flex items-start gap-3 rounded-lg p-4 ${message.type === "success"
-                ? "border border-emerald-200 bg-emerald-50"
-                : "border border-rose-200 bg-rose-50"
-                }`}
-            >
-              {message.type === "success" ? (
-                <CheckCircle className="shrink-0 text-emerald-600" size={20} />
-              ) : (
-                <AlertCircle className="shrink-0 text-rose-600" size={20} />
-              )}
-              <span className={message.type === "success" ? "text-emerald-700" : "text-rose-700"}>
-                {message.text}
-              </span>
-            </div>
-          )}
-
           <div className="glass-container">
-            <div className="grid grid-cols-2 gap-6 sm:grid-cols-4 p-6 border-b border-slate-200/50">
-              <div className="relative overflow-hidden group">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-200 shadow-sm transition-transform group-hover:scale-110">
-                    <ClipboardList size={28} className="text-slate-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-wider text-slate-500">Total Requests</p>
-                    <div className="flex items-end gap-2 mt-1">
-                      {delayedLoading ? (
-                        <div className="h-7 w-16 animate-pulse rounded bg-slate-200 mt-1" />
-                      ) : (
-                        <>
-                          <p className="text-3xl font-black text-slate-900 leading-none">{stats.total}</p>
-                          <span className="text-xs font-semibold text-emerald-500">↑ 12%</span>
-                        </>
-                      )}
-                    </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 p-3 border-b border-slate-200/50 bg-slate-50/40">
+              <div className="flex items-center gap-3 rounded-xl bg-white p-2.5 border border-slate-200/70 shadow-2xs">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-700 shrink-0">
+                  <ClipboardList size={18} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 truncate">Total Requests</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {delayedLoading ? (
+                      <div className="h-5 w-10 animate-pulse rounded bg-slate-200" />
+                    ) : (
+                      <>
+                        <span className="text-base font-black text-slate-900 leading-tight">{stats.total}</span>
+                        <span className="text-[10px] font-bold text-emerald-600">↑12%</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <div className="relative overflow-hidden group">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-amber-100 to-amber-200 shadow-sm transition-transform group-hover:scale-110">
-                    <FileText size={28} className="text-amber-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-wider text-amber-600">Pending</p>
-                    <div className="flex items-end gap-2 mt-1">
-                      {delayedLoading ? (
-                        <div className="h-7 w-16 animate-pulse rounded bg-slate-200 mt-1" />
-                      ) : (
-                        <>
-                          <p className="text-3xl font-black text-amber-600 leading-none">{stats.pending}</p>
-                          <span className="text-xs font-semibold text-amber-500">Active</span>
-                        </>
-                      )}
-                    </div>
+              <div className="flex items-center gap-3 rounded-xl bg-white p-2.5 border border-amber-200/70 shadow-2xs">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-50 text-amber-600 shrink-0">
+                  <FileText size={18} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-amber-700 truncate">Pending</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {delayedLoading ? (
+                      <div className="h-5 w-10 animate-pulse rounded bg-amber-100" />
+                    ) : (
+                      <>
+                        <span className="text-base font-black text-amber-700 leading-tight">{stats.pending}</span>
+                        <span className="text-[9px] font-bold bg-amber-100 text-amber-800 px-1 py-0.2 rounded">Active</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <div className="relative overflow-hidden group">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-blue-700 to-blue-900 shadow-md transition-transform group-hover:scale-110">
-                    <RefreshCw size={28} className="text-white" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-wider text-blue-700">Processing</p>
-                    <div className="flex items-end gap-2 mt-1">
-                      {delayedLoading ? (
-                        <div className="h-7 w-16 animate-pulse rounded bg-slate-200 mt-1" />
-                      ) : (
-                        <p className="text-3xl font-black text-blue-700 leading-none">{stats.processing}</p>
-                      )}
-                    </div>
+              <div className="flex items-center gap-3 rounded-xl bg-white p-2.5 border border-blue-200/70 shadow-2xs">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600 shrink-0">
+                  <RefreshCw size={18} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-blue-700 truncate">Processing</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {delayedLoading ? (
+                      <div className="h-5 w-10 animate-pulse rounded bg-blue-100" />
+                    ) : (
+                      <span className="text-base font-black text-blue-700 leading-tight">{stats.processing}</span>
+                    )}
                   </div>
                 </div>
               </div>
 
-              <div className="relative overflow-hidden group">
-                <div className="flex items-center gap-4">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-100 to-emerald-200 shadow-sm transition-transform group-hover:scale-110">
-                    <CheckCircle size={28} className="text-emerald-600" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold uppercase tracking-wider text-emerald-600">Completed</p>
-                    <div className="flex items-end gap-2 mt-1">
-                      {delayedLoading ? (
-                        <div className="h-7 w-16 animate-pulse rounded bg-slate-200 mt-1" />
-                      ) : (
-                        <>
-                          <p className="text-3xl font-black text-emerald-600 leading-none">{stats.completed}</p>
-                          <span className="text-xs font-semibold text-emerald-500">↑ 5%</span>
-                        </>
-                      )}
-                    </div>
+              <div className="flex items-center gap-3 rounded-xl bg-white p-2.5 border border-emerald-200/70 shadow-2xs">
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 shrink-0">
+                  <CheckCircle size={18} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700 truncate">Completed</p>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {delayedLoading ? (
+                      <div className="h-5 w-10 animate-pulse rounded bg-emerald-100" />
+                    ) : (
+                      <>
+                        <span className="text-base font-black text-emerald-700 leading-tight">{stats.completed}</span>
+                        <span className="text-[10px] font-bold text-emerald-600">↑5%</span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Step 1: Main Page Document Selector Bar */}
-            <div className="p-6 border-b border-slate-200/50 bg-gradient-to-r from-emerald-50/70 via-white to-emerald-50/30">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#14532D] text-white shadow-sm">
-                    <FileText size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-slate-900">Step 1: Pumili ng Dokumento (Quick Certificate Generator)</h3>
-                    <p className="text-xs text-slate-500">Pumili ng dokumento upang lumabas ang floating modal para i-fill ang residente at detalye.</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2.5 w-full sm:w-auto">
-                  <select
-                    value={walkInForm.templateId}
-                    onChange={(event) => handleSelectDocumentForWalkIn(event.target.value)}
-                    className="h-[44px] min-w-[280px] rounded-xl border-2 border-emerald-600 bg-white px-4 text-xs font-bold text-slate-900 outline-none shadow-sm focus:ring-4 focus:ring-emerald-500/10 cursor-pointer"
-                  >
-                    <option value="">-- Pumili ng Dokumento (Step 1) --</option>
-                    {templates.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {getTemplateLabel(template)}
-                      </option>
-                    ))}
-                  </select>
-
-                  {walkInForm.templateId && (
-                    <button
-                      type="button"
-                      onClick={() => setShowWalkInModal(true)}
-                      className="inline-flex h-[44px] items-center gap-2 rounded-xl bg-[#14532D] px-5 text-xs font-bold text-white shadow-sm hover:bg-[#0f3e21] transition cursor-pointer active:scale-95"
-                    >
-                      <UserCheck size={16} />
-                      <span>I-fill ang Detalye</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Step 2: Floating Modal Form (Naka-float Modal Form) */}
+            {/* Step 2: Floating Modal Form (Ultra-Compact, Dead-Centered, No Dark Dimming Overlay, No Scroll) */}
             {showWalkInModal && selectedWalkInTemplate && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs overflow-y-auto">
-                <div className="relative w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl space-y-4 my-8 animate-fade-in">
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/15 backdrop-blur-[2px]"
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) setShowWalkInModal(false);
+                }}
+              >
+                <div
+                  style={{ maxWidth: 440, width: "90%" }}
+                  className="relative mx-auto rounded-2xl border border-emerald-500/40 bg-white p-3.5 shadow-2xl space-y-2.5 animate-fade-in text-slate-900 overflow-hidden"
+                >
+                  {/* Top Emerald Gradient Accent Strip */}
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-700 via-[#00552E] to-teal-600 rounded-t-2xl" />
+
                   {/* Modal Header */}
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-[#14532D] font-bold">
-                        <FileText size={18} />
+                  <div className="flex items-center justify-between border-b border-emerald-100 pb-1.5 pt-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#00552E] text-white shadow-xs">
+                        <FileText size={13} />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-full border border-emerald-300">
-                            Step 2: Fill & Generate
+                        <div className="flex items-center gap-1">
+                          <span className="text-[8.5px] font-black uppercase tracking-wider text-emerald-900 bg-emerald-100 px-1.5 py-0.2 rounded-full border border-emerald-300">
+                            Fill & Generate
                           </span>
                         </div>
-                        <h3 className="text-base font-black text-slate-900 mt-0.5">
+                        <h3 className="text-xs font-black text-slate-900 leading-tight">
                           {getTemplateLabel(selectedWalkInTemplate)}
                         </h3>
                       </div>
@@ -1764,19 +1728,20 @@ const DocumentManagement = () => {
                     <button
                       type="button"
                       onClick={() => setShowWalkInModal(false)}
-                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition cursor-pointer"
+                      className="rounded-lg p-1 text-slate-400 hover:bg-emerald-50 hover:text-emerald-900 transition cursor-pointer"
+                      aria-label="Close"
                     >
-                      <X size={20} />
+                      <X size={15} />
                     </button>
                   </div>
 
-                  <form onSubmit={handleWalkInSubmit} className="space-y-4">
+                  <form onSubmit={handleWalkInSubmit} className="space-y-2">
                     {/* Search Resident & Resident Select Dropdown */}
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="grid gap-2 sm:grid-cols-2">
                       {/* Search Resident */}
                       <div className="relative">
-                        <label className="text-xs font-bold text-slate-700 block mb-1">
-                          Search Resident / Residente
+                        <label className="text-[9.5px] font-bold uppercase tracking-wider text-slate-600 block mb-0.5">
+                          Search Resident
                         </label>
                         <input
                           value={walkInForm.residentSearch}
@@ -1784,17 +1749,17 @@ const DocumentManagement = () => {
                           onFocus={() => setWalkInResidentSearchOpen(true)}
                           onBlur={() => window.setTimeout(() => setWalkInResidentSearchOpen(false), 150)}
                           onKeyDown={handleWalkInResidentSearchKeyDown}
-                          placeholder="Type pangalan ng residente..."
+                          placeholder="Search resident name..."
                           role="combobox"
                           aria-expanded={walkInResidentSearchOpen}
                           aria-controls="walk-in-modal-resident-results"
                           aria-autocomplete="list"
-                          className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 outline-none focus:border-[#14532D] focus:bg-white focus:ring-4 focus:ring-emerald-500/10 shadow-xs"
+                          className="h-7.5 w-full rounded-lg border border-emerald-200 bg-emerald-50/40 px-2 text-xs font-semibold text-slate-800 outline-none focus:border-[#00552E] focus:bg-white focus:ring-1 focus:ring-emerald-500/20"
                         />
                         {walkInResidentSearchOpen && walkInForm.residentSearch.trim() ? (
                           <div
                             id="walk-in-modal-resident-results"
-                            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+                            className="absolute left-0 right-0 top-full z-50 mt-1 max-h-40 overflow-y-auto rounded-xl border border-emerald-200 bg-white p-1 shadow-xl custom-scrollbar"
                             role="listbox"
                           >
                             {walkInResidentOptions.length > 0 ? (
@@ -1804,7 +1769,7 @@ const DocumentManagement = () => {
                                   type="button"
                                   onMouseDown={(e) => e.preventDefault()}
                                   onClick={() => handleWalkInResidentChange(resident.id)}
-                                  className="flex w-full flex-col rounded-lg px-3 py-2 text-left hover:bg-emerald-50 focus:bg-emerald-100 transition cursor-pointer"
+                                  className="flex w-full flex-col rounded-lg px-2 py-1 text-left hover:bg-emerald-50 focus:bg-emerald-100 transition cursor-pointer"
                                   role="option"
                                   aria-selected={walkInForm.residentId === resident.id}
                                 >
@@ -1813,7 +1778,7 @@ const DocumentManagement = () => {
                                 </button>
                               ))
                             ) : (
-                              <div className="p-2 text-center text-xs text-slate-500">Walang nahanap na residente.</div>
+                              <div className="p-2 text-center text-xs text-slate-500">No resident found.</div>
                             )}
                           </div>
                         ) : null}
@@ -1821,15 +1786,15 @@ const DocumentManagement = () => {
 
                       {/* Resident Select Dropdown */}
                       <div>
-                        <label className="text-xs font-bold text-slate-700 block mb-1">
-                          Resident Select Dropdown
+                        <label className="text-[9.5px] font-bold uppercase tracking-wider text-slate-600 block mb-0.5">
+                          Select Resident
                         </label>
                         <select
                           value={walkInForm.residentId || resolvedWalkInResident?.id || ""}
                           onChange={(event) => handleWalkInResidentChange(event.target.value)}
-                          className="h-10 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 outline-none focus:border-[#14532D] focus:bg-white focus:ring-4 focus:ring-emerald-500/10 shadow-xs cursor-pointer"
+                          className="h-7.5 w-full rounded-lg border border-emerald-200 bg-emerald-50/40 px-2 text-xs font-semibold text-slate-800 outline-none focus:border-[#00552E] focus:bg-white focus:ring-1 focus:ring-emerald-500/20 cursor-pointer truncate"
                         >
-                          <option value="">-- Piliin sa listahan --</option>
+                          <option value="">-- Select resident --</option>
                           {walkInResidentOptions.map((resident) => (
                             <option key={resident.id} value={resident.id}>
                               {resident.full_name} ({resident.purok ? `Purok ${resident.purok}` : "No Purok"})
@@ -1839,63 +1804,25 @@ const DocumentManagement = () => {
                       </div>
                     </div>
 
-                    {/* Resident Info Editable Strip */}
-                    <div className="grid gap-3 sm:grid-cols-3 rounded-xl bg-slate-50 p-3 border border-slate-200/70">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Kasarian (Gender)</label>
-                        <select
-                          value={walkInForm.gender || "Female"}
-                          onChange={(e) => updateWalkInForm("gender", e.target.value)}
-                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#14532D]"
-                        >
-                          <option value="Female">Babae (Female - Ms./Mrs. / Her)</option>
-                          <option value="Male">Lalaki (Male - Mr. / Him)</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Katayuang Sibil (Civil Status)</label>
-                        <select
-                          value={walkInForm.civilStatus || "Single"}
-                          onChange={(e) => updateWalkInForm("civilStatus", e.target.value)}
-                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#14532D]"
-                        >
-                          <option value="Single">Single (Walang Asawa)</option>
-                          <option value="Married">Married (Kasal)</option>
-                          <option value="Widow">Widow / Biyuda / Biyudo</option>
-                          <option value="Separated">Separated (Hiwalay)</option>
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Purok / Address</label>
-                        <input
-                          type="text"
-                          value={walkInForm.purok || "Kamonsil"}
-                          onChange={(e) => updateWalkInForm("purok", e.target.value)}
-                          placeholder="e.g. Kamonsil"
-                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#14532D]"
-                        />
-                      </div>
-                    </div>
-
                     {/* Document-Specific Purpose / Details */}
                     {getRealDocumentTemplateKey(selectedWalkInTemplate) === "clearance" && (
-                      <div className="space-y-2 rounded-xl bg-emerald-50/50 p-3.5 border border-emerald-200/80">
-                        <label className="text-xs font-extrabold text-[#14532D] block flex items-center justify-between">
-                          <span>Layunin sa Barangay Clearance (Purpose)</span>
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">1-Click Suggestions o I-customize</span>
-                        </label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {["OWWA", "LOCAL EMPLOYMENT", "POSTAL ID", "POLICE CLEARANCE", "NBI CLEARANCE", "BANK REQUIREMENT", "SCHOOL REQUIREMENT"].map((p) => (
+                      <div className="space-y-1 rounded-xl bg-emerald-50/50 p-2 border border-emerald-200/80">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[9.5px] font-black uppercase tracking-wider text-[#00552E]">
+                            Clearance Purpose
+                          </label>
+                          <span className="text-[8px] font-bold text-emerald-800 bg-emerald-200/80 px-1 py-0.2 rounded">1-Click Suggestions</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {["OWWA", "LOCAL EMPLOYMENT", "POSTAL ID", "POLICE / NBI", "BANK REQUIREMENT", "SCHOOL REQUIREMENT"].map((p) => (
                             <button
                               key={p}
                               type="button"
                               onClick={() => updateWalkInForm("purpose", p)}
-                              className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition border cursor-pointer ${
+                              className={`rounded px-1.5 py-0.5 text-[8.5px] font-bold transition border cursor-pointer ${
                                 (walkInForm.purpose || "").toUpperCase() === p
-                                  ? "bg-[#14532D] text-white border-[#14532D] shadow-xs"
-                                  : "bg-white text-slate-700 hover:bg-emerald-100 border-slate-200"
+                                  ? "bg-[#00552E] text-white border-[#00552E] shadow-2xs"
+                                  : "bg-white text-emerald-950 hover:bg-emerald-100 border-emerald-200"
                               }`}
                             >
                               {p}
@@ -1906,27 +1833,27 @@ const DocumentManagement = () => {
                           type="text"
                           value={walkInForm.purpose || ""}
                           onChange={(e) => updateWalkInForm("purpose", e.target.value)}
-                          placeholder="I-type dito ang customized layunin o pumili sa itaas..."
-                          className="w-full h-10 rounded-xl border border-emerald-400 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:ring-4 focus:ring-emerald-500/10 shadow-xs"
+                          placeholder="Enter custom purpose or select above..."
+                          className="w-full h-7 rounded-lg border border-emerald-300 bg-white px-2 text-xs font-semibold text-slate-900 outline-none focus:ring-1 focus:ring-emerald-500/20"
                         />
                       </div>
                     )}
 
                     {getRealDocumentTemplateKey(selectedWalkInTemplate) === "residency" && (
-                      <div className="space-y-2 rounded-xl bg-emerald-50/50 p-3.5 border border-emerald-200/80">
-                        <label className="text-xs font-extrabold text-[#14532D] block flex items-center justify-between">
-                          <span>Layunin / Rekomendasyon (Autofill: "...we are recommending him for...")</span>
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">1-Click Suggestions o I-customize</span>
-                        </label>
-                        <div className="flex flex-wrap gap-1.5">
+                      <div className="space-y-1 rounded-xl bg-emerald-50/50 p-2 border border-emerald-200/80">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[9.5px] font-black uppercase tracking-wider text-[#00552E]">
+                            Purpose / Recommendation
+                          </label>
+                          <span className="text-[8px] font-bold text-emerald-800 bg-emerald-200/80 px-1 py-0.2 rounded">1-Click Suggestions</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
                           {[
-                            { label: "⭐️ job and application", val: "job and application" },
+                            { label: "⭐️ Job Application", val: "job and application" },
                             { label: "Local Employment", val: "Local Employment" },
                             { label: "Scholarship", val: "Scholarship Application" },
-                            { label: "Bank Account Opening", val: "Bank Account Opening" },
+                            { label: "Bank Account", val: "Bank Account Opening" },
                             { label: "Barangay ID", val: "Barangay ID Application" },
-                            { label: "Police / NBI Clearance", val: "Police & NBI Clearance" },
-                            { label: "Postal ID", val: "Postal ID Application" },
                             { label: "Legal Purpose", val: "whatever legal purpose it may serve best" },
                           ].map((preset) => (
                             <button
@@ -1936,10 +1863,10 @@ const DocumentManagement = () => {
                                 updateWalkInForm("residencyRecommendation", preset.val);
                                 updateWalkInForm("purpose", preset.val);
                               }}
-                              className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition border cursor-pointer ${
+                              className={`rounded px-1.5 py-0.5 text-[8.5px] font-bold transition border cursor-pointer ${
                                 (walkInForm.residencyRecommendation || walkInForm.purpose) === preset.val
-                                  ? "bg-[#14532D] text-white border-[#14532D] shadow-xs"
-                                  : "bg-white text-slate-700 hover:bg-emerald-100 border-slate-200"
+                                  ? "bg-[#00552E] text-white border-[#00552E] shadow-2xs"
+                                  : "bg-white text-emerald-950 hover:bg-emerald-100 border-emerald-200"
                               }`}
                             >
                               {preset.label}
@@ -1953,25 +1880,25 @@ const DocumentManagement = () => {
                             updateWalkInForm("residencyRecommendation", e.target.value);
                             updateWalkInForm("purpose", e.target.value);
                           }}
-                          placeholder="I-type dito ang customized layunin o pumili sa itaas..."
-                          className="w-full h-10 rounded-xl border border-emerald-400 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:ring-4 focus:ring-emerald-500/10 shadow-xs"
+                          placeholder="Enter custom purpose or select above..."
+                          className="w-full h-7 rounded-lg border border-emerald-300 bg-white px-2 text-xs font-semibold text-slate-900 outline-none focus:ring-1 focus:ring-emerald-500/20"
                         />
                       </div>
                     )}
 
                     {getRealDocumentTemplateKey(selectedWalkInTemplate) === "indigency" && (
-                      <div className="space-y-2 rounded-xl bg-emerald-50/50 p-3.5 border border-emerald-200/80">
-                        <label className="text-xs font-extrabold text-[#14532D] block">Tulong / Layunin sa Indigency</label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {["FINANCIAL ASSISTANCE", "MEDICAL ASSISTANCE", "HOSPITALIZATION", "BURIAL ASSISTANCE", "EDUCATIONAL ASSISTANCE", "LEGAL ASSISTANCE"].map((p) => (
+                      <div className="space-y-1 rounded-xl bg-emerald-50/50 p-2 border border-emerald-200/80">
+                        <label className="text-[9.5px] font-black uppercase tracking-wider text-[#00552E] block">Purpose of Indigency</label>
+                        <div className="flex flex-wrap gap-1">
+                          {["FINANCIAL ASSISTANCE", "MEDICAL ASSISTANCE", "BURIAL ASSISTANCE", "EDUCATIONAL ASSISTANCE", "LEGAL ASSISTANCE"].map((p) => (
                             <button
                               key={p}
                               type="button"
                               onClick={() => updateWalkInForm("purpose", p)}
-                              className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition border cursor-pointer ${
+                              className={`rounded px-1.5 py-0.5 text-[8.5px] font-bold transition border cursor-pointer ${
                                 (walkInForm.purpose || "").toUpperCase() === p
-                                  ? "bg-[#14532D] text-white border-[#14532D]"
-                                  : "bg-white text-slate-700 hover:bg-emerald-100 border-slate-200"
+                                  ? "bg-[#00552E] text-white border-[#00552E]"
+                                  : "bg-white text-emerald-950 hover:bg-emerald-100 border-emerald-200"
                               }`}
                             >
                               {p}
@@ -1982,17 +1909,17 @@ const DocumentManagement = () => {
                           type="text"
                           value={walkInForm.purpose || ""}
                           onChange={(e) => updateWalkInForm("purpose", e.target.value)}
-                          placeholder="I-type dito ang customized purpose..."
-                          className="w-full h-10 rounded-xl border border-emerald-400 bg-white px-3 text-xs font-bold text-slate-900 outline-none"
+                          placeholder="Enter purpose..."
+                          className="w-full h-7 rounded-lg border border-emerald-300 bg-white px-2 text-xs font-semibold text-slate-900 outline-none"
                         />
                       </div>
                     )}
 
                     {getRealDocumentTemplateKey(selectedWalkInTemplate) === "business" && (
-                      <div className="space-y-2 rounded-xl bg-emerald-50/50 p-3.5 border border-emerald-200/80">
-                        <label className="text-xs font-extrabold text-[#14532D] block">Pangalan at Uri ng Negosyo</label>
-                        <div className="flex flex-wrap gap-1.5">
-                          {["BANANA BUY AND SALE", "SARI-SARI STORE", "AGRI-SUPPLY", "FOOD STALL / CARINDERIA", "BUY AND SELL"].map((p) => (
+                      <div className="space-y-1 rounded-xl bg-emerald-50/50 p-2 border border-emerald-200/80">
+                        <label className="text-[9.5px] font-black uppercase tracking-wider text-[#00552E] block">Business Name & Nature</label>
+                        <div className="flex flex-wrap gap-1">
+                          {["BANANA BUY AND SALE", "SARI-SARI STORE", "AGRI-SUPPLY", "FOOD STALL / CARINDERIA"].map((p) => (
                             <button
                               key={p}
                               type="button"
@@ -2000,10 +1927,10 @@ const DocumentManagement = () => {
                                 updateWalkInForm("businessName", p);
                                 updateWalkInForm("purpose", p);
                               }}
-                              className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition border cursor-pointer ${
+                              className={`rounded px-1.5 py-0.5 text-[8.5px] font-bold transition border cursor-pointer ${
                                 walkInForm.businessName === p
-                                  ? "bg-[#14532D] text-white border-[#14532D]"
-                                  : "bg-white text-slate-700 hover:bg-emerald-100 border-slate-200"
+                                  ? "bg-[#00552E] text-white border-[#00552E]"
+                                  : "bg-white text-emerald-950 hover:bg-emerald-100 border-emerald-200"
                               }`}
                             >
                               {p}
@@ -2017,31 +1944,29 @@ const DocumentManagement = () => {
                             updateWalkInForm("businessName", e.target.value);
                             updateWalkInForm("purpose", e.target.value);
                           }}
-                          placeholder="I-type dito ang pangalan ng negosyo..."
-                          className="w-full h-10 rounded-xl border border-emerald-400 bg-white px-3 text-xs font-bold text-slate-900 outline-none"
+                          placeholder="Enter business name & nature..."
+                          className="w-full h-7 rounded-lg border border-emerald-300 bg-white px-2 text-xs font-semibold text-slate-900 outline-none"
                         />
                       </div>
                     )}
 
                     {getRealDocumentTemplateKey(selectedWalkInTemplate) === "solo" && (
-                      <div className="space-y-2 rounded-xl bg-emerald-50/50 p-3.5 border border-emerald-200/80">
-                        <label className="text-xs font-extrabold text-[#14532D] block">Dahilan ng Solo Parent</label>
-                        <div className="flex flex-wrap gap-1.5">
+                      <div className="space-y-1 rounded-xl bg-emerald-50/50 p-2 border border-emerald-200/80">
+                        <label className="text-[9.5px] font-black uppercase tracking-wider text-[#00552E] block">Solo Parent Reason</label>
+                        <div className="flex flex-wrap gap-1">
                           {[
-                            { label: "Kamatayan ng Asawa", val: "death of her husband" },
-                            { label: "Hiwalay sa Asawa", val: "separation from her husband" },
-                            { label: "Single Mother", val: "being an unmarried mother" },
-                            { label: "Single Father", val: "being a single father" },
-                            { label: "Iniwan ng Asawa", val: "abandonment by her husband" },
+                            { label: "Death of Spouse", val: "death of her husband" },
+                            { label: "Separation from Spouse", val: "separation from her husband" },
+                            { label: "Single Mother", val: "single mother / unmarried" },
                           ].map((p) => (
                             <button
                               key={p.val}
                               type="button"
                               onClick={() => updateWalkInForm("soloParentReason", p.val)}
-                              className={`rounded-lg px-2.5 py-1 text-[11px] font-bold transition border cursor-pointer ${
+                              className={`rounded px-1.5 py-0.5 text-[8.5px] font-bold transition border cursor-pointer ${
                                 walkInForm.soloParentReason === p.val
-                                  ? "bg-[#14532D] text-white border-[#14532D]"
-                                  : "bg-white text-slate-700 hover:bg-emerald-100 border-slate-200"
+                                  ? "bg-[#00552E] text-white border-[#00552E]"
+                                  : "bg-white text-emerald-950 hover:bg-emerald-100 border-emerald-200"
                               }`}
                             >
                               {p.label}
@@ -2052,231 +1977,72 @@ const DocumentManagement = () => {
                           type="text"
                           value={walkInForm.soloParentReason || ""}
                           onChange={(e) => updateWalkInForm("soloParentReason", e.target.value)}
-                          placeholder="I-type dito ang dahilan..."
-                          className="w-full h-10 rounded-xl border border-emerald-400 bg-white px-3 text-xs font-bold text-slate-900 outline-none"
+                          placeholder="Enter solo parent reason..."
+                          className="w-full h-7 rounded-lg border border-emerald-300 bg-white px-2 text-xs font-semibold text-slate-900 outline-none"
                         />
                       </div>
                     )}
 
                     {/* RSBSA Farm & Crops Details inside Step 2 */}
                     {getRealDocumentTemplateKey(selectedWalkInTemplate) === "rsbsa" && (
-                      <div className="space-y-3 rounded-2xl bg-emerald-50/70 p-4 border border-emerald-300">
-                        <div className="flex items-center justify-between">
-                          <label className="text-xs font-black text-emerald-950 uppercase tracking-wide flex items-center gap-1.5">
-                            <span>🌾 Detalye ng Pananim at Sakahan (RSBSA Farm Details)</span>
-                          </label>
-                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded">Auto-fill sa Sertipiko</span>
-                        </div>
-
-                        <div>
-                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                            Uri ng Pananim / Tilling Crop(s):
-                          </label>
-                          <input
-                            type="text"
-                            value={walkInForm.cropsText || "Rice Field ½ hectare, and Fruits Crops 1 hectare"}
-                            onChange={(e) => updateWalkInForm("cropsText", e.target.value)}
-                            placeholder="Halimbawa: Rice Field ½ hectare, and Fruits Crops 1 hectare"
-                            className="w-full h-10 rounded-xl border border-emerald-400 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:ring-4 focus:ring-emerald-500/10 shadow-xs"
-                            required
-                          />
-                          <div className="mt-1.5 flex flex-wrap gap-1">
-                            {[
-                              "Rice Field ½ hectare, and Fruits Crops 1 hectare",
-                              "Rice Field 1 hectare",
-                              "Corn Field 1 hectare",
-                              "Coconut Farm 2 hectares",
-                              "Vegetable Farm ½ hectare",
-                              "Banana & Fruit Crops 1 hectare",
-                            ].map((preset) => (
-                              <button
-                                key={preset}
-                                type="button"
-                                onClick={() => updateWalkInForm("cropsText", preset)}
-                                className={`rounded-lg px-2 py-1 text-[10px] font-bold transition border cursor-pointer ${
-                                  walkInForm.cropsText === preset
-                                    ? "bg-[#14532D] text-white border-[#14532D]"
-                                    : "bg-white text-slate-700 hover:bg-emerald-100 border-emerald-200"
-                                }`}
-                              >
-                                + {preset}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                              Laki ng Sakahan (Farm Size):
-                            </label>
-                            <input
-                              type="text"
-                              value={walkInForm.farmSize || "One (1) hectare"}
-                              onChange={(e) => updateWalkInForm("farmSize", e.target.value)}
-                              placeholder="Halimbawa: One (1) hectare"
-                              className="w-full h-9 rounded-xl border border-emerald-400 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:ring-4 focus:ring-emerald-500/10 shadow-xs"
-                              required
-                            />
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {["One (1) hectare", "½ hectare", "Two (2) hectares", "1.5 hectares"].map((sizeOpt) => (
-                                <button
-                                  key={sizeOpt}
-                                  type="button"
-                                  onClick={() => updateWalkInForm("farmSize", sizeOpt)}
-                                  className="rounded bg-white hover:bg-emerald-100 text-emerald-900 px-1.5 py-0.5 text-[9px] font-bold border border-emerald-200"
-                                >
-                                  {sizeOpt}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div>
-                            <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                              Pag-aari (Tenure):
-                            </label>
-                            <select
-                              value={walkInForm.tenure || "Owner"}
-                              onChange={(e) => updateWalkInForm("tenure", e.target.value)}
-                              className="w-full h-9 rounded-xl border border-emerald-400 bg-white px-2.5 text-xs font-bold text-slate-900 outline-none focus:ring-4 focus:ring-emerald-500/10 shadow-xs"
-                            >
-                              <option value="Owner">Owner (May-ari)</option>
-                              <option value="Farmer">Farmer (Magsasaka)</option>
-                              <option value="Tenant">Tenant (Kasama)</option>
-                              <option value="Lessee">Lessee (Umuupa)</option>
-                              <option value="Farm Worker">Farm Worker (Manggagawa)</option>
-                            </select>
-                          </div>
-                        </div>
+                      <div className="space-y-1 rounded-xl bg-emerald-50/60 p-2 border border-emerald-200/90">
+                        <label className="text-[9.5px] font-black text-emerald-950 uppercase tracking-wide block">
+                          🌾 Crops & Farm Land
+                        </label>
+                        <input
+                          type="text"
+                          value={walkInForm.cropsText || "Rice Field ½ hectare, and Fruits Crops 1 hectare"}
+                          onChange={(e) => updateWalkInForm("cropsText", e.target.value)}
+                          placeholder="Rice Field ½ hectare, and Fruits Crops 1 hectare"
+                          className="w-full h-7 rounded-lg border border-emerald-300 bg-white px-2 text-xs font-semibold text-slate-900 outline-none"
+                          required
+                        />
                       </div>
                     )}
 
                     {/* 4Ps Certification Details inside Step 2 */}
                     {getRealDocumentTemplateKey(selectedWalkInTemplate) === "4ps" && (
-                      <div className="space-y-3 rounded-2xl bg-emerald-50/70 p-4 border border-emerald-300">
-                        <div className="flex items-center justify-between">
-                          <label className="text-xs font-black text-emerald-950 uppercase tracking-wide flex items-center gap-1.5">
-                            <span>🏛️ 4Ps Layunin at Grantee Details</span>
-                          </label>
-                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-200/80 px-2 py-0.5 rounded">Auto-fill sa Sertipiko</span>
-                        </div>
-
-                        <div>
-                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                            Pumili ng 4Ps Layunin (Preset):
-                          </label>
-                          <select
-                            value={walkInForm.fourPsPreset || "change_grantee_abroad"}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              updateWalkInForm("fourPsPreset", val);
-                              const isFemale = (walkInForm.gender || "Female").toLowerCase() === "female";
-                              const relativeTerm = isFemale ? "her husband" : "her wife";
-                              if (val === "change_grantee_abroad") {
-                                const spouseName = walkInForm.fourPsSpouse || "";
-                                updateWalkInForm(
-                                  "purpose",
-                                  spouseName
-                                    ? `Change Grantee of ${relativeTerm} ${spouseName} working Abroad`
-                                    : `Change Grantee of ${relativeTerm} ________________ working Abroad`
-                                );
-                              } else if (val === "change_grantee_transfer") {
-                                updateWalkInForm("purpose", "Change Grantee / Transfer of Cash Grant Beneficiary");
-                              } else if (val === "cash_grant_requirement") {
-                                updateWalkInForm("purpose", "Pantawid Pamilyang Pilipino Program (4Ps) Requirement");
-                              } else if (val === "member_verification") {
-                                updateWalkInForm("purpose", "4Ps Beneficiary & Household Member Verification");
-                              } else if (val === "profile_update") {
-                                updateWalkInForm("purpose", "Updating of 4Ps Household Profile & Records");
-                              } else if (val === "legal_purpose") {
-                                updateWalkInForm("purpose", "whatever legal purpose it may serve best");
-                              }
-                            }}
-                            className="w-full h-10 rounded-xl border border-emerald-400 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:ring-4 focus:ring-emerald-500/10 shadow-xs"
-                          >
-                            <option value="change_grantee_abroad">Change Grantee (Asawa Nagtatrabaho sa Abroad)</option>
-                            <option value="change_grantee_transfer">Change Grantee / Transfer of Cash Grant Beneficiary</option>
-                            <option value="cash_grant_requirement">4Ps Cash Grant / Program Requirement</option>
-                            <option value="member_verification">4Ps Beneficiary & Household Member Verification</option>
-                            <option value="profile_update">Updating of 4Ps Household Profile & Records</option>
-                            <option value="legal_purpose">Whatever legal purpose it may serve best</option>
-                            <option value="custom">Iba pang Layunin (Custom Input)</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                            Pangalan ng Asawa / Kasalukuyang Grantee ({walkInForm.gender === "Male" ? "Wife" : "Husband"} Abroad):
-                          </label>
-                          <input
-                            type="text"
-                            value={walkInForm.fourPsSpouse || ""}
-                            onChange={(e) => {
-                              const spouse = e.target.value;
-                              updateWalkInForm("fourPsSpouse", spouse);
-                              const isFemale = (walkInForm.gender || "Female").toLowerCase() === "female";
-                              const relativeTerm = isFemale ? "her husband" : "her wife";
-                              updateWalkInForm(
-                                "purpose",
-                                spouse
-                                  ? `Change Grantee of ${relativeTerm} ${spouse} working Abroad`
-                                  : `Change Grantee of ${relativeTerm} ________________ working Abroad`
-                              );
-                            }}
-                            placeholder="Halimbawa: Maria Balad"
-                            className="w-full h-10 rounded-xl border border-emerald-400 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:ring-4 focus:ring-emerald-500/10 shadow-xs"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[11px] font-bold text-slate-700 block mb-1">
-                            Eksaktong Layunin (Purpose na Lalabas sa Sertipiko):
-                          </label>
-                          <input
-                            type="text"
-                            value={walkInForm.purpose || ""}
-                            onChange={(e) => {
-                              updateWalkInForm("fourPsPreset", "custom");
-                              updateWalkInForm("purpose", e.target.value);
-                            }}
-                            placeholder="Change Grantee of her wife Maria Balad working Abroad"
-                            className="w-full h-10 rounded-xl border border-emerald-400 bg-white px-3 text-xs font-bold text-slate-900 outline-none focus:ring-4 focus:ring-emerald-500/10 shadow-xs"
-                            required
-                          />
-                        </div>
+                      <div className="space-y-1 rounded-xl bg-emerald-50/60 p-2 border border-emerald-200/90">
+                        <label className="text-[9.5px] font-black text-emerald-950 uppercase tracking-wide block">
+                          🏛️ Select 4Ps Purpose
+                        </label>
+                        <select
+                          value={walkInForm.fourPsPreset || "change_grantee_abroad"}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateWalkInForm("fourPsPreset", val);
+                            if (val === "change_grantee_abroad") {
+                              updateWalkInForm("purpose", "Change Grantee (Spouse Working Abroad)");
+                            } else if (val === "change_grantee_transfer") {
+                              updateWalkInForm("purpose", "Change Grantee / Transfer of Cash Grant Beneficiary");
+                            } else if (val === "cash_grant_requirement") {
+                              updateWalkInForm("purpose", "Pantawid Pamilyang Pilipino Program (4Ps) Requirement");
+                            } else if (val === "member_verification") {
+                              updateWalkInForm("purpose", "4Ps Beneficiary & Household Member Verification");
+                            } else if (val === "profile_update") {
+                              updateWalkInForm("purpose", "Updating of 4Ps Household Profile & Records");
+                            } else if (val === "legal_purpose") {
+                              updateWalkInForm("purpose", "whatever legal purpose it may serve best");
+                            }
+                          }}
+                          className="w-full h-7 rounded-lg border border-emerald-300 bg-white px-2 text-xs font-semibold text-slate-900 outline-none"
+                        >
+                          <option value="change_grantee_abroad">1. Change Grantee (Working Abroad)</option>
+                          <option value="change_grantee_transfer">2. Change Grantee / Transfer Beneficiary</option>
+                          <option value="cash_grant_requirement">3. 4Ps Cash Grant Requirement</option>
+                          <option value="member_verification">4. Beneficiary & Member Verification</option>
+                          <option value="profile_update">5. Updating of 4Ps Household Profile</option>
+                          <option value="legal_purpose">6. Whatever legal purpose it may serve best</option>
+                        </select>
                       </div>
                     )}
 
-                    {/* O.R. Number & Date Issued */}
-                    <div className="grid gap-3 sm:grid-cols-2 pt-1 border-t border-slate-100">
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">O.R. Number (Receipt)</label>
-                        <input
-                          type="text"
-                          value={walkInForm.orNumber || ""}
-                          onChange={(e) => updateWalkInForm("orNumber", e.target.value)}
-                          placeholder="Optional / e.g. 2578557"
-                          className="w-full h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#14532D]"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-[11px] font-bold text-slate-600 block mb-1">Petsa ng Paglabas (Date Issued)</label>
-                        <input
-                          type="date"
-                          value={walkInForm.dateIssued || ""}
-                          onChange={(e) => updateWalkInForm("dateIssued", e.target.value)}
-                          className="w-full h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-[#14532D]"
-                        />
-                      </div>
-                    </div>
-
                     {/* Modal Footer Actions */}
-                    <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+                    <div className="flex items-center justify-end gap-2 pt-1 border-t border-emerald-100">
                       <button
                         type="button"
                         onClick={() => setShowWalkInModal(false)}
-                        className="rounded-xl border border-slate-200 px-5 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 hover:bg-slate-100 transition cursor-pointer"
                       >
                         Cancel
                       </button>
@@ -2284,10 +2050,10 @@ const DocumentManagement = () => {
                       <button
                         type="submit"
                         disabled={creatingWalkIn || (!walkInForm.residentId && !resolvedWalkInResident)}
-                        className="inline-flex h-[44px] items-center justify-center gap-2 rounded-xl bg-[#14532D] px-8 text-xs font-bold text-white transition hover:bg-[#0f3e21] hover:shadow-lg disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none shadow-md active:scale-95 cursor-pointer"
+                        className="inline-flex h-7.5 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#00552E] to-emerald-700 hover:from-[#004224] hover:to-emerald-800 px-4 text-xs font-bold text-white shadow-sm active:scale-98 transition disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                       >
-                        {creatingWalkIn ? <Loader size={18} className="animate-spin" /> : <UserCheck size={18} />}
-                        <span>{creatingWalkIn ? "Generating..." : "Generate"}</span>
+                        {creatingWalkIn ? <Loader size={13} className="animate-spin" /> : <UserCheck size={13} />}
+                        <span>{creatingWalkIn ? "Generating..." : "Generate Document"}</span>
                       </button>
                     </div>
                   </form>
@@ -2295,12 +2061,12 @@ const DocumentManagement = () => {
               </div>
             )}
 
-            <div className="p-6 border-b border-slate-200/50 bg-slate-50/20">
+            <div className="p-4 sm:p-5 border-b border-slate-200/50 bg-slate-50/20">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <div className="flex flex-1 flex-wrap items-end gap-3">
+                <div className="flex flex-1 flex-wrap items-end gap-2.5">
                   <div className="w-full sm:max-w-xs">
-                    <label className="mb-1.5 block text-xs font-bold text-slate-700">
-                      <Search size={14} className="mr-1.5 inline text-emerald-500" />
+                    <label className="mb-1 block text-xs font-bold text-slate-700">
+                      <Search size={13} className="mr-1.5 inline text-emerald-600" />
                       Search
                     </label>
                     <input
@@ -2308,19 +2074,19 @@ const DocumentManagement = () => {
                       placeholder="Search by resident or document type..."
                       value={searchTerm}
                       onChange={(event) => setSearchTerm(event.target.value)}
-                      className="w-full h-[38px] rounded-[10px] border border-slate-200 bg-slate-50 px-3 text-xs font-semibold outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 shadow-sm"
+                      className="w-full h-[38px] rounded-[10px] border border-slate-200 bg-slate-50 px-3 text-xs font-semibold outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 shadow-2xs"
                     />
                   </div>
 
-                  <div className="w-full sm:max-w-[180px]">
-                    <label className="mb-1.5 block text-xs font-bold text-slate-700">
-                      <Filter size={14} className="mr-1.5 inline text-emerald-500" />
+                  <div className="w-full sm:max-w-[170px]">
+                    <label className="mb-1 block text-xs font-bold text-slate-700">
+                      <Filter size={13} className="mr-1.5 inline text-emerald-600" />
                       Status
                     </label>
                     <select
                       value={statusFilter}
                       onChange={(event) => setStatusFilter(event.target.value)}
-                      className="w-full h-[38px] rounded-[10px] border border-slate-200 bg-slate-50 px-3 text-xs font-semibold outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 shadow-sm"
+                      className="w-full h-[38px] rounded-[10px] border border-slate-200 bg-slate-50 px-3 text-xs font-semibold outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 shadow-2xs cursor-pointer"
                     >
                       <option value="">All Status</option>
                       {STATUS_OPTIONS.map((status) => (
@@ -2333,91 +2099,106 @@ const DocumentManagement = () => {
 
                   <button
                     type="button"
-                    onClick={isAllFilteredSelected ? handleDeselectAll : handleSelectAllFiltered}
-                    disabled={filteredRequests.length === 0}
-                    className={`inline-flex h-[38px] items-center justify-center gap-1.5 rounded-[10px] border px-3.5 text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                      isAllFilteredSelected
-                        ? "bg-emerald-50 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
-                        : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900"
-                    }`}
-                    title={isAllFilteredSelected ? "I-deselect Lahat" : "Piliin Lahat (Select All)"}
-                  >
-                    {isAllFilteredSelected ? (
-                      <CheckSquare size={15} className="text-emerald-600" />
-                    ) : (
-                      <Square size={15} />
-                    )}
-                    <span>{isAllFilteredSelected ? "Deselect All" : "Select All"}</span>
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={() => loadData({ showLoading: true })}
-                    className="inline-flex h-[38px] items-center justify-center gap-1.5 rounded-[10px] bg-slate-50 border border-slate-200 px-4 text-xs font-bold text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 shadow-sm active:scale-95 cursor-pointer"
+                    className="inline-flex h-[38px] items-center justify-center gap-1.5 rounded-[10px] bg-slate-50 border border-slate-200 px-3 text-xs font-bold text-slate-700 transition hover:bg-slate-100 hover:text-slate-900 shadow-2xs active:scale-95 cursor-pointer"
                   >
                     <RefreshCw size={13} />
                     Refresh
                   </button>
-                </div>
 
-                {selectedRowIds.length > 0 && (
-                  <div className="flex items-center gap-2">
+                  {selectedRowIds.length > 0 && (
                     <button
                       type="button"
                       onClick={handleDeleteSelectedRequests}
                       disabled={deletingSelected}
-                      className="inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] bg-rose-600 px-4 text-xs font-bold text-white transition hover:bg-rose-700 shadow-md shadow-rose-600/20 active:scale-95 cursor-pointer disabled:opacity-60"
-                    >
-                      {deletingSelected ? (
-                        <Loader size={14} className="animate-spin" />
-                      ) : (
-                        <Trash2 size={15} />
-                      )}
-                      <span>Delete Selected ({selectedRowIds.length})</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {selectedRowIds.length > 0 && (
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50/90 px-4 py-2.5 text-xs shadow-sm animate-fade-in">
-                  <div className="flex items-center gap-2 text-emerald-950 font-semibold">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-[11px] font-bold text-white">
-                      {selectedRowIds.length}
-                    </span>
-                    <span>
-                      <strong>{selectedRowIds.length}</strong> {selectedRowIds.length === 1 ? "request" : "requests"} ang napili mula sa {filteredRequests.length} kabuuan
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2.5">
-                    {!isAllFilteredSelected && (
-                      <button
-                        type="button"
-                        onClick={handleSelectAllFiltered}
-                        className="text-xs font-bold text-emerald-800 hover:text-emerald-950 underline underline-offset-2 cursor-pointer"
-                      >
-                        Piliin lahat ({filteredRequests.length})
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleDeselectAll}
-                      className="rounded-lg border border-emerald-300 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-emerald-100 transition cursor-pointer"
-                    >
-                      Clear Selection
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDeleteSelectedRequests}
-                      disabled={deletingSelected}
-                      className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-1 text-xs font-bold text-white hover:bg-rose-700 transition shadow-xs cursor-pointer disabled:opacity-60"
+                      className="inline-flex h-[38px] items-center justify-center gap-1.5 rounded-[10px] bg-rose-600 hover:bg-rose-700 px-3 text-xs font-bold text-white transition shadow-xs active:scale-95 cursor-pointer disabled:opacity-60"
                     >
                       <Trash2 size={13} />
                       <span>Delete ({selectedRowIds.length})</span>
                     </button>
-                  </div>
+                  )}
                 </div>
-              )}
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* "Select Document" Template Selector with Dropdown */}
+                  <div className="relative" ref={docDropdownRef}>
+                    <button
+                      type="button"
+                      onClick={() => setDocDropdownOpen((prev) => !prev)}
+                      className={`inline-flex h-[38px] w-56 sm:w-64 items-center justify-between gap-2 rounded-xl border bg-white px-3.5 text-xs transition shadow-2xs hover:shadow-xs cursor-pointer ${
+                        docDropdownOpen
+                          ? "border-emerald-500 ring-2 ring-emerald-500/20 bg-slate-50/50"
+                          : "border-slate-200 hover:border-emerald-400 bg-white"
+                      }`}
+                      title="Select Document Template"
+                    >
+                      <div className="flex items-center gap-2 min-w-0 truncate">
+                        <FileText size={14} className="text-emerald-700 shrink-0" />
+                        <span className={`truncate text-xs ${walkInForm.templateId && selectedWalkInTemplate ? "font-bold text-slate-900" : "font-semibold text-slate-700"}`}>
+                          {walkInForm.templateId && selectedWalkInTemplate ? getTemplateLabel(selectedWalkInTemplate) : "Select Document"}
+                        </span>
+                      </div>
+                      <ChevronDown size={14} className={`text-slate-400 shrink-0 transition-transform duration-200 ${docDropdownOpen ? "rotate-180 text-emerald-600" : ""}`} />
+                    </button>
+
+                    {docDropdownOpen && (
+                      <div className="absolute right-0 top-full mt-1.5 z-40 w-72 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl animate-fade-in divide-y divide-slate-100">
+                        <div className="px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-50/80 rounded-lg mb-1.5 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <FileText size={12} className="text-emerald-700" />
+                            Official Templates
+                          </span>
+                          <span className="text-[9px] bg-emerald-200/80 px-1.5 py-0.5 rounded text-emerald-900 font-bold">{templates.length} docs</span>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto py-1 space-y-0.5 custom-scrollbar">
+                          {templates.map((template) => (
+                            <button
+                              key={template.id}
+                              type="button"
+                              onClick={() => {
+                                handleSelectDocumentForWalkIn(template.id);
+                                setDocDropdownOpen(false);
+                              }}
+                              className={`flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-xs transition cursor-pointer ${
+                                walkInForm.templateId === template.id
+                                  ? "bg-emerald-50 text-emerald-800 font-bold border border-emerald-200"
+                                  : "text-slate-700 hover:bg-slate-50 hover:text-slate-900 font-medium"
+                              }`}
+                            >
+                              <FileText size={14} className={walkInForm.templateId === template.id ? "text-emerald-700" : "text-slate-400"} />
+                              <span className="truncate flex-1">{getTemplateLabel(template)}</span>
+                              {walkInForm.templateId === template.id && <Check size={13} className="text-emerald-700 shrink-0" />}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="pt-1.5 mt-1 border-t border-slate-100 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDocDropdownOpen(false);
+                              navigate("/document-templates");
+                            }}
+                            className="w-full text-center text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:bg-emerald-50 py-1.5 rounded-lg transition cursor-pointer"
+                          >
+                            ⚙️ Manage & Customize Templates →
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Direct "Manage Templates" Button */}
+                  <button
+                    type="button"
+                    onClick={() => navigate("/document-templates")}
+                    className="inline-flex h-[38px] items-center justify-center gap-1.5 rounded-xl border border-emerald-200/80 bg-emerald-50/70 hover:bg-emerald-100/80 px-3.5 text-xs font-bold text-emerald-800 transition shadow-2xs cursor-pointer"
+                    title="Open Document Template Studio"
+                  >
+                    <FileText size={14} className="text-emerald-700" />
+                    <span>Manage Templates</span>
+                  </button>
+                </div>
+              </div>
             </div>
 
             <div className="gov-datagrid-container overflow-hidden mt-6" style={{ height: 600, width: '100%' }}>
@@ -2454,29 +2235,41 @@ const DocumentManagement = () => {
               </div>
               <div className="flex items-center gap-2.5">
                 {/* 1. Mark Ready for Pick-up & Notify Resident */}
-                <button
-                  type="button"
-                  onClick={async () => {
-                    handleSaveDocument(true);
-                    await handleStatusChange(selectedRequest.id, "Completed");
-                  }}
-                  disabled={updating || !documentIsReady}
-                  className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-40 ${
-                    selectedRequest.status === "Completed"
-                      ? "bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-400/50"
-                      : "bg-[#10b981] hover:bg-[#059669] text-white"
-                  }`}
-                  title={
-                    selectedRequest.status === "Completed"
-                      ? "Resident notified. Click to re-notify if needed."
-                      : "Mark as Ready for Pick-up and Notify Resident via SMS"
-                  }
-                >
-                  <CheckCircle size={14} className="stroke-[2.5]" />
-                  <span className="font-bold">
-                    {selectedRequest.status === "Completed" ? "Ready for Pick-up (Notified)" : "Ready for Pick-up"}
-                  </span>
-                </button>
+                {selectedRequest.status === "Released" ? (
+                  <button
+                    type="button"
+                    disabled
+                    className="flex items-center gap-1.5 rounded-lg bg-emerald-800/80 text-emerald-100 border border-emerald-500/30 px-3.5 py-1.5 text-xs font-bold cursor-not-allowed opacity-75 shadow-xs"
+                    title="Document is already released and resident was notified"
+                  >
+                    <CheckCircle size={14} className="stroke-[2.5]" />
+                    <span className="font-bold">Notified</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      handleSaveDocument(true);
+                      await handleStatusChange(selectedRequest.id, "Completed");
+                    }}
+                    disabled={updating || !documentIsReady}
+                    className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-40 ${
+                      selectedRequest.status === "Completed"
+                        ? "bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-400/50"
+                        : "bg-[#10b981] hover:bg-[#059669] text-white"
+                    }`}
+                    title={
+                      selectedRequest.status === "Completed"
+                        ? "Resident notified. Click to re-notify if needed."
+                        : "Mark as Ready for Pick-up and Notify Resident via SMS"
+                    }
+                  >
+                    <CheckCircle size={14} className="stroke-[2.5]" />
+                    <span className="font-bold">
+                      {selectedRequest.status === "Completed" ? "Ready for Pick-up (Notified)" : "Ready for Pick-up"}
+                    </span>
+                  </button>
+                )}
 
                 {/* 2. Print Document & Release */}
                 <button
@@ -2507,161 +2300,6 @@ const DocumentManagement = () => {
                 </button>
               </div>
             </header>
-
-            {/* ═══ FORMATTING TOOLBAR RIBBON ═══ */}
-            <div className="flex items-center gap-1 border-b border-slate-200 bg-slate-50 px-4 py-1.5 shrink-0 overflow-x-auto select-none" style={{ minHeight: 42 }}>
-              {/* Font Family */}
-              <select
-                value={documentFields.printFontFamily || "times"}
-                onChange={(e) => updateDocumentField("printFontFamily", e.target.value)}
-                className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-800 outline-none hover:border-slate-400 focus:border-emerald-500 cursor-pointer"
-                title="Font Family"
-                style={{ minWidth: 130 }}
-              >
-                <option value="times">Times New Roman</option>
-                <option value="felix">Felix Titling</option>
-                <option value="charlemagne">Charlemagne Std</option>
-                <option value="cooper">Cooper Std Black</option>
-                <option value="rockwell">Rockwell Condensed</option>
-                <option value="arial">Arial</option>
-                <option value="arial-narrow">Arial Narrow</option>
-                <option value="georgia">Georgia</option>
-                <option value="calibri">Calibri</option>
-              </select>
-
-              {/* Font Size */}
-              <select
-                value={documentFields.printFontSize || "12"}
-                onChange={(e) => updateDocumentField("printFontSize", e.target.value)}
-                className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-800 outline-none hover:border-slate-400 focus:border-emerald-500 cursor-pointer w-14"
-                title="Font Size"
-              >
-                <option value="10">10 pt</option>
-                <option value="11">11 pt</option>
-                <option value="12">12 pt</option>
-                <option value="13">13 pt</option>
-                <option value="14">14 pt</option>
-                <option value="15">15 pt</option>
-                <option value="16">16 pt</option>
-                <option value="18">18 pt</option>
-              </select>
-
-              {/* Line Spacing */}
-              <select
-                value={documentFields.printLineHeight || "1.25"}
-                onChange={(e) => updateDocumentField("printLineHeight", e.target.value)}
-                className="rounded border border-slate-200 bg-white px-2 py-1 text-xs font-semibold text-slate-800 outline-none hover:border-slate-400 focus:border-emerald-500 cursor-pointer"
-                title="Line Spacing / Height"
-              >
-                <option value="1.15">1.15x Line</option>
-                <option value="1.25">1.25x Normal</option>
-                <option value="1.35">1.35x Line</option>
-                <option value="1.45">1.45x Line</option>
-                <option value="1.5">1.50x Line</option>
-                <option value="1.8">1.80x Double</option>
-              </select>
-
-              <div className="w-px h-5 bg-slate-300 mx-1 shrink-0" />
-
-              {/* Select All */}
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={handleSelectAllDocumentText}
-                className="flex items-center gap-1 rounded bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-emerald-600 hover:text-white transition active:scale-95 shadow-sm"
-                title="Select All Template Text (Ctrl+A)"
-              >
-                <Type size={13} /> Select All
-              </button>
-
-              <div className="w-px h-5 bg-slate-300 mx-1 shrink-0" />
-
-              {/* Bold */}
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => handleFormatText("bold")}
-                className="flex h-7 w-7 items-center justify-center rounded text-slate-800 hover:bg-slate-200 transition active:scale-90"
-                title="Bold (Ctrl+B)"
-              >
-                <Bold size={15} className="stroke-[2.5]" />
-              </button>
-              {/* Italic */}
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => handleFormatText("italic")}
-                className="flex h-7 w-7 items-center justify-center rounded text-slate-800 hover:bg-slate-200 transition active:scale-90"
-                title="Italic (Ctrl+I)"
-              >
-                <Italic size={15} className="stroke-[2.5]" />
-              </button>
-              {/* Underline */}
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => handleFormatText("underline")}
-                className="flex h-7 w-7 items-center justify-center rounded text-slate-800 hover:bg-slate-200 transition active:scale-90"
-                title="Underline (Ctrl+U)"
-              >
-                <Underline size={15} className="stroke-[2.5]" />
-              </button>
-
-              <div className="w-px h-5 bg-slate-300 mx-1 shrink-0" />
-
-              {/* Align Left */}
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => handleFormatText("justifyLeft")}
-                className="flex h-7 w-7 items-center justify-center rounded text-slate-800 hover:bg-slate-200 transition active:scale-90"
-                title="Align Left"
-              >
-                <AlignLeft size={15} className="stroke-[2.5]" />
-              </button>
-              {/* Align Center */}
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => handleFormatText("justifyCenter")}
-                className="flex h-7 w-7 items-center justify-center rounded text-slate-800 hover:bg-slate-200 transition active:scale-90"
-                title="Center"
-              >
-                <AlignCenter size={15} className="stroke-[2.5]" />
-              </button>
-              {/* Align Right */}
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => handleFormatText("justifyRight")}
-                className="flex h-7 w-7 items-center justify-center rounded text-slate-800 hover:bg-slate-200 transition active:scale-90"
-                title="Align Right"
-              >
-                <AlignRight size={15} className="stroke-[2.5]" />
-              </button>
-              {/* Justify */}
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => handleFormatText("justifyFull")}
-                className="flex h-7 w-7 items-center justify-center rounded text-slate-800 hover:bg-slate-200 transition active:scale-90"
-                title="Justify"
-              >
-                <AlignJustify size={15} className="stroke-[2.5]" />
-              </button>
-
-              <div className="w-px h-5 bg-slate-300 mx-1 shrink-0" />
-
-              {/* Reset */}
-              <button
-                type="button"
-                onClick={resetPrintableText}
-                className="flex items-center gap-1 rounded px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200 transition"
-                title="Reset document body text"
-              >
-                <RefreshCw size={12} /> Reset
-              </button>
-            </div>
 
             {/* ═══ MAIN 3-COLUMN WORKSPACE ═══ */}
             <div className="flex flex-1 overflow-hidden">
@@ -3143,10 +2781,9 @@ const DocumentManagement = () => {
                 </details>
               </aside>
 
-              {/* ── CENTER: PAPER CANVAS ── */}
+              {/* ── CENTER: PAPER CANVAS (Read-only Generated Document Preview) ── */}
               <main
                 className="flex-1 overflow-auto bg-[#e8ecf0] relative"
-                style={{ cursor: "text" }}
               >
                 {!documentIsReady && (
                   <div className="mx-auto mt-3 max-w-xl rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-xs font-semibold text-amber-800 flex items-center gap-2 shadow-sm">
@@ -3165,16 +2802,13 @@ const DocumentManagement = () => {
                   >
                     <div
                       ref={previewEditorRef}
-                      onBlur={handlePreviewEditorBlur}
-                      onPaste={handlePreviewEditorPaste}
-                      onKeyDown={handlePreviewEditorKeyDown}
-                      className="bg-white shadow-xl"
+                      className="bg-white shadow-xl select-none"
                       style={{ borderRadius: 1 }}
                       dangerouslySetInnerHTML={{
                         __html: getRealDocumentMarkup({
                           fields: documentFields,
                           template: selectedTemplate,
-                          editable: true,
+                          editable: false,
                         }),
                       }}
                     />

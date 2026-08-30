@@ -24,7 +24,9 @@ import {
   deleteAnnouncement,
   fetchAnnouncements,
   updateAnnouncement,
+  isAnnouncementExpired,
 } from "../services/announcementService";
+import { showAdminSystemToast } from "../utils/toast";
 import { fetchResidents } from "../services/adminService";
 import {
   isValidSmsPhone,
@@ -79,7 +81,9 @@ const detectLanguageFromTitle = (title = "") => {
     "baha", "sunog", "lindol", "kuryente", "tubig", "bakuna", "trabaho", "ayuda",
     "pamamahagi", "mag-ingat", "paalala", "babala", "isyu", "oras", "araw", "tulong",
     "lahat", "kami", "tayo", "dengue", "reklamo", "hulog", "nanakaw", "nakaw", "kalusugan",
-    "sakuna", "alerto", "doktor", "gamot", "pag-ulan", "bagyo", "saklolo", "pulis", "tanod"
+    "sakuna", "alerto", "doktor", "gamot", "pag-ulan", "bagyo", "saklolo", "pulis", "tanod",
+    "pulong", "pagpupulong", "pagtitipon", "paliga", "pension", "tuli", "aso", "pusa", "aso't",
+    "magsasaka", "palay", "tanim", "binhi", "pataba", "kabataan", "matatanda"
   ];
   const lower = title.toLowerCase();
   const words = lower.split(/[^a-z0-9\-]+/).filter(Boolean);
@@ -88,12 +92,97 @@ const detectLanguageFromTitle = (title = "") => {
 };
 
 // AI Generator logic for common causes, emergencies, calamities, and announcements
-const generateAiAnnouncementDraft = (title = "", category = "General") => {
-  const cleanTitle = title.trim();
+const generateAiAnnouncementDraft = (title = "", category = "General", targetResidentName = null) => {
+  const cleanTitle = (title || "").trim();
   const lowerTitle = cleanTitle.toLowerCase();
   const lang = detectLanguageFromTitle(cleanTitle);
 
-  // 1. EARTHQUAKE / LINDOL / SEISMIC
+  // Recipient headers & salutations
+  const toHeader = targetResidentName ? `To: ${targetResidentName}\n\n` : "";
+  const paraKayHeader = targetResidentName ? `Para Kay: ${targetResidentName}\n\n` : "";
+
+  // 1. BLOTTER / SUMMONS / LUPON / REKLAMO / PATAWAG / HEARING / IMBESTIGASYON
+  if (
+    lowerTitle.includes("blotter") ||
+    lowerTitle.includes("summons") ||
+    lowerTitle.includes("lupon") ||
+    lowerTitle.includes("reklamo") ||
+    lowerTitle.includes("hearing") ||
+    lowerTitle.includes("patawag") ||
+    lowerTitle.includes("imbestigasyon")
+  ) {
+    const generatedCategory = "General";
+    const generatedBody =
+      lang === "tagalog"
+        ? `OPISYAL NA ABISO NG BARANGAY - BLOTTER / PATAWAG ⚖️\n\n${paraKayHeader}Pamagat: ${cleanTitle || "Blotter / Opisyal na Patawag"}\nKategorya: ${generatedCategory}\n\nMAHALAGANG ABISO AT DETALYE:\n${targetResidentName ? `${targetResidentName}, ikaw ay opisyal na pinapabatid at pinapatawag sa Tanggapan ng Punong Barangay / Lupon Tagapamayapa ng Barangay Upper Mingading hinggil sa nakatalang blotter / usapin.` : "Ipinapabatid sa kinauukulan ang opisyal na patawag ng Tanggapan ng Punong Barangay hinggil sa nakatalang blotter / usapin."}\n\nMGA DETALYE:\n- Petsa at Oras: [Ilagay ang Petsa at Oras]\n- Lugar: Barangay Upper Mingading Hall (Lupon Office)\n- Paalala: Mangyaring pumunta sa takdang oras upang mapag-usapan at maresolba ang naturang usapin nang maayos at mapayapa.\n\nPara sa karagdagang impormasyon, tumawag sa Barangay Office Hotline: 09306259795.\n\nMaraming salamat sa inyong kooperasyon!`
+        : `OFFICIAL BARANGAY UPPER MINGADING NOTICE - BLOTTER & SUMMONS ⚖️\n\n${toHeader}Title: ${cleanTitle || "Official Blotter / Summons Notice"}\nCategory: ${generatedCategory}\n\nIMPORTANT ADVISORY & DETAILS:\n${targetResidentName ? `${targetResidentName}, you are hereby officially informed and notified by Barangay Upper Mingading regarding the recorded blotter / matter.` : "All concerned residents of Barangay Upper Mingading are hereby officially notified regarding the recorded blotter."}\n\nDETAILS:\n- Date & Schedule: [Specify Date & Time]\n- Venue: Barangay Upper Mingading Hall / Lupon Office\n- Guidelines: You are requested to attend promptly to discuss and resolve the matter amicably.\n\nFor inquiries, please contact the Barangay Office Hotline: 09306259795.\n\nThank you for your cooperation!`;
+
+    return { category: generatedCategory, body: generatedBody, language: lang };
+  }
+
+  // 2. CLEAN UP / LINIS / TAPAT / BRIGADA / COMMUNITY SERVICE / TREE PLANTING
+  if (
+    lowerTitle.includes("clean") ||
+    lowerTitle.includes("linis") ||
+    lowerTitle.includes("tapat") ||
+    lowerTitle.includes("waste") ||
+    lowerTitle.includes("basura") ||
+    lowerTitle.includes("brigada") ||
+    lowerTitle.includes("tree planting") ||
+    lowerTitle.includes("tanim")
+  ) {
+    const generatedCategory = "Community";
+    const generatedBody =
+      lang === "tagalog"
+        ? `PATALASTAS SA COMMUNITY ACTIVITY / CLEAN-UP DRIVE 🧹🌱\n\n${paraKayHeader}Pamagat: ${cleanTitle || "Barangay Community Activity"}\nKategorya: Community\n\nMAHALAGANG ABISO AT DETALYE:\n${targetResidentName ? `${targetResidentName}, ikaw ay opisyal na inaanyayahan ng Barangay Upper Mingading na makiisa sa ating aktibidad para sa kalinisan at kaayusan ng komunidad.` : "Inaanyayahan ang lahat ng residente ng Barangay Upper Mingading na makilahok sa ating bayanihan aktibidad."}\n\nMGA DETALYE:\n- Petsa at Oras: [Ilagay ang Petsa], 6:00 AM - 10:00 AM\n- Lugar ng Pagtitipon: Barangay Upper Mingading Covered Court / Purok Center\n- Mga Dadalhin: Sariling gamit panlinis / kagamitan at inuming tubig\n- Paalala: Magsusuot ng komportableng kasuotan at sundin ang mga tagubilin ng mga opisyal.\n\nPara sa mga katanungan: 09306259795.`
+        : `COMMUNITY NOTICE - COMMUNITY ACTIVITY / CLEAN-UP DRIVE 🧹🌱\n\n${toHeader}Title: ${cleanTitle || "Barangay Community Drive"}\nCategory: Community\n\nIMPORTANT ADVISORY & DETAILS:\n${targetResidentName ? `${targetResidentName}, you are warmly invited by Barangay Upper Mingading to participate in our community drive.` : "All registered residents of Barangay Upper Mingading are warmly invited to participate in the upcoming community activity."}\n\nDETAILS:\n- Date & Schedule: [Specify Date & Time], 6:00 AM - 10:00 AM\n- Venue: Barangay Upper Mingading Covered Court / Purok Center\n- What to Bring: Cleaning tools / appropriate materials and drinking water\n- Guidelines: Please observe community cooperation and safety.\n\nFor inquiries, please contact the Barangay Hotline: 09306259795.\n\nThank you for your cooperation!`;
+
+    return { category: generatedCategory, body: generatedBody, language: lang };
+  }
+
+  // 3. ASSEMBLY / MEETING / PULONG / KONSULTASYON
+  if (
+    lowerTitle.includes("assembly") ||
+    lowerTitle.includes("meeting") ||
+    lowerTitle.includes("pulong") ||
+    lowerTitle.includes("pagpupulong") ||
+    lowerTitle.includes("consultation") ||
+    lowerTitle.includes("session")
+  ) {
+    const generatedCategory = "Community";
+    const generatedBody =
+      lang === "tagalog"
+        ? `PATALASTAS SA BARANGAY GENERAL ASSEMBLY / PAGPUPULONG 🏛️\n\n${paraKayHeader}Pamagat: ${cleanTitle || "Barangay General Assembly"}\nKategorya: Community\n\nMAHALAGANG ABISO AT DETALYE:\n${targetResidentName ? `${targetResidentName}, ikaw ay pormal na inaanyayahan sa darating na pagpupulong ng Barangay Upper Mingading.` : "Ipinapabatid sa lahat ng mga residente ng Barangay Upper Mingading ang gaganaping General Assembly at Pagpupulong."}\n\nMGA DETALYE NG PAGTITIPON:\n- Petsa at Oras: [Ilagay ang Petsa], 1:00 PM - 5:00 PM\n- Lugar: Barangay Upper Mingading Covered Court\n- Agenda: Mga Ulat sa Progreso, Proyekto, Badyet, at mga Usaping Pang-Barangay\n\nPAALALA:\nMahalaga ang inyong presensya at opinyon para sa patuloy na pag-unlad ng ating barangay.`
+        : `NOTICE OF BARANGAY GENERAL ASSEMBLY & COMMUNITY MEETING 🏛️\n\n${toHeader}Title: ${cleanTitle || "Barangay General Assembly"}\nCategory: Community\n\nIMPORTANT ADVISORY & DETAILS:\n${targetResidentName ? `${targetResidentName}, you are formally invited to attend the official Barangay Assembly meeting.` : "All residents and household heads of Barangay Upper Mingading are cordially invited to attend the General Assembly."}\n\nMEETING DETAILS:\n- Date & Time: [Specify Date], 1:00 PM - 5:00 PM\n- Venue: Barangay Upper Mingading Covered Court\n- Agenda: Barangay Accomplishment Report, Upcoming Projects, and Community Concerns\n\nYour presence, active participation, and suggestions are highly valued.`;
+
+    return { category: generatedCategory, body: generatedBody, language: lang };
+  }
+
+  // 4. MEDICAL CHECKUP / HEALTH MISSION / VACCINATION / DENTAL / TULI / DENGUE
+  if (
+    lowerTitle.includes("medical") ||
+    lowerTitle.includes("checkup") ||
+    lowerTitle.includes("check up") ||
+    lowerTitle.includes("health") ||
+    lowerTitle.includes("vaccine") ||
+    lowerTitle.includes("bakuna") ||
+    lowerTitle.includes("tuli") ||
+    lowerTitle.includes("dental") ||
+    lowerTitle.includes("doktor") ||
+    lowerTitle.includes("clinic") ||
+    lowerTitle.includes("dengue") ||
+    lowerTitle.includes("gamot")
+  ) {
+    const generatedCategory = "Health";
+    const generatedBody =
+      lang === "tagalog"
+        ? `IMPORMASYON SA SERBISYONG PANGKALUSUGAN - ${cleanTitle.toUpperCase() || "MEDICAL MISSION"} 🏥\n\n${paraKayHeader}Pamagat: ${cleanTitle || "Libreng Serbisyong Medikal"}\nKategorya: Health\n\nDETALYE NG PROGRAMANG PANGKALUSUGAN:\n${targetResidentName ? `${targetResidentName}, ikaw ay opisyal na pinapabatid ukol sa serbisyong pangkalusugan na ito ng Barangay Upper Mingading.` : "Ipinapabatid sa lahat ng residente ng Barangay Upper Mingading ang gaganaping libreng serbisyong medikal."}\n\nMGA IMPORMASYON:\n- Petsa at Oras: [Ilagay ang Petsa], 8:00 AM - 3:00 PM\n- Lugar: Barangay Upper Mingading Health Center / Covered Court\n- Mga Libreng Serbisyo: Konsultasyon, Pamamahagi ng Gamot / Bitamina, BP & Blood Sugar Check, atbp.\n- Mga Kailangang Dalhin: Valid ID o Barangay Resident Certificate\n\nPAALALA:\nUnang darating, unang mapagsisilbihan. Magsisimula ang pamamahagi ng priority numbers ganap na 7:30 AM.`
+        : `HEALTH ADVISORY & MEDICAL SERVICE ANNOUNCEMENT - ${cleanTitle.toUpperCase() || "MEDICAL MISSION"} 🏥\n\n${toHeader}Title: ${cleanTitle || "Free Medical & Health Consultation Mission"}\nCategory: Health\n\nPROGRAM DETAILS:\n${targetResidentName ? `${targetResidentName}, you are officially informed of this upcoming health service by Barangay Upper Mingading.` : "Open to all registered residents of Barangay Upper Mingading."}\n\nSCHEDULE & VENUE:\n- Date & Time: [Specify Date], 8:00 AM - 3:00 PM\n- Location: Barangay Upper Mingading Health Center / Covered Court\n- Services Offered: Medical Consultations, Prescribed Medicines, Health Screenings, and Vital Checks.\n- Requirements: Valid ID or Barangay Resident Certificate.\n\nPriority numbers will be issued starting at 7:30 AM.`;
+
+    return { category: generatedCategory, body: generatedBody, language: lang };
+  }
+
+  // 5. EARTHQUAKE / LINDOL / SEISMIC
   if (
     lowerTitle.includes("earthquake") ||
     lowerTitle.includes("earth quake") ||
@@ -105,12 +194,12 @@ const generateAiAnnouncementDraft = (title = "", category = "General") => {
     const generatedCategory = "Emergency";
     const generatedBody =
       lang === "tagalog"
-        ? `ABISO NG BARANGAY - BABALA SA LINDOL 🌋\n\nNagkaroon ng pag-yanig (Earthquake) sa ating lugar. Pinapaalalahanan ang lahat ng residente ng Barangay Upper Mingading na manatiling kalmado at mag-ingat.\n\nMGA DAPAT SUNDIN:\n1. DUCK, COVER, & HOLD kung may pag-yanig pa.\n2. Lumabas sa mga gusali o bahay papunta sa open area malayo sa poste o puno.\n3. I-check ang inyong linya ng kuryente at gas bago muling pumasok sa bahay.\n4. Para sa emergency o saklolo, tumawag agad sa Barangay Hotline: 09306259795.\n\nManatiling alerto at sumunod sa mga opisyal na babala.`
-        : `BARANGAY ADVISORY - EARTHQUAKE SAFETY ALERT 🌋\n\nAn earthquake tremor has been reported in our area. All residents of Barangay Upper Mingading are strongly advised to remain calm and follow safety protocols.\n\nSAFETY INSTRUCTIONS:\n1. DUCK, COVER, & HOLD during active tremors.\n2. Evacuate to designated open areas away from electrical posts and fragile structures.\n3. Inspect your homes for gas leaks and electrical damage before re-entering.\n4. For immediate rescue or medical assistance, contact the Barangay Hotline: 09306259795.\n\nPlease stay vigilant and follow official updates.`;
+        ? `ABISO NG BARANGAY - BABALA SA LINDOL 🌋\n\n${paraKayHeader}Nagkaroon ng pag-yanig (Earthquake) sa ating lugar. ${targetResidentName ? `${targetResidentName}, manatiling kalmado at mag-ingat.` : "Pinapaalalahanan ang lahat ng residente ng Barangay Upper Mingading na manatiling kalmado at mag-ingat."}\n\nMGA DAPAT SUNDIN:\n1. DUCK, COVER, & HOLD kung may pag-yanig pa.\n2. Lumabas sa mga gusali o bahay papunta sa open area malayo sa poste o puno.\n3. I-check ang inyong linya ng kuryente at gas bago muling pumasok sa bahay.\n4. Para sa emergency o saklolo, tumawag agad sa Barangay Hotline: 09306259795.\n\nManatiling alerto at sumunod sa mga opisyal na babala.`
+        : `BARANGAY ADVISORY - EARTHQUAKE SAFETY ALERT 🌋\n\n${toHeader}An earthquake tremor has been reported in our area. ${targetResidentName ? `${targetResidentName}, you are strongly advised to remain calm and follow safety protocols.` : "All residents of Barangay Upper Mingading are strongly advised to remain calm and follow safety protocols."}\n\nSAFETY INSTRUCTIONS:\n1. DUCK, COVER, & HOLD during active tremors.\n2. Evacuate to designated open areas away from electrical posts and fragile structures.\n3. Inspect your homes for gas leaks and electrical damage before re-entering.\n4. For immediate rescue or medical assistance, contact the Barangay Hotline: 09306259795.\n\nPlease stay vigilant and follow official updates.`;
     return { category: generatedCategory, body: generatedBody, language: lang };
   }
 
-  // 2. CARNAP / THEFT / NANAKAW / CRIME / SECURITY
+  // 6. CARNAP / THEFT / NANAKAW / CRIME / SECURITY / CURFEW
   if (
     lowerTitle.includes("carnap") ||
     lowerTitle.includes("car nap") ||
@@ -120,38 +209,19 @@ const generateAiAnnouncementDraft = (title = "", category = "General") => {
     lowerTitle.includes("nakaw") ||
     lowerTitle.includes("robbery") ||
     lowerTitle.includes("crime") ||
-    lowerTitle.includes("security")
+    lowerTitle.includes("security") ||
+    lowerTitle.includes("curfew") ||
+    lowerTitle.includes("tanod")
   ) {
     const generatedCategory = "Emergency";
     const generatedBody =
       lang === "tagalog"
-        ? `BARANGAY SECURITY ALERT - PAALALA SA SEKURIDAD 🚨\n\nIsang insidente ng Carnapping / Pagnanakaw ng Sasakyan ang naitala sa ating barangay. Pinapaalalahanan ang lahat ng residente na maging masigasig sa seguridad ng inyong mga sasakyan at ari-arian.\n\nMGA PAALALA SA SEKURIDAD:\n1. I-lock nang maayos ang inyong mga motorsiklo at sasakyan, gamitan ng anti-theft lock.\n2. Huwag iwanan ang susi sa sasakyan o magpark sa madilim at walang taong lugar.\n3. Ipagbigay-alam agad sa Barangay Tanod / Police Station kung may napapansing kaduda-dudang tao.\n4. Barangay Emergency Hotline: 09306259795.\n\nMagtulungan tayo para sa kapayapaan at seguridad ng Barangay Upper Mingading.`
-        : `BARANGAY SECURITY ALERT - VEHICLE THEFT / CARNAPPING NOTICE 🚨\n\nA vehicle theft / carnapping incident has been reported within the barangay vicinity. All residents of Barangay Upper Mingading are advised to take extra precautions.\n\nSECURITY MEASURES:\n1. Ensure all motorcycles and vehicles are locked securely with steering locks or anti-theft devices.\n2. Avoid parking in poorly lit or isolated areas.\n3. Report suspicious individuals or activity immediately to the Barangay Tanod on patrol.\n4. Barangay Emergency Hotline: 09306259795.\n\nLet us remain watchful and protect our community together.`;
+        ? `BARANGAY SECURITY ALERT - PAALALA SA SEKURIDAD 🚨\n\n${paraKayHeader}Pamagat: ${cleanTitle || "Security & Peace Advisory"}\nKategorya: Emergency\n\n${targetResidentName ? `${targetResidentName}, pinapaalalahanan ka ng Barangay Upper Mingading na maging alerto sa seguridad ng inyong tahanan at sasakyan.` : "Pinapaalalahanan ang lahat ng residente na maging masigasig sa seguridad ng inyong mga tahanan at ari-arian."}\n\nMGA PAALALA SA SEKURIDAD:\n1. I-lock nang maayos ang inyong mga pinto, bintana, motorsiklo, at sasakyan.\n2. Huwag iwanan ang susi sa sasakyan o magpark sa madilim at walang taong lugar.\n3. Ipagbigay-alam agad sa Barangay Tanod on duty o Police Hotline kung may kahina-hinalang tao.\n4. Barangay Emergency Hotline: 09306259795.\n\nMagtulungan po tayo para sa kaligtasan ng Barangay Upper Mingading.`
+        : `BARANGAY SECURITY ALERT - COMMUNITY SAFETY ADVISORY 🚨\n\n${toHeader}Title: ${cleanTitle || "Community Security Advisory"}\nCategory: Emergency\n\n${targetResidentName ? `${targetResidentName}, you are advised to exercise heightened vigilance regarding household and vehicle security.` : "All residents of Barangay Upper Mingading are strongly advised to exercise heightened vigilance."}\n\nSECURITY MEASURES:\n1. Ensure all entry points, motorcycles, and vehicles are secured and locked.\n2. Avoid leaving valuables unattended or parking in unlit areas.\n3. Report suspicious individuals or activities immediately to the Barangay Tanod / Police.\n4. Barangay Emergency Hotline: 09306259795.\n\nLet us remain vigilant and keep our community safe.`;
     return { category: generatedCategory, body: generatedBody, language: lang };
   }
 
-  // 3. MEDICAL CHECKUP / HEALTH MISSION / VACCINATION / CLINIC
-  if (
-    lowerTitle.includes("medical") ||
-    lowerTitle.includes("checkup") ||
-    lowerTitle.includes("check up") ||
-    lowerTitle.includes("check-up") ||
-    lowerTitle.includes("health") ||
-    lowerTitle.includes("vaccine") ||
-    lowerTitle.includes("bakuna") ||
-    lowerTitle.includes("doktor") ||
-    lowerTitle.includes("clinic") ||
-    lowerTitle.includes("dengue")
-  ) {
-    const generatedCategory = "Health";
-    const generatedBody =
-      lang === "tagalog"
-        ? `IMPORMASYON SA SERBISYONG PANGKALUSUGAN - MEDICAL CHECKUP 🏥\n\nMagkakaroon ng Libreng Medical Check-up at Health Mission sa ating Barangay Health Center para sa lahat ng residente ng Barangay Upper Mingading.\n\nMGA DETALYE NG PROGRAMA:\n- Petsa at Oras: [Ilagay ang Petsa], 8:00 AM - 3:00 PM\n- Lugar: Barangay Upper Mingading Health Center\n- Mga Serbisyo: Libreng Check-up, Konsultasyon, Reseta ng Gamot, at BP / Blood Sugar Testing.\n\nKUMUHA NG NUMBER:\nMangyaring magdala ng Valid ID o Barangay Clearance. Ang pamamahagi ng priority numbers ay magsisimula ng 7:30 AM.`
-        : `HEALTH SERVICE ANNOUNCEMENT - FREE MEDICAL CHECKUP 🏥\n\nBarangay Upper Mingading will be conducting a Free Medical Checkup and Health Consultation for all registered residents.\n\nPROGRAM DETAILS:\n- Date & Time: [Specify Date], 8:00 AM - 3:00 PM\n- Location: Barangay Upper Mingading Health Center\n- Available Services: General Medical Consultation, Prescription Medicines, BP & Blood Sugar Testing.\n\nREQUIREMENTS:\nPlease bring a Valid ID or Barangay Resident Certificate. Priority registration opens at 7:30 AM.`;
-    return { category: generatedCategory, body: generatedBody, language: lang };
-  }
-
-  // 4. FIRE / SUNOG / BLAZE
+  // 7. FIRE / SUNOG / BLAZE
   if (
     lowerTitle.includes("fire") ||
     lowerTitle.includes("sunog") ||
@@ -162,12 +232,12 @@ const generateAiAnnouncementDraft = (title = "", category = "General") => {
     const generatedCategory = "Emergency";
     const generatedBody =
       lang === "tagalog"
-        ? `EMERGENCY ANNOUNCEMENT - BABALA SA SUNOG 🔥\n\nIsang alerto sa sunog ang inilabas para sa kaligtasan ng lahat ng residente sa Barangay Upper Mingading.\n\nMGA GABAY SA KALIGTASAN:\n1. I-turn off agad ang main switch ng kuryente at LPG tank valves kung ligtas gawin.\n2. Lumabas agad ng bahay kung may usok o apoy, iwasan ang mag-panic.\n3. I-prioritize ang kaligtasan ng pamilya bago ang gamit.\n4. Tumawag agad sa Fire Hotline o Barangay Emergency Team: 09306259795.\n\nManatiling alerto at mag-ingat po ang lahat.`
-        : `EMERGENCY ANNOUNCEMENT - FIRE SAFETY ALERT 🔥\n\nAn urgent fire emergency advisory is in effect for Barangay Upper Mingading.\n\nIMMEDIATE ACTIONS REQUIRED:\n1. Shut off main circuit breakers and LPG gas regulators if safe to do so.\n2. Evacuate immediately if smoke or fire is present.\n3. Prioritize family safety over personal belongings.\n4. Contact the Fire Department or Barangay Rescue Hotline immediately: 09306259795.\n\nStay alert and follow safety instructions from local authorities.`;
+        ? `EMERGENCY ANNOUNCEMENT - BABALA SA SUNOG 🔥\n\n${paraKayHeader}Isang alerto sa sunog ang inilabas para sa kaligtasan. ${targetResidentName ? `${targetResidentName}, manatiling alerto at mag-ingat.` : "Para sa kaligtasan ng lahat ng residente sa Barangay Upper Mingading."}\n\nMGA GABAY SA KALIGTASAN:\n1. I-turn off agad ang main switch ng kuryente at LPG tank valves kung ligtas gawin.\n2. Lumabas agad ng bahay kung may usok o apoy, iwasan ang mag-panic.\n3. I-prioritize ang kaligtasan ng pamilya bago ang gamit.\n4. Tumawag agad sa Fire Hotline o Barangay Emergency Team: 09306259795.\n\nManatiling alerto at mag-ingat po ang lahat.`
+        : `EMERGENCY ANNOUNCEMENT - FIRE SAFETY ALERT 🔥\n\n${toHeader}An urgent fire emergency advisory is in effect. ${targetResidentName ? `${targetResidentName}, please take immediate precautions and stay alert.` : "For the safety of all residents of Barangay Upper Mingading."}\n\nIMMEDIATE ACTIONS REQUIRED:\n1. Shut off main circuit breakers and LPG gas regulators if safe to do so.\n2. Evacuate immediately if smoke or fire is present.\n3. Prioritize family safety over personal belongings.\n4. Contact the Fire Department or Barangay Rescue Hotline immediately: 09306259795.\n\nStay alert and follow safety instructions from local authorities.`;
     return { category: generatedCategory, body: generatedBody, language: lang };
   }
 
-  // 5. FLOOD / TYPHOON / BAGYO / BAHA / STORM
+  // 8. FLOOD / TYPHOON / BAGYO / BAHA / STORM / LANDSLIDE
   if (
     lowerTitle.includes("typhoon") ||
     lowerTitle.includes("bagyo") ||
@@ -180,12 +250,12 @@ const generateAiAnnouncementDraft = (title = "", category = "General") => {
     const generatedCategory = "Emergency";
     const generatedBody =
       lang === "tagalog"
-        ? `BABALA SA BAGYO AT BAHA - ADVISORY SA MGA RESIDENTE ⛈️\n\nDahil sa malakas na pag-ulan at masamang panahon, pinapayuhan ang mga residente sa mabababang lugar ng Barangay Upper Mingading na maghanda sa posibleng pagbaha.\n\nMGA HAKBANG SA PAGHAHANDA:\n1. Ihanda ang Emergency Go-Bag (pagkain, tubig, gamot, flashlight, at importanteng dokumento).\n2. Alamin ang pinakamalapit na Evacuation Center sa inyong Purok.\n3. Mag-charge ng mga mobile phones at power banks.\n4. Para sa tulong o evacuation assistance: 09306259795.\n\nMag-ingat po ang bawat pamilya sa Barangay Upper Mingading.`
-        : `TYPHOON & FLOOD ADVISORY - RESIDENT ALERT ⛈️\n\nDue to heavy rainfall and inclement weather, residents in low-lying areas of Barangay Upper Mingading are advised to take precautionary measures for potential flooding.\n\nPREPARATION STEPS:\n1. Prepare Emergency Go-Bags with food, drinking water, first-aid items, and essential documents.\n2. Monitor official barangay weather updates and locate your nearest evacuation site.\n3. Charge communication devices and emergency lights.\n4. For evacuation response and assistance: 09306259795.\n\nStay safe and indoors during heavy rainfall.`;
+        ? `BABALA SA BAGYO AT BAHA - ADVISORY SA MGA RESIDENTE ⛈️\n\n${paraKayHeader}Dahil sa malakas na pag-ulan at masamang panahon, ${targetResidentName ? `${targetResidentName}, maghanda sa posibleng pagbaha.` : "pinapayuhan ang mga residente sa mabababang lugar na maghanda sa posibleng pagbaha."}\n\nMGA HAKBANG SA PAGHAHANDA:\n1. Ihanda ang Emergency Go-Bag (pagkain, tubig, gamot, flashlight, at importanteng dokumento).\n2. Alamin ang pinakamalapit na Evacuation Center sa inyong Purok.\n3. Mag-charge ng mga mobile phones at power banks.\n4. Para sa tulong o evacuation assistance: 09306259795.\n\nMag-ingat po ang bawat pamilya sa Barangay Upper Mingading.`
+        : `TYPHOON & FLOOD ADVISORY - RESIDENT ALERT ⛈️\n\n${toHeader}Due to heavy rainfall and inclement weather, ${targetResidentName ? `${targetResidentName}, you are advised to take precautionary measures for potential flooding.` : "residents in low-lying areas of Barangay Upper Mingading are advised to take precautionary measures for potential flooding."}\n\nPREPARATION STEPS:\n1. Prepare Emergency Go-Bags with food, drinking water, first-aid items, and essential documents.\n2. Monitor official barangay weather updates and locate your nearest evacuation site.\n3. Charge communication devices and emergency lights.\n4. For evacuation response and assistance: 09306259795.\n\nStay safe and indoors during heavy rainfall.`;
     return { category: generatedCategory, body: generatedBody, language: lang };
   }
 
-  // 6. POWER / WATER / BROWNOUT / KURYENTE / TUBIG / INTERRUPTION
+  // 9. POWER / WATER / BROWNOUT / KURYENTE / TUBIG / INTERRUPTION
   if (
     lowerTitle.includes("power") ||
     lowerTitle.includes("brownout") ||
@@ -199,33 +269,91 @@ const generateAiAnnouncementDraft = (title = "", category = "General") => {
     const generatedCategory = "General";
     const generatedBody =
       lang === "tagalog"
-        ? `PATALASTAS SA PAGPAPATAY NG KURYENTE / TUBIG ⚡\n\nInanunsyo ng barangay ang nakatakdang power / water interruption upang magbigay-daan sa pasilidad at linya ng maintenance work.\n\nDETALYE NG INTERRUPTIYO:\n- Apektadong Lugar: Barangay Upper Mingading (Lahat ng Purok)\n- Petsa at Oras: [Ilagay ang Petsa], 8:00 AM hanggang 5:00 PM\n- Dahilan: Scheduled Maintenance at Line Improvement Work.\n\nPAALALA:\nMag-ipon ng sapat na tubig at mag-charge ng mga ilaw bago ang takdang oras.`
-        : `NOTICE OF POWER / WATER SERVICE INTERRUPTION ⚡\n\nPlease be informed of a scheduled service interruption affecting Barangay Upper Mingading for maintenance and infrastructure upgrading.\n\nINTERRUPTION SCHEDULE:\n- Affected Area: Barangay Upper Mingading (All Puroks)\n- Date & Time: [Specify Date], 8:00 AM to 5:00 PM\n- Reason: Utility Line Inspection and System Maintenance.\n\nRECOMMENDATION:\nPlease store adequate water supply and charge essential equipment prior to the scheduled outage.`;
+        ? `PATALASTAS SA PAGPAPATAY NG KURYENTE / TUBIG ⚡\n\n${paraKayHeader}Inanunsyo ng barangay ang nakatakdang power / water interruption upang magbigay-daan sa pasilidad at linya ng maintenance work.\n\nDETALYE NG INTERRUPTIYO:\n- Apektadong Lugar: Barangay Upper Mingading (Lahat ng Purok)\n- Petsa at Oras: [Ilagay ang Petsa], 8:00 AM hanggang 5:00 PM\n- Dahilan: Scheduled Maintenance at Line Improvement Work.\n\nPAALALA:\nMag-ipon ng sapat na tubig at mag-charge ng mga ilaw bago ang takdang oras.`
+        : `NOTICE OF POWER / WATER SERVICE INTERRUPTION ⚡\n\n${toHeader}Please be informed of a scheduled service interruption affecting Barangay Upper Mingading for maintenance and infrastructure upgrading.\n\nINTERRUPTION SCHEDULE:\n- Affected Area: Barangay Upper Mingading (All Puroks)\n- Date & Time: [Specify Date], 8:00 AM to 5:00 PM\n- Reason: Utility Line Inspection and System Maintenance.\n\nRECOMMENDATION:\nPlease store adequate water supply and charge essential equipment prior to the scheduled outage.`;
     return { category: generatedCategory, body: generatedBody, language: lang };
   }
 
-  // 7. AYUDA / RELIEF / DISTRIBUTION / CASH ASSISTANCE
+  // 10. AYUDA / RELIEF / CASH ASSISTANCE / PENSION / SENIOR / PWD / FINANCIAL
   if (
     lowerTitle.includes("ayuda") ||
     lowerTitle.includes("relief") ||
     lowerTitle.includes("distribution") ||
     lowerTitle.includes("cash assistance") ||
-    lowerTitle.includes("pangkabuhayan")
+    lowerTitle.includes("pangkabuhayan") ||
+    lowerTitle.includes("pension") ||
+    lowerTitle.includes("senior") ||
+    lowerTitle.includes("pwd")
   ) {
     const generatedCategory = "Livelihood";
     const generatedBody =
       lang === "tagalog"
-        ? `ANUNSYO SA PAMAMAHAGI NG AYUDA AT RELIEF GOODS 🌾\n\nIpinapabatid sa lahat ng nakatalagang benepisyaryo ng Barangay Upper Mingading ang nakatakdang pamamahagi ng Ayuda / Relief Assistance.\n\nMGA DETALYE NG DISTRIBUTION:\n- Petsa at Oras: [Ilagay ang Petsa], 9:00 AM - 4:00 PM\n- Lugar: Barangay Upper Mingading Covered Court\n- Mga Kailangan Dalhin: Valid ID, Barangay Certificate, at Stub Number.\n\nPinapaalalahanan ang lahat na panatilihin ang kaayusan sa pila.`
-        : `COMMUNITY ANNOUNCEMENT - AYUDA & RELIEF DISTRIBUTION 🌾\n\nPlease be informed of the scheduled distribution of Ayuda and Relief Assistance for eligible beneficiaries of Barangay Upper Mingading.\n\nDISTRIBUTION DETAILS:\n- Date & Time: [Specify Date], 9:00 AM - 4:00 PM\n- Venue: Barangay Upper Mingading Covered Court\n- Requirements: Valid ID, Barangay Resident Certificate, and Priority Stub.\n\nPlease maintain orderly lines during the distribution process.`;
+        ? `ANUNSYO SA PAMAMAHAGI NG TULONG / AYUDA AT BENEPISYO 🌾💰\n\n${paraKayHeader}Pamagat: ${cleanTitle || "Pamamahagi ng Ayuda at Benepisyo"}\nKategorya: Livelihood\n\nDETALYE NG PAMAMAHAGI:\n${targetResidentName ? `Ipinapabatid kay ${targetResidentName} na nakatala ka bilang benepisyaryo ng naturang ayuda / ayuda program.` : "Ipinapabatid sa lahat ng mga kwalipikadong benepisyaryo ng Barangay Upper Mingading ang nakatakdang pamamahagi."}\n\nMGA IMPORMASYON:\n- Petsa at Oras: [Ilagay ang Petsa], 9:00 AM - 4:00 PM\n- Lugar: Barangay Upper Mingading Covered Court\n- Mga Kailangang Dalhin: Valid ID, Barangay Resident Certificate, at Stub Number / Authorization Letter (kung kinatawan).\n\nPAALALA:\nPanatilihin ang kaayusan at sumunod sa designated priority lane para sa Senior Citizens, PWDs, at Pregnant Women.`
+        : `COMMUNITY ANNOUNCEMENT - BENEFIT & ASSISTANCE DISTRIBUTION 🌾💰\n\n${toHeader}Title: ${cleanTitle || "Assistance & Aid Distribution"}\nCategory: Livelihood\n\nDISTRIBUTION DETAILS:\n${targetResidentName ? `${targetResidentName}, you are officially registered as a designated beneficiary for this program.` : "For all eligible beneficiaries of Barangay Upper Mingading."}\n\nSCHEDULE & VENUE:\n- Date & Time: [Specify Date], 9:00 AM - 4:00 PM\n- Venue: Barangay Upper Mingading Covered Court\n- Requirements to Bring: Valid Government ID, Barangay Resident Certificate, and Stub Number / Authorization Letter.\n\nNOTE:\nPlease observe orderliness and follow the dedicated priority lanes for Seniors, PWDs, and Pregnant Women.`;
     return { category: generatedCategory, body: generatedBody, language: lang };
   }
 
-  // 8. DEFAULT GENERIC AI GENERATOR ACCORDING TO TITLE & LANGUAGE
+  // 11. SPORTS / LIGA / BASKETBALL / VOLLEYBALL / TOURNAMENT / YOUTH
+  if (
+    lowerTitle.includes("sports") ||
+    lowerTitle.includes("liga") ||
+    lowerTitle.includes("basketball") ||
+    lowerTitle.includes("volleyball") ||
+    lowerTitle.includes("tournament") ||
+    lowerTitle.includes("laro") ||
+    lowerTitle.includes("zumba")
+  ) {
+    const generatedCategory = "Community";
+    const generatedBody =
+      lang === "tagalog"
+        ? `PATALASTAS SA PALARONG BARANGAY / SPORTS ACTIVITY 🏀🏆\n\n${paraKayHeader}Pamagat: ${cleanTitle || "Barangay Sports League"}\nKategorya: Community\n\nMAHALAGANG ABISO AT DETALYE:\nInaanyayahan ang lahat ng mga kabataan at residente ng bawat Purok na sumali at makiisa sa ating palaro para sa kalusugan at pagkakaisa!\n\nMGA DETALYE:\n- Petsa at Oras ng Pagbubukas: [Ilagay ang Petsa], 4:00 PM\n- Lugar: Barangay Upper Mingading Covered Court\n- Mga Kategorya: Inter-Purok Divisions\n- Paalala: Ang bawat koponan ay dapat magsumite ng official line-up sa Barangay Sports Coordinator bago ang takdang araw.\n\nHalina't magsaya at suportahan ang ating mga manlalaro!`
+        : `SPORTS & RECREATION ANNOUNCEMENT - ${cleanTitle.toUpperCase() || "BARANGAY SPORTS TOURNAMENT"} 🏀🏆\n\n${toHeader}Title: ${cleanTitle || "Barangay Sports Tournament"}\nCategory: Community\n\nANNOUNCEMENT DETAILS:\nAll youth, sports enthusiasts, and Purok representatives are invited to participate in the upcoming sports league for community wellness and camaraderie.\n\nEVENT DETAILS:\n- Opening Date & Time: [Specify Date], 4:00 PM\n- Venue: Barangay Upper Mingading Covered Court\n- Categories: Inter-Purok Divisions\n- Registration Guidelines: Team rosters must be submitted to the Barangay Sports Coordinator prior to the deadline.\n\nCome and support your Purok teams!`;
+    return { category: generatedCategory, body: generatedBody, language: lang };
+  }
+
+  // 12. AGRICULTURE / FARMERS / MAGSASAKA / FERTILIZER / BINHI / PATABA / SEEDS
+  if (
+    lowerTitle.includes("magsasaka") ||
+    lowerTitle.includes("farmer") ||
+    lowerTitle.includes("palay") ||
+    lowerTitle.includes("binhi") ||
+    lowerTitle.includes("fertilizer") ||
+    lowerTitle.includes("pataba") ||
+    lowerTitle.includes("seeds") ||
+    lowerTitle.includes("ani") ||
+    lowerTitle.includes("agri")
+  ) {
+    const generatedCategory = "Livelihood";
+    const generatedBody =
+      lang === "tagalog"
+        ? `PATALASTAS PARA SA MGA MAGSASAKA AT SEKTOR NG AGRIKULTURA 🌾🌱\n\n${paraKayHeader}Pamagat: ${cleanTitle || "Programang Pansakahan at Pamamahagi ng Binhi"}\nKategorya: Livelihood\n\nMAHALAGANG IMPORMASYON:\nIpinapabatid sa lahat ng rehistradong magsasaka sa Barangay Upper Mingading ang gaganaping aktibidad / pamamahagi ng tulong pansakahan.\n\nMGA DETALYE:\n- Petsa at Oras: [Ilagay ang Petsa], 8:30 AM - 3:00 PM\n- Lugar: Barangay Upper Mingading Hall / Multi-Purpose Center\n- Mga Ipapamahagi / Pag-uusapan: Libreng Binhi, Pataba (Fertilizer), at mga Tagubilin sa Pagtatanim.\n- Mga Kailangang Dalhin: RSBSA Registration Stub / Valid ID.\n\nPara sa katanungan, magtungo sa Tanggapan ng Barangay Agriculture Desk.`
+        : `AGRICULTURAL PROGRAM & FARMERS ADVISORY 🌾🌱\n\n${toHeader}Title: ${cleanTitle || "Agricultural Assistance & Seed Distribution"}\nCategory: Livelihood\n\nIMPORTANT INFORMATION:\nAll registered farmers in Barangay Upper Mingading are notified of the scheduled agricultural support distribution and briefing.\n\nDETAILS:\n- Date & Time: [Specify Date], 8:30 AM - 3:00 PM\n- Venue: Barangay Upper Mingading Hall / Multi-Purpose Center\n- Scope: High-Yield Seedlings, Fertilizer Distribution, and Technical Briefing.\n- Requirements: RSBSA Number / Valid Government ID.\n\nFor assistance, visit the Barangay Agriculture Desk.`;
+    return { category: generatedCategory, body: generatedBody, language: lang };
+  }
+
+  // 13. TRAINING / SEMINAR / WORKSHOP / SKILLS / TESDA / LIVELIHOOD PROGRAM
+  if (
+    lowerTitle.includes("training") ||
+    lowerTitle.includes("seminar") ||
+    lowerTitle.includes("workshop") ||
+    lowerTitle.includes("tesda") ||
+    lowerTitle.includes("skills") ||
+    lowerTitle.includes("kabuhayan")
+  ) {
+    const generatedCategory = "Training";
+    const generatedBody =
+      lang === "tagalog"
+        ? `PATALASTAS SA LIBRENG TRAINING AT SEMINAR 🛠️📚\n\n${paraKayHeader}Pamagat: ${cleanTitle || "Libreng Skills & Livelihood Training"}\nKategorya: Training\n\nMAHALAGANG ABISO AT DETALYE:\nMagkakaroon ng libreng pagsasanay at livelihood seminar para sa mga residenteng nais matuto at magkaroon ng dagdag na pagkakakitaan.\n\nMGA DETALYE NG TRAINING:\n- Petsa at Oras: [Ilagay ang Petsa], 8:00 AM - 4:00 PM\n- Lugar: Barangay Upper Mingading Training Hall\n- Paksa: ${cleanTitle || "Livelihood Skills Training"}\n- Libreng Materyales at Sertipiko: Ipagkakaloob pagkatapos ng programa.\n\nLIMITADO ANG SLOTS:\nMagpalista agad sa Barangay Office upang masiguro ang inyong puwang.`
+        : `NOTICE OF FREE SKILLS TRAINING & LIVELIHOOD WORKSHOP 🛠️📚\n\n${toHeader}Title: ${cleanTitle || "Skills Training & Livelihood Workshop"}\nCategory: Training\n\nWORKSHOP DETAILS:\nBarangay Upper Mingading is conducting a free vocational skills training program for interested residents.\n\nPROGRAM SCHEDULE:\n- Date & Time: [Specify Date], 8:00 AM - 4:00 PM\n- Venue: Barangay Upper Mingading Training Hall\n- Subject: ${cleanTitle || "Vocational & Livelihood Training"}\n- Inclusions: Free Training Materials and Certificate of Completion.\n\nLIMITED SLOTS AVAILABLE:\nPlease register at the Barangay Office to secure your slot.`;
+    return { category: generatedCategory, body: generatedBody, language: lang };
+  }
+
+  // 14. DEFAULT SMART AI GENERATOR FOR ANY CUSTOM TITLE
   const cat = category || "General";
   const defaultBody =
     lang === "tagalog"
-      ? `OPISYAL NA ANUNSYO NG BARANGAY UPPER MINGADING 📢\n\nPamagat: ${cleanTitle || "Opisyal na Patalastas"}\nKategorya: ${cat}\n\nMGA IMPORMASYON AT DETALYE:\nIpinapabatid sa lahat ng residente ng Barangay Upper Mingading ang mahalagang patalastas na ito ukol sa ${cleanTitle || "aktibidad ng barangay"}.\n\nMGA DETALYE:\n- Petsa at Oras: [Ilagay ang Petsa/Oras]\n- Lugar: Barangay Upper Mingading Hall / Covered Court\n- Paalala: Mangyaring sumunod sa mga panuntunan ng barangay.\n\nPara sa karagdagang katanungan, tumawag sa Barangay Office: 09306259795.\n\nMaraming salamat sa inyong kooperasyon!`
-      : `OFFICIAL BARANGAY UPPER MINGADING ANNOUNCEMENT 📢\n\nTitle: ${cleanTitle || "Official Advisory"}\nCategory: ${cat}\n\nIMPORTANT ADVISORY & DETAILS:\nAll registered residents of Barangay Upper Mingading are hereby informed regarding ${cleanTitle || "the official barangay update"}.\n\nDETAILS:\n- Date & Schedule: [Specify Date & Time]\n- Venue: Barangay Upper Mingading Hall / Covered Court\n- Guidelines: Please be guided accordingly and observe standard protocols.\n\nFor inquiries, please contact the Barangay Office Hotline: 09306259795.\n\nThank you for your cooperation!`;
+      ? `OPISYAL NA ANUNSYO NG BARANGAY UPPER MINGADING 📢\n\n${paraKayHeader}Pamagat: ${cleanTitle || "Opisyal na Patalastas"}\nKategorya: ${cat}\n\nMGA IMPORMASYON AT DETALYE:\n${targetResidentName ? `${targetResidentName}, ikaw ay opisyal na pinapabatid ng Barangay Upper Mingading ukol sa ${cleanTitle || "aktibidad / patalastas ng barangay"}.` : `Ipinapabatid sa lahat ng residente ng Barangay Upper Mingading ang mahalagang patalastas na ito ukol sa ${cleanTitle || "aktibidad ng barangay"}.`}\n\nMGA DETALYE:\n- Petsa at Oras: [Ilagay ang Petsa at Oras]\n- Lugar: Barangay Upper Mingading Covered Court / Barangay Hall\n- Mga Paalala: Mangyaring magdala ng Valid ID at sumunod sa mga panuntunan ng barangay.\n\nPara sa karagdagang katanungan o paglilinaw, maaaring tumawag sa Barangay Office Hotline: 09306259795.\n\nMaraming salamat sa inyong patuloy na suporta at kooperasyon!`
+      : `OFFICIAL BARANGAY UPPER MINGADING ANNOUNCEMENT 📢\n\n${toHeader}Title: ${cleanTitle || "Official Advisory"}\nCategory: ${cat}\n\nIMPORTANT ADVISORY & DETAILS:\n${targetResidentName ? `${targetResidentName}, you are hereby officially informed and notified by Barangay Upper Mingading regarding ${cleanTitle || "the official barangay update"}.` : `All registered residents of Barangay Upper Mingading are hereby informed regarding ${cleanTitle || "the official barangay update"}.`}\n\nDETAILS:\n- Date & Schedule: [Specify Date & Time]\n- Venue: Barangay Upper Mingading Hall / Covered Court\n- Guidelines: Please be guided accordingly, bring a valid ID if required, and observe standard protocols.\n\nFor inquiries, please contact the Barangay Office Hotline: 09306259795.\n\nThank you for your cooperation!`;
 
   return { category: cat, body: defaultBody, language: lang };
 };
@@ -352,15 +480,25 @@ const buildHouseholdSmsRecipients = (residents = []) => {
 
 const isHouseholdAnnouncement = (audience) => audience === HOUSEHOLD_AUDIENCE;
 
-const buildAnnouncementSmsMessage = (announcement) => {
+const buildAnnouncementSmsMessage = (announcement, recipientName = null) => {
+  let targetName = recipientName;
+  if (!targetName && announcement.audience?.startsWith("Selected Resident:")) {
+    targetName = announcement.audience.replace("Selected Resident:", "").trim();
+  }
+
   const lines = [
     "[OFFICIAL KAAGAPAI NOTIFICATION]",
     "BARANGAY UPPER MINGADING, ALEOSAN",
     "----------------------------------------",
   ];
 
-  if (announcement.title) {
-    lines.push(`📢 Pamagat: ${announcement.title}`);
+  if (targetName) {
+    lines.push(`🏛️ Magandang araw, ${targetName}!`);
+    lines.push(`You are officially informed by Barangay Upper Mingading regarding "${announcement.title || "an official update"}":`);
+  } else {
+    if (announcement.title) {
+      lines.push(`📢 Pamagat: ${announcement.title}`);
+    }
   }
 
   if (announcement.body) {
@@ -405,17 +543,29 @@ const Announcements = () => {
   const [aiGeneratedNotice, setAiGeneratedNotice] = useState("");
 
   const handleAiGenerateDraft = (customTitle = null) => {
-    const targetTitle = customTitle !== null ? customTitle : formData.title;
-    const res = generateAiAnnouncementDraft(targetTitle, formData.category);
+    const rawTitle = customTitle !== null ? customTitle : formData.title;
+    const targetTitle = (rawTitle || "").trim() || "General Community Advisory";
+    const targetResidentName = selectedResidentNames.length > 0 ? selectedResidentNames.join(", ") : null;
+    const res = generateAiAnnouncementDraft(targetTitle, formData.category, targetResidentName);
     setFormData((current) => ({
       ...current,
-      title: targetTitle || current.title,
+      title: targetTitle,
       category: res.category,
       body: res.body,
     }));
-    const langLabel = res.language === "tagalog" ? "Tagalog 🇵🇭" : "English 🇺🇸";
-    setAiGeneratedNotice(`✨ AI Announcement Draft created in ${langLabel}!`);
+    setAiGeneratedNotice(`Na-generate na ang template para sa "${targetTitle}". Pwede mo na itong i-edit sa ibaba.`);
     setTimeout(() => setAiGeneratedNotice(""), 4500);
+  };
+
+  const notify = (msg) => {
+    setMessage(msg);
+    if (msg?.text) {
+      showAdminSystemToast({
+        type: msg.type || "success",
+        text: msg.text,
+        title: msg.type === "error" ? "Announcement Error" : "Announcement Broadcast",
+      });
+    }
   };
 
   const loadAnnouncements = useCallback(async () => {
@@ -426,9 +576,10 @@ const Announcements = () => {
         status: statusFilter,
         category: categoryFilter,
       });
-      setAnnouncements(data);
+      const activeData = (data || []).filter((item) => !isAnnouncementExpired(item));
+      setAnnouncements(activeData);
     } catch (error) {
-      setMessage({ type: "error", text: error.message || "Failed to load announcements." });
+      notify({ type: "error", text: error.message || "Failed to load announcements." });
     } finally {
       setLoading(false);
     }
@@ -527,11 +678,34 @@ const Announcements = () => {
     const phones = matchedResidents.map((r) => normalizePhone(r.phone)).filter(Boolean);
     const uniquePhones = [...new Set(phones)];
 
-    setFormData((current) => ({
-      ...current,
-      audience: nextNames.length > 0 ? `Selected Residents: ${nextNames.join(", ")}` : "Selected Resident:",
-      sms_recipient_phones: uniquePhones.join("\n"),
-    }));
+    const nextAudience =
+      nextNames.length === 1
+        ? `Selected Resident: ${nextNames[0]}`
+        : nextNames.length > 1
+        ? `Selected Residents: ${nextNames.join(", ")}`
+        : "Selected Resident:";
+
+    setFormData((current) => {
+      const targetResidentName = nextNames.join(", ");
+      const shouldAutoDraft =
+        !current.body.trim() ||
+        isTemplateMessage(current.body) ||
+        current.body.includes("All registered residents") ||
+        current.body.includes("To: ") ||
+        current.body.includes("Para Kay: ");
+
+      const nextBody =
+        shouldAutoDraft && nextNames.length > 0
+          ? generateAiAnnouncementDraft(current.title, current.category, targetResidentName).body
+          : current.body;
+
+      return {
+        ...current,
+        audience: nextAudience,
+        sms_recipient_phones: uniquePhones.join("\n"),
+        body: nextBody,
+      };
+    });
   };
 
   const handleSelectAllFilteredResidents = () => {
@@ -543,11 +717,34 @@ const Announcements = () => {
     const phones = matchedResidents.map((r) => normalizePhone(r.phone)).filter(Boolean);
     const uniquePhones = [...new Set(phones)];
 
-    setFormData((current) => ({
-      ...current,
-      audience: combinedNames.length > 0 ? `Selected Residents: ${combinedNames.join(", ")}` : "Selected Resident:",
-      sms_recipient_phones: uniquePhones.join("\n"),
-    }));
+    const nextAudience =
+      combinedNames.length === 1
+        ? `Selected Resident: ${combinedNames[0]}`
+        : combinedNames.length > 1
+        ? `Selected Residents: ${combinedNames.join(", ")}`
+        : "Selected Resident:";
+
+    setFormData((current) => {
+      const targetResidentName = combinedNames.join(", ");
+      const shouldAutoDraft =
+        !current.body.trim() ||
+        isTemplateMessage(current.body) ||
+        current.body.includes("All registered residents") ||
+        current.body.includes("To: ") ||
+        current.body.includes("Para Kay: ");
+
+      const nextBody =
+        shouldAutoDraft && combinedNames.length > 0
+          ? generateAiAnnouncementDraft(current.title, current.category, targetResidentName).body
+          : current.body;
+
+      return {
+        ...current,
+        audience: nextAudience,
+        sms_recipient_phones: uniquePhones.join("\n"),
+        body: nextBody,
+      };
+    });
   };
 
   const handleClearSelectedResidents = () => {
@@ -640,6 +837,11 @@ const Announcements = () => {
       let smsMsg = "";
       if (shouldPublish) {
         let phones = formSmsRecipients.recipients;
+        const isSingleTarget = formData.audience?.startsWith("Selected Resident:");
+        const singleResidentName = isSingleTarget
+          ? formData.audience.replace("Selected Resident:", "").trim()
+          : null;
+
         if (isHouseholdAnnouncement(formData.audience)) {
           const hhPhones = householdSmsRecipients.phoneRecipients.map((r) => normalizePhone(r.phone)).filter(Boolean);
           phones = [...new Set([...phones, ...hhPhones])];
@@ -652,13 +854,16 @@ const Announcements = () => {
           // Asynchronous non-blocking SMS dispatch for sub-2s response time
           sendBulkSmsNotifications({
             recipients: phones,
-            body: buildAnnouncementSmsMessage(savedData),
+            body: buildAnnouncementSmsMessage(savedData, singleResidentName),
           }).catch((err) => console.warn("Background SMS error:", err.message));
-          smsMsg = ` SMS alert broadcast dispatched to ${phones.length} recipients.`;
+
+          smsMsg = isSingleTarget
+            ? ` Personalized SMS notification dispatched directly to ${singleResidentName}.`
+            : ` SMS alert broadcast dispatched to ${phones.length} recipients.`;
         }
       }
 
-      setMessage({
+      notify({
         type: "success",
         text: shouldPublish
           ? `Announcement published successfully!${smsMsg}`
@@ -668,7 +873,7 @@ const Announcements = () => {
       closeModal();
       await loadAnnouncements();
     } catch (error) {
-      setMessage({ type: "error", text: error.message || "Failed to save announcement." });
+      notify({ type: "error", text: error.message || "Failed to save announcement." });
     } finally {
       setSaving(false);
     }
@@ -729,7 +934,7 @@ const Announcements = () => {
         }
       }
 
-      setMessage({
+      notify({
         type: "success",
         text:
           status === "Published"
@@ -739,7 +944,7 @@ const Announcements = () => {
 
       await loadAnnouncements();
     } catch (error) {
-      setMessage({ type: "error", text: error.message || "Failed to update announcement." });
+      notify({ type: "error", text: error.message || "Failed to update announcement." });
     } finally {
       setUpdatingStatusId(null);
     }
@@ -938,8 +1143,12 @@ const Announcements = () => {
                       <div className="grid grid-cols-2 gap-y-3 gap-x-2 text-xs font-medium text-slate-500 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-100">
                         <div>
                           <p className="text-slate-400 uppercase tracking-wider text-[10px] font-bold mb-0.5">Audience</p>
-                          <p className="text-slate-700 truncate" title={announcement.audience || "-"}>
-                            {announcement.audience || "-"}
+                          <p className="font-bold text-slate-800 truncate" title={announcement.audience || "-"}>
+                            {announcement.audience?.startsWith("Selected Resident:")
+                              ? `👤 ${announcement.audience.replace("Selected Resident:", "").trim()}`
+                              : announcement.audience?.startsWith("Selected Residents:")
+                              ? `👥 ${announcement.audience.replace("Selected Residents:", "").trim()}`
+                              : announcement.audience || "All Residents"}
                           </p>
                         </div>
                         <div>
@@ -1079,16 +1288,6 @@ const Announcements = () => {
                     </p>
                   </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleAiGenerateDraft()}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-black text-xs shadow-md transition active:scale-95 cursor-pointer"
-                  title="Generate AI Announcement Draft based on Title"
-                >
-                  <Wand2 size={14} className="text-amber-300" />
-                  <span>✨ Generate AI Draft</span>
-                </button>
               </div>
 
               {/* Quick Idea Preset Chips */}
@@ -1124,13 +1323,22 @@ const Announcements = () => {
 
             <label className="text-sm font-bold text-slate-700 sm:col-span-2">
               Title *
-              <input
-                name="title"
-                value={formData.title}
-                onChange={handleInput}
-                placeholder="e.g. Earthquake, Carnap, Medical Checkup..."
-                className="mt-2 w-full h-[46px] rounded-[12px] border border-slate-200 bg-slate-50 px-4 text-sm font-medium outline-none transition focus:border-[#14532D] focus:bg-white focus:ring-4 focus:ring-[#14532D]/10 shadow-sm"
-              />
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  name="title"
+                  value={formData.title}
+                  onChange={handleInput}
+                  placeholder="e.g. Earthquake, Carnap, Medical Checkup, Clean-up Drive, General Assembly..."
+                  className="flex-1 h-[46px] rounded-[12px] border border-slate-200 bg-slate-50 px-4 text-sm font-medium outline-none transition focus:border-[#14532D] focus:bg-white focus:ring-4 focus:ring-[#14532D]/10 shadow-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleAiGenerateDraft()}
+                  className="h-[46px] px-6 rounded-[12px] bg-[#14532D] hover:bg-[#0f3e21] text-white font-bold text-sm shadow-sm transition active:scale-95 cursor-pointer shrink-0"
+                >
+                  Generate
+                </button>
+              </div>
             </label>
             <label className="text-sm font-bold text-slate-700">
               Category

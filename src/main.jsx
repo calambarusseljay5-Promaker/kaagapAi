@@ -35,9 +35,9 @@ class GlobalErrorBoundary extends React.Component {
           padding: '24px',
         }}>
           <img src="/logo.png" alt="Barangay Logo" style={{ width: '80px', height: '80px', marginBottom: '16px' }} />
-          <h2 style={{ fontSize: '20px', fontWeight: 900, marginBottom: '8px' }}>KaagapAI Portal</h2>
-          <p style={{ fontSize: '13px', color: '#A7F3D0', maxWidth: '320px', marginBottom: '16px', lineHeight: '1.5' }}>
-            Nakararanas ng error sa pag-load. Pindutin ang <b>Clear Cache & Reload</b> sa ibaba:
+          <h2 style={{ fontSize: '20px', fontWeight: 900, marginBottom: '8px' }}>KaagapAI System Portal</h2>
+          <p style={{ fontSize: '13px', color: '#A7F3D0', maxWidth: '360px', marginBottom: '16px', lineHeight: '1.5' }}>
+            Encountered a system loading issue. Click <b>Clear Cache & Reload</b> or <b>Reload</b> below to refresh:
           </p>
           {this.state.error && (
             <div style={{

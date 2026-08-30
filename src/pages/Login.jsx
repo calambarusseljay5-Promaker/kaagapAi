@@ -86,6 +86,42 @@ const stepHeaders = [
   { label: "Proof & Review", icon: FileCheck2 },
 ];
 
+const RESEARCH_TEAM = [
+  {
+    name: "Russel Jay Calamba",
+    role: "Researcher & Developer",
+    tag: "Lead Dev",
+    tagGradient: "from-[#0B5D3B] to-[#10B981]",
+    badgeClass: "text-emerald-800 bg-emerald-100/90 border-emerald-300",
+    image: "/about us.pic/about us.png1.webp",
+    fallbackImage: "/about-us/russel.webp",
+    initials: "RC",
+    imageClass: "object-cover object-top",
+  },
+  {
+    name: "Krizel Claire Condez",
+    role: "Researcher & Documentation",
+    tag: "Docs",
+    tagGradient: "from-emerald-800 to-teal-600",
+    badgeClass: "text-emerald-800 bg-emerald-100/90 border-emerald-300",
+    image: "/about us.pic/about us.png3.webp",
+    fallbackImage: "/about-us/krizel.webp",
+    initials: "KC",
+    imageClass: "object-cover object-top",
+  },
+  {
+    name: "Adrianne Dave Esler",
+    role: "Researcher & Documentation",
+    tag: "Docs",
+    tagGradient: "from-emerald-800 to-teal-600",
+    badgeClass: "text-emerald-800 bg-emerald-100/90 border-emerald-300",
+    image: "/about us.pic/about us.png2.1.jpg",
+    fallbackImage: "/about-us/dave.jpg",
+    initials: "AE",
+    imageClass: "object-cover object-top scale-[1.28] origin-[50%_28%]",
+  },
+];
+
 const getLoginDisplayName = ({ user, profile, resident }) =>
   resident?.full_name ||
   profile?.full_name ||
@@ -156,6 +192,126 @@ const Login = ({ portalMode = null }) => {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedLightboxIndex]);
+
+  const renderAboutModal = () => (
+    <FloatingModal
+      open={showAboutModal}
+      title="ABOUT KAAGAPAI"
+      eyebrow="Barangay Information Management System"
+      description="Empowering Barangay Services Through Technology"
+      maxWidth="max-w-2xl"
+      onClose={() => setShowAboutModal(false)}
+      footer={
+        <div className="flex items-center justify-between gap-3 w-full">
+          <span className="text-[10.5px] sm:text-[11px] font-bold text-slate-500 truncate">
+            KaagapAI v1.0 • AY 2026
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowAboutModal(false)}
+            className="px-5 py-2 text-xs font-black text-white bg-[#0B5D3B] hover:bg-[#08452B] rounded-xl transition cursor-pointer shadow-md active:scale-95"
+          >
+            Close
+          </button>
+        </div>
+      }
+    >
+      <div className="space-y-4 sm:space-y-5 text-xs text-slate-700 py-1 text-left">
+        {/* 1. ABOUT THE SYSTEM */}
+        <div className="rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-50 via-teal-50/60 to-emerald-50/30 border border-emerald-200/90 p-3.5 sm:p-4 shadow-2xs">
+          <h3 className="font-black text-[11px] sm:text-xs uppercase tracking-wider text-[#0B5D3B] mb-1.5 flex items-center gap-1.5">
+            <Sparkles size={14} className="text-emerald-700 shrink-0" />
+            <span>ABOUT THE SYSTEM</span>
+          </h3>
+          <p className="text-[11.5px] sm:text-xs text-slate-700 leading-relaxed font-medium">
+            <strong>KaagapAI</strong> is an intelligent Web-based Barangay Information and Resident Services Management System developed for <strong>Barangay Upper Mingading, Aleosan, Cotabato</strong>. Designed as an academic capstone research initiative, the platform modernizes and streamlines local governance through digital resident profiling, verified document issuance, real-time demographic analytics, multi-channel SMS notifications, and AI-powered knowledge assistance.
+          </p>
+        </div>
+
+        {/* 2. RESEARCH & DEVELOPMENT TEAM */}
+        <div>
+          <h3 className="font-black text-[11px] sm:text-xs uppercase tracking-wider text-[#0B5D3B] mb-2.5 flex items-center gap-1.5">
+            <Users size={14} className="text-emerald-700 shrink-0" />
+            <span>RESEARCH & DEVELOPMENT TEAM</span>
+          </h3>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3 items-stretch">
+            {RESEARCH_TEAM.map((member) => (
+              <div
+                key={member.name}
+                className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-emerald-500 hover:shadow-md transition-all duration-200 flex flex-col items-center justify-between text-center group h-full"
+              >
+                {/* Photo container */}
+                <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-xl sm:rounded-2xl overflow-hidden mb-2.5 border-2 border-emerald-500/40 ring-2 ring-emerald-100/90 shadow-md group-hover:scale-105 group-hover:ring-emerald-400/60 transition-all duration-300 bg-emerald-50 flex items-center justify-center shrink-0">
+                  <img
+                    src={member.image}
+                    alt={member.name}
+                    className={`w-full h-full transition-transform duration-300 ${member.imageClass || "object-cover object-top"}`}
+                    onError={(e) => {
+                      if (member.fallbackImage && !e.currentTarget.src.includes("about-us/")) {
+                        e.currentTarget.src = member.fallbackImage;
+                      } else {
+                        e.currentTarget.style.display = "none";
+                        const fallbackBox = e.currentTarget.parentElement?.querySelector(".avatar-fallback");
+                        if (fallbackBox) {
+                          fallbackBox.classList.remove("hidden");
+                          fallbackBox.classList.add("flex");
+                        }
+                      }
+                    }}
+                  />
+                  <div
+                    className={`avatar-fallback hidden absolute inset-0 bg-gradient-to-br ${member.tagGradient} text-white flex-col items-center justify-center font-black text-base sm:text-lg`}
+                  >
+                    <span>{member.initials}</span>
+                    <span className="text-[8px] uppercase tracking-widest opacity-75 font-semibold">{member.tag}</span>
+                  </div>
+                  {/* Role Tag Overlay Pill on Bottom of Photo */}
+                  <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/85 via-black/45 to-transparent pt-3 pb-0.5 text-center pointer-events-none">
+                    <span className="text-[8px] sm:text-[8.5px] uppercase tracking-widest font-black text-emerald-300 drop-shadow-xs">
+                      {member.tag}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="w-full flex flex-col items-center flex-1 justify-between gap-1.5">
+                  <h4 className="font-black text-xs sm:text-[13px] text-slate-900 leading-tight text-center">
+                    {member.name}
+                  </h4>
+                  <span className={`text-[9.5px] sm:text-[10px] font-bold px-2.5 py-1 rounded-full border ${member.badgeClass} inline-flex items-center justify-center leading-none text-center shadow-2xs whitespace-nowrap`}>
+                    {member.role}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 3. RESEARCH INFORMATION */}
+        <div className="rounded-xl sm:rounded-2xl bg-slate-50 border border-slate-200 p-3 sm:p-4">
+          <h3 className="font-black text-[11px] sm:text-xs uppercase tracking-wider text-slate-700 mb-2 flex items-center gap-1.5">
+            <Info size={14} className="text-emerald-700 shrink-0" />
+            <span>RESEARCH INFORMATION</span>
+          </h3>
+
+          <div className="grid grid-cols-3 gap-2 text-xs">
+            <div className="p-2 sm:p-2.5 bg-white rounded-lg sm:rounded-xl border border-slate-200 text-center sm:text-left">
+              <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Project Type</p>
+              <p className="font-bold text-slate-800 mt-0.5 text-[11px] sm:text-xs">Capstone Project</p>
+            </div>
+            <div className="p-2 sm:p-2.5 bg-white rounded-lg sm:rounded-xl border border-slate-200 text-center sm:text-left">
+              <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Academic Year</p>
+              <p className="font-bold text-slate-800 mt-0.5 text-[11px] sm:text-xs">2026</p>
+            </div>
+            <div className="p-2 sm:p-2.5 bg-white rounded-lg sm:rounded-xl border border-slate-200 text-center sm:text-left">
+              <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Researchers</p>
+              <p className="font-bold text-slate-800 mt-0.5 text-[11px] sm:text-xs">3 Members</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </FloatingModal>
+  );
 
   // Google reCAPTCHA integration refs & token state
   const adminCaptchaRef = useRef(null);
@@ -602,7 +758,7 @@ const Login = ({ portalMode = null }) => {
       </div>
 
       <div className="space-y-1">
-        <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Occupation / Livelihood</label>
+        <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider">Occupation</label>
         <select
           value={
             !formData.occupation
@@ -642,7 +798,7 @@ const Login = ({ portalMode = null }) => {
               setCustomRegOccupationInput(e.target.value);
               setFormData((prev) => ({ ...prev, occupation: e.target.value }));
             }}
-            placeholder="Type your specific job title or livelihood..."
+            placeholder="Type your specific occupation..."
             className="w-full rounded-xl border border-emerald-400/30 bg-black/25 px-3 py-2 text-xs text-white placeholder-emerald-100/40 outline-none focus:border-emerald-400 focus:bg-black/40 font-semibold shadow-inner"
           />
         </div>
@@ -829,117 +985,137 @@ const Login = ({ portalMode = null }) => {
       </div>
 
       <div className="space-y-2 text-left">
-        <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider block">
-          Attach Official ID or Residency Proof *
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="text-[10px] font-extrabold text-emerald-300 uppercase tracking-wider block">
+            Attach Official ID or Residency Proof <span className="text-rose-400 font-black">*</span>
+          </label>
+          <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${
+            registrationProof
+              ? "bg-emerald-500/20 text-emerald-300 border-emerald-400/40"
+              : "bg-amber-500/20 text-amber-300 border-amber-400/40 animate-pulse"
+          }`}>
+            {registrationProof ? "✓ Proof Attached" : "⚠️ Required"}
+          </span>
+        </div>
 
-        <div className="flex flex-col items-center justify-center border-2 border-dashed border-emerald-400/40 rounded-2xl bg-black/25 p-4 text-center hover:bg-black/40 hover:border-emerald-300 transition relative overflow-hidden group">
+        <div className={`flex flex-col items-center justify-center border-2 border-dashed rounded-2xl p-4 text-center transition relative overflow-hidden group ${
+          registrationProof
+            ? "border-emerald-400 bg-emerald-950/30 hover:bg-emerald-950/40"
+            : "border-amber-400/60 bg-amber-950/15 hover:bg-amber-950/25"
+        }`}>
           <input
             type="file"
             accept="image/*,application/pdf"
             onChange={handleFileChange}
             className="absolute inset-0 opacity-0 cursor-pointer z-10"
+            required
           />
 
           {registrationProof ? (
             <div className="flex flex-col items-center">
-              <FileCheck2 size={24} className="text-emerald-400 mb-1" />
+              <FileCheck2 size={26} className="text-emerald-400 mb-1" />
               <p className="text-xs font-extrabold text-white truncate max-w-[240px]">
                 {registrationProof.name}
               </p>
               <p className="text-[10px] text-emerald-200/80 font-bold mt-0.5">
-                {(registrationProof.size / 1024 / 1024).toFixed(2)} MB • Click to replace
+                {(registrationProof.size / 1024 / 1024).toFixed(2)} MB • Click to replace file
               </p>
+              <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2.5 py-0.5 text-[9px] font-bold text-emerald-300 border border-emerald-400/30">
+                <CheckCircle2 size={10} /> Valid ID / Proof Ready
+              </span>
             </div>
           ) : (
             <div className="flex flex-col items-center">
-              <Upload size={22} className="text-emerald-300 mb-1" />
-              <p className="text-xs font-extrabold text-white">Upload Valid ID or Residency Proof</p>
-              <p className="text-[10px] text-emerald-200/60 font-semibold mt-0.5">
+              <Upload size={24} className="text-amber-300 mb-1 animate-bounce" />
+              <p className="text-xs font-extrabold text-white">Upload Valid ID or Residency Proof *</p>
+              <p className="text-[10px] text-amber-200/70 font-semibold mt-0.5">
                 JPG, PNG, WebP or PDF (Max 5MB)
               </p>
+              <span className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-2 py-0.5 text-[9px] font-bold text-amber-300 border border-amber-400/30">
+                Kailangan mag-upload bago makapag-submit
+              </span>
             </div>
           )}
         </div>
       </div>
 
       {/* Comprehensive Registration Summary Card */}
-      <div className="space-y-2 rounded-2xl border border-emerald-400/40 bg-black/45 p-3.5 text-xs text-left shadow-lg">
+      <div className="space-y-2.5 rounded-2xl border border-emerald-400/40 bg-black/45 p-3.5 text-xs text-left shadow-lg overflow-hidden">
         <div className="flex items-center justify-between border-b border-emerald-500/30 pb-1.5">
           <p className="text-[11px] font-extrabold uppercase text-emerald-400 tracking-wider flex items-center gap-1.5">
-            <CheckCircle2 size={13} className="text-emerald-400" />
+            <CheckCircle2 size={13} className="text-emerald-400 shrink-0" />
             <span>Buong Detalye ng Rehistrasyon (Summary Review)</span>
           </p>
-          <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-400/30">
+          <span className="text-[9px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-400/30 shrink-0">
             I-review Bago I-submit
           </span>
         </div>
 
         {/* Section 1: Personal Details */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] pt-1">
-          <div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-[11px] pt-1">
+          <div className="min-w-0">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Pangalan (Full Name):</span>
-            <span className="font-bold text-white">{residentRegistrationFullName || "N/A"}</span>
+            <span className="font-bold text-white break-words block">{residentRegistrationFullName || "N/A"}</span>
           </div>
-          <div>
+          <div className="min-w-0">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Kapanganakan & Edad:</span>
-            <span className="font-bold text-white">{formData.birthday ? `${formData.birthday} (${residentRegistrationAge} y/o)` : "N/A"}</span>
+            <span className="font-bold text-white break-words block">{formData.birthday ? `${formData.birthday} (${residentRegistrationAge} y/o)` : "N/A"}</span>
           </div>
-          <div>
+          <div className="min-w-0">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Kasarian (Sex):</span>
-            <span className="font-bold text-white">{formData.sex || "N/A"}</span>
+            <span className="font-bold text-white block">{formData.sex || "N/A"}</span>
           </div>
-          <div>
+          <div className="min-w-0">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Civil Status:</span>
-            <span className="font-bold text-white">{formData.civil_status || "N/A"}</span>
+            <span className="font-bold text-white block">{formData.civil_status || "N/A"}</span>
           </div>
-          <div className="col-span-2">
+          <div className="min-w-0 col-span-2">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Lugar ng Kapanganakan:</span>
-            <span className="font-bold text-white">{formData.birthplace || "N/A"}</span>
+            <span className="font-bold text-white break-words block">{formData.birthplace || "N/A"}</span>
           </div>
         </div>
 
         <div className="border-t border-emerald-500/20 my-1" />
 
         {/* Section 2: Address & Household */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
-          <div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-[11px]">
+          <div className="min-w-0">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Purok:</span>
-            <span className="font-bold text-white">Purok {formatPurok(formData.purok)}</span>
+            <span className="font-bold text-white block">Purok {formatPurok(formData.purok)}</span>
           </div>
-          <div>
+          <div className="min-w-0">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Household No:</span>
-            <span className="font-bold text-white">{formData.householdNo || "N/A"}</span>
+            <span className="font-bold text-white font-mono break-all block">{formData.householdNo || "N/A"}</span>
           </div>
-          <div>
+          <div className="min-w-0">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">House No:</span>
-            <span className="font-bold text-white">{formData.house_no || "N/A"}</span>
+            <span className="font-bold text-white font-mono block">{formData.house_no || "N/A"}</span>
           </div>
-          <div>
+          <div className="min-w-0">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Family Relationship:</span>
-            <span className="font-bold text-white">{formData.relationship_to_household_head || "Head"}</span>
+            <span className="font-bold text-white block">{formData.relationship_to_household_head || "Head"}</span>
           </div>
-          <div className="col-span-2">
+          <div className="min-w-0 col-span-2">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Address Notes / Sitio:</span>
-            <span className="font-bold text-white">{formData.address || "None"}</span>
+            <span className="font-bold text-white break-words block">{formData.address || "None"}</span>
           </div>
         </div>
 
         <div className="border-t border-emerald-500/20 my-1" />
 
         {/* Section 3: Education, Occupation & Sector */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
-          <div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-[11px]">
+          <div className="min-w-0">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Edukasyon:</span>
-            <span className="font-bold text-white">{formData.educational_attainment || "N/A"}</span>
+            <span className="font-bold text-white break-words block">{formData.educational_attainment || "N/A"}</span>
           </div>
-          <div>
+          <div className="min-w-0">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Hanapbuhay (Occupation):</span>
-            <span className="font-bold text-white">{formData.occupation || "None"}</span>
+            <span className="font-bold text-white break-words block">{formData.occupation || "None"}</span>
           </div>
-          <div>
+          <div className="min-w-0 col-span-2 sm:col-span-1">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Sector:</span>
-            <span className="font-bold text-white">
+            <span className="font-bold text-white break-words block">
               {[
                 formData.is_pwd ? `PWD (${formData.pwd_type || 'Yes'})` : null,
                 formData.is_solo_parent ? "Solo Parent" : null,
@@ -952,18 +1128,24 @@ const Login = ({ portalMode = null }) => {
         <div className="border-t border-emerald-500/20 my-1" />
 
         {/* Section 4: Credentials */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
-          <div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-[11px]">
+          <div className="min-w-0">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Username:</span>
-            <span className="font-bold text-amber-300 font-mono">{formData.username}</span>
+            <span className="font-bold text-amber-300 font-mono truncate block" title={formData.username}>
+              {formData.username || "N/A"}
+            </span>
           </div>
-          <div>
-            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Email Address:</span>
-            <span className="font-bold text-white truncate">{formData.gmail}</span>
-          </div>
-          <div>
+          <div className="min-w-0">
             <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Contact Phone:</span>
-            <span className="font-bold text-white font-mono">{formData.phone}</span>
+            <span className="font-bold text-white font-mono truncate block" title={formData.phone}>
+              {formData.phone || "N/A"}
+            </span>
+          </div>
+          <div className="min-w-0 col-span-1 sm:col-span-1">
+            <span className="text-emerald-300/70 font-semibold block text-[10px] uppercase">Email Address:</span>
+            <span className="font-bold text-white break-all block" title={formData.gmail}>
+              {formData.gmail || "N/A"}
+            </span>
           </div>
         </div>
       </div>
@@ -1034,9 +1216,9 @@ const Login = ({ portalMode = null }) => {
           throw new Error("Passwords do not match.");
       } else if (step === 6) {
         if (!registrationProof)
-          throw new Error("Please attach proof of identity/residency.");
+          throw new Error("Kailangang mag-attach ng valid ID o proof of residency bago mag-submit.");
         if (!agreeTerms)
-          throw new Error("You must agree to the Terms of Service.");
+          throw new Error("Kailangang sumang-ayon sa Privacy Policy at Terms of Service.");
       }
       return true;
     } catch (err) {
@@ -1114,7 +1296,12 @@ const Login = ({ portalMode = null }) => {
   };
 
   const registerResidentOnline = async () => {
-    if (!agreeTerms) throw new Error("You must agree to the Terms of Service.");
+    if (!registrationProof) {
+      throw new Error("Kailangang mag-attach ng Official Valid ID o Proof of Residency bago mag-submit.");
+    }
+    if (!agreeTerms) {
+      throw new Error("Kailangang sumang-ayon sa Privacy Policy at Terms of Service.");
+    }
 
     const normalizedUsername = (formData.username || "").trim().toLowerCase();
     const isTaken = await checkUsernameExists(normalizedUsername);
@@ -1125,12 +1312,32 @@ const Login = ({ portalMode = null }) => {
     const result = await requestResidentActivation({
       ...formData,
       fullName: residentRegistrationFullName,
+      first_name: formData.first_name,
+      middle_name: formData.middle_name,
+      last_name: formData.last_name,
       suffix: formData.suffix,
       birthday: formData.birthday,
       householdNo: formData.householdNo,
+      household_no: formData.householdNo,
       house_no: formData.house_no,
+      relationship_to_household_head: formData.relationship_to_household_head,
+      sex: formData.sex,
+      gender: formData.sex,
+      birthplace: formData.birthplace,
+      purok: formData.purok,
+      educational_attainment: formData.educational_attainment,
+      occupation: formData.occupation,
+      civil_status: formData.civil_status,
+      address: formData.address,
+      is_4ps_member: Boolean(formData.is_4ps_member),
+      is_solo_parent: Boolean(formData.is_solo_parent),
+      is_pwd: Boolean(formData.is_pwd),
+      pwd_type: formData.pwd_type,
+      phone: formData.phone,
       username: formData.username,
+      portal_username: formData.username,
       portal_password: formData.portal_password,
+      password: formData.portal_password,
       gmail: formData.gmail,
       email: formData.gmail || formData.email,
       proofFile: registrationProof,
@@ -1151,9 +1358,23 @@ const Login = ({ portalMode = null }) => {
     event.preventDefault();
     setError(null);
 
-    if (isResidentRegistration && registrationStep < 6) {
-      nextStep();
-      return;
+    if (isResidentRegistration) {
+      if (!validateStep(registrationStep)) return;
+
+      if (registrationStep < 6) {
+        await nextStep();
+        return;
+      }
+
+      if (!registrationProof) {
+        setError("Kailangang mag-attach ng Official Valid ID o Proof of Residency bago mag-submit.");
+        return;
+      }
+
+      if (!agreeTerms) {
+        setError("Kailangang sumang-ayon sa Privacy Policy at Terms of Service.");
+        return;
+      }
     }
 
     if (modalStep === "admin_login" || modalStep === "resident_login") {
@@ -1563,118 +1784,7 @@ const Login = ({ portalMode = null }) => {
         </footer>
 
         {/* ABOUT KAAGAPAI MODAL */}
-        <FloatingModal
-          open={showAboutModal}
-          title="ABOUT KAAGAPAI"
-          eyebrow="Barangay Information Management System"
-          description="Empowering Barangay Services Through Technology"
-          maxWidth="max-w-xl"
-          onClose={() => setShowAboutModal(false)}
-          footer={
-            <div className="flex items-center justify-between gap-3 w-full">
-              <span className="text-[10.5px] sm:text-[11px] font-bold text-slate-500 truncate">
-                KaagapAI v1.0 • AY 2026
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowAboutModal(false)}
-                className="px-5 py-2 text-xs font-black text-white bg-[#0B5D3B] hover:bg-[#08452B] rounded-xl transition cursor-pointer shadow-md active:scale-95"
-              >
-                Close
-              </button>
-            </div>
-          }
-        >
-          <div className="space-y-4 sm:space-y-5 text-xs text-slate-700 py-1 text-left">
-            
-            {/* 1. ABOUT THE SYSTEM */}
-            <div className="rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-50 via-teal-50/60 to-emerald-50/30 border border-emerald-200/90 p-3.5 sm:p-4 shadow-2xs">
-              <h3 className="font-black text-[11px] sm:text-xs uppercase tracking-wider text-[#0B5D3B] mb-1.5 flex items-center gap-1.5">
-                <Sparkles size={14} className="text-emerald-700 shrink-0" />
-                <span>ABOUT THE SYSTEM</span>
-              </h3>
-              <p className="text-[11.5px] sm:text-xs text-slate-700 leading-relaxed font-medium">
-                <strong>KaagapAI</strong> is an intelligent Web-based Barangay Information and Resident Services Management System developed for <strong>Barangay Upper Mingading, Aleosan, Cotabato</strong>. Designed as an academic capstone research initiative, the platform modernizes and streamlines local governance through digital resident profiling, verified document issuance, real-time demographic analytics, multi-channel SMS notifications, and AI-powered knowledge assistance.
-              </p>
-            </div>
-
-            {/* 2. RESEARCH & DEVELOPMENT TEAM */}
-            <div>
-              <h3 className="font-black text-[11px] sm:text-xs uppercase tracking-wider text-[#0B5D3B] mb-2.5 flex items-center gap-1.5">
-                <Users size={14} className="text-emerald-700 shrink-0" />
-                <span>RESEARCH & DEVELOPMENT TEAM</span>
-              </h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
-                {/* Researcher 1: Russel Jay Calamba */}
-                <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-emerald-500 hover:shadow-md transition-all duration-200 flex flex-col items-center text-center group">
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-gradient-to-br from-[#0B5D3B] to-[#10B981] text-white flex flex-col items-center justify-center font-black text-base sm:text-lg shadow-md mb-2 ring-2 ring-emerald-100 group-hover:scale-105 transition-transform">
-                    <span>RC</span>
-                    <span className="text-[8px] uppercase tracking-widest opacity-75 font-semibold">Lead Dev</span>
-                  </div>
-                  <h4 className="font-black text-xs sm:text-[13px] text-slate-900 leading-tight">
-                    Russel Jay Calamba
-                  </h4>
-                  <p className="text-[10px] sm:text-[10.5px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full mt-1.5 border border-emerald-300">
-                    Researcher & Developer
-                  </p>
-                </div>
-
-                {/* Researcher 2: Krizel Claire Condez */}
-                <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-emerald-500 hover:shadow-md transition-all duration-200 flex flex-col items-center text-center group">
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-gradient-to-br from-teal-700 to-emerald-500 text-white flex flex-col items-center justify-center font-black text-base sm:text-lg shadow-md mb-2 ring-2 ring-emerald-100 group-hover:scale-105 transition-transform">
-                    <span>KC</span>
-                    <span className="text-[8px] uppercase tracking-widest opacity-75 font-semibold">Docs</span>
-                  </div>
-                  <h4 className="font-black text-xs sm:text-[13px] text-slate-900 leading-tight">
-                    Krizel Claire Condez
-                  </h4>
-                  <p className="text-[10px] sm:text-[10.5px] font-bold text-teal-800 bg-teal-100/80 px-2 py-0.5 rounded-full mt-1.5 border border-teal-300">
-                    Researcher & Documentation
-                  </p>
-                </div>
-
-                {/* Researcher 3: Adrianne Dave Esler */}
-                <div className="p-3 sm:p-3.5 rounded-xl sm:rounded-2xl bg-white border border-slate-200 shadow-xs hover:border-emerald-500 hover:shadow-md transition-all duration-200 flex flex-col items-center text-center group">
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-gradient-to-br from-emerald-800 to-teal-600 text-white flex flex-col items-center justify-center font-black text-base sm:text-lg shadow-md mb-2 ring-2 ring-emerald-100 group-hover:scale-105 transition-transform">
-                    <span>AE</span>
-                    <span className="text-[8px] uppercase tracking-widest opacity-75 font-semibold">Docs</span>
-                  </div>
-                  <h4 className="font-black text-xs sm:text-[13px] text-slate-900 leading-tight">
-                    Adrianne Dave Esler
-                  </h4>
-                  <p className="text-[10px] sm:text-[10.5px] font-bold text-emerald-800 bg-emerald-100/80 px-2 py-0.5 rounded-full mt-1.5 border border-emerald-300">
-                    Researcher & Documentation
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* 3. RESEARCH INFORMATION */}
-            <div className="rounded-xl sm:rounded-2xl bg-slate-50 border border-slate-200 p-3 sm:p-4">
-              <h3 className="font-black text-[11px] sm:text-xs uppercase tracking-wider text-slate-700 mb-2 flex items-center gap-1.5">
-                <Info size={14} className="text-emerald-700 shrink-0" />
-                <span>RESEARCH INFORMATION</span>
-              </h3>
-
-              <div className="grid grid-cols-3 gap-2 text-xs">
-                <div className="p-2 sm:p-2.5 bg-white rounded-lg sm:rounded-xl border border-slate-200 text-center sm:text-left">
-                  <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Project Type</p>
-                  <p className="font-bold text-slate-800 mt-0.5 text-[11px] sm:text-xs">Capstone Project</p>
-                </div>
-                <div className="p-2 sm:p-2.5 bg-white rounded-lg sm:rounded-xl border border-slate-200 text-center sm:text-left">
-                  <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Academic Year</p>
-                  <p className="font-bold text-slate-800 mt-0.5 text-[11px] sm:text-xs">2026</p>
-                </div>
-                <div className="p-2 sm:p-2.5 bg-white rounded-lg sm:rounded-xl border border-slate-200 text-center sm:text-left">
-                  <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-wider">Researchers</p>
-                  <p className="font-bold text-slate-800 mt-0.5 text-[11px] sm:text-xs">3 Members</p>
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </FloatingModal>
+        {renderAboutModal()}
 
       </div>
     );
@@ -1716,6 +1826,17 @@ const Login = ({ portalMode = null }) => {
         <span>Back to Home</span>
       </button>
 
+      {/* About Us Button (Top Right) */}
+      <button
+        type="button"
+        onClick={() => setShowAboutModal(true)}
+        className="absolute top-4 right-14 z-30 flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 backdrop-blur-md transition cursor-pointer shadow-md"
+        title="About KaagapAI"
+      >
+        <Users size={14} className="text-emerald-300" />
+        <span className="hidden sm:inline">About Us</span>
+      </button>
+
       {/* Pure Frosted Emerald Glass Card Container (Matching Image 3) */}
       <div className="relative z-10 w-full max-w-[460px] bg-gradient-to-b from-[rgba(2,43,29,0.92)] via-[rgba(3,62,43,0.85)] to-[rgba(1,28,19,0.95)] backdrop-blur-2xl rounded-[32px] p-6 sm:p-8 shadow-[0_30px_100px_rgba(1,20,13,0.85)] border border-emerald-400/35 flex flex-col items-center text-center my-auto transition-all duration-300 text-white overflow-hidden">
         
@@ -1735,24 +1856,17 @@ const Login = ({ portalMode = null }) => {
           <X size={16} />
         </button>
 
-        {/* Centered 3D Visual & Logo Badge */}
+        {/* Centered Logo Badge */}
         {modalStep !== "resident_register" && (
           <div className="flex flex-col items-center mb-5 relative z-10 w-full">
-            {/* Dual 3D Avatar & Seal Presentation */}
+            {/* Centered Logo Presentation */}
             <div className="relative flex items-center justify-center mb-3">
-              <div className="relative h-20 w-20 sm:h-22 sm:w-22 rounded-2xl border-2 border-emerald-400/50 bg-gradient-to-b from-emerald-900/70 to-emerald-950/90 p-1 shadow-xl shadow-emerald-950/60 overflow-hidden ring-4 ring-emerald-500/20">
+              <div className="relative h-20 w-20 sm:h-22 sm:w-22 rounded-2xl border-2 border-emerald-400/50 bg-gradient-to-b from-emerald-900/70 to-emerald-950/90 p-2 shadow-xl shadow-emerald-950/60 overflow-hidden ring-4 ring-emerald-500/20 flex items-center justify-center">
                 <img
-                  src={modalStep === "admin_login" ? "/admin-3d-avatar.png" : "/logo.png"}
-                  alt="Portal Avatar"
-                  className="h-full w-full object-cover object-top rounded-xl brightness-105"
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src = "/logo.png";
-                  }}
+                  src="/logo.png"
+                  alt="Barangay Upper Mingading Seal"
+                  className="h-full w-full object-contain"
                 />
-              </div>
-              <div className="-ml-4 -mt-6 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-emerald-400/60 bg-[#011C13] p-1 shadow-lg ring-2 ring-emerald-500/30">
-                <img src="/logo.png" alt="Barangay Seal" className="h-full w-full object-contain" />
               </div>
             </div>
 
@@ -1974,8 +2088,19 @@ const Login = ({ portalMode = null }) => {
                 )}
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="flex-1 flex h-11 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-xs font-bold text-white shadow-md hover:shadow-lg transition duration-200 disabled:opacity-50 cursor-pointer"
+                  disabled={loading || (registrationStep === 6 && (!registrationProof || !agreeTerms))}
+                  title={
+                    registrationStep === 6 && !registrationProof
+                      ? "Kailangang mag-upload ng Valid ID o Proof of Residency bago mag-submit"
+                      : registrationStep === 6 && !agreeTerms
+                      ? "Kailangang sumang-ayon sa Terms of Service bago mag-submit"
+                      : undefined
+                  }
+                  className={`flex-1 flex h-11 items-center justify-center gap-1.5 rounded-xl text-xs font-bold text-white shadow-md transition duration-200 ${
+                    registrationStep === 6 && (!registrationProof || !agreeTerms)
+                      ? "bg-emerald-950/60 border border-emerald-500/30 text-emerald-300/50 cursor-not-allowed opacity-60"
+                      : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:shadow-lg cursor-pointer disabled:opacity-50"
+                  }`}
                 >
                   {loading ? (
                     <Loader2 size={16} className="animate-spin" />
@@ -2168,15 +2293,23 @@ const Login = ({ portalMode = null }) => {
         )}
 
         {/* Modal Footer Text */}
-        <div className="w-full text-center text-xs text-white/90 font-medium mt-6 pt-4 border-t border-white/20">
-          By signing in, you agree to our{" "}
-          <span
+        <div className="w-full text-center text-xs text-white/90 font-medium mt-6 pt-4 border-t border-white/20 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+          <span>By signing in, you agree to our</span>
+          <button
+            type="button"
             onClick={() => setShowTermsModal(true)}
-            className="font-extrabold text-[#FFB800] hover:text-white underline underline-offset-2 decoration-[#FFB800]/80 cursor-pointer transition"
+            className="font-extrabold text-[#FFB800] hover:text-white underline underline-offset-2 decoration-[#FFB800]/80 cursor-pointer transition inline"
           >
             Terms and Conditions
-          </span>
-          .
+          </button>
+          <span>•</span>
+          <button
+            type="button"
+            onClick={() => setShowAboutModal(true)}
+            className="font-extrabold text-emerald-300 hover:text-white underline underline-offset-2 decoration-emerald-300/80 cursor-pointer transition inline"
+          >
+            About Us
+          </button>
         </div>
 
       </div>
@@ -2255,6 +2388,9 @@ const Login = ({ portalMode = null }) => {
           </div>
         </div>
       </FloatingModal>
+
+      {/* About KaagapAI Modal */}
+      {renderAboutModal()}
 
     </div>
   );

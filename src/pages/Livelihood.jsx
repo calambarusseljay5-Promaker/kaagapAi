@@ -537,16 +537,142 @@ const Livelihood = () => {
     reader.readAsDataURL(file);
   };
 
+  const parseExtractedDetails = (text = "") => {
+    const raw = String(text || "").trim();
+    if (!raw) return null;
+
+    // 1. Try finding JSON block
+    const jsonMatch = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        const candidate = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+        if (candidate && typeof candidate === "object") {
+          return candidate;
+        }
+      } catch (e) {
+        // continue to heuristic parser
+      }
+    }
+
+    // 2. Heuristic extraction from labeled / formatted text
+    const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+    let title = "";
+    let category = "Program";
+    let organization = "Barangay Upper Mingading";
+    let location = "Barangay Hall / Municipal PESO";
+    let slots = "";
+    let deadline = "";
+    let contact = "Barangay Livelihood Focal Person: 09306259795";
+    let eligibility = "";
+
+    const findValueAfter = (patterns) => {
+      for (const line of lines) {
+        for (const p of patterns) {
+          const match = line.match(new RegExp(`^(?:[#*•\\-\\s]*)${p}\\s*[:=-]\\s*(.+)`, "i"));
+          if (match && match[1]) {
+            return match[1].replace(/[*_#`]/g, "").trim();
+          }
+        }
+      }
+      return "";
+    };
+
+    // Extract Title
+    title = findValueAfter(["title", "program title", "job title", "activity", "subject", "pamagat", "memo subject", "document", "name of program"]);
+    if (!title && lines.length > 0) {
+      const candidateLine = lines.find((l) => !l.startsWith("---") && l.length > 5 && l.length < 90 && !l.toLowerCase().includes("extracted text"));
+      if (candidateLine) {
+        title = candidateLine.replace(/^[#*•\-\s]+/, "").replace(/[*_#`]/g, "").trim();
+      }
+    }
+
+    // Extract Organization / Sponsor
+    const orgFound = findValueAfter(["organization", "sponsor", "organizer", "agency", "office", "partner", "department"]);
+    if (orgFound) organization = orgFound;
+    else if (raw.toLowerCase().includes("tesda")) organization = "TESDA / Provincial Govt of Cotabato";
+    else if (raw.toLowerCase().includes("dole") || raw.toLowerCase().includes("tupad") || raw.toLowerCase().includes("spes")) organization = "DOLE / LGU Aleosan PESO";
+    else if (raw.toLowerCase().includes("dti")) organization = "DTI / LGU Aleosan";
+
+    // Extract Location
+    const locFound = findValueAfter(["location", "venue", "place", "address", "saan", "lugar"]);
+    if (locFound) location = locFound;
+
+    // Extract Slots
+    const slotsFound = findValueAfter(["slots", "available slots", "open slots", "quota", "bilang ng slots"]);
+    if (slotsFound) {
+      const numOnly = slotsFound.match(/\d+/);
+      if (numOnly) slots = numOnly[0];
+    }
+
+    // Extract Deadline
+    const deadlineFound = findValueAfter(["deadline", "due date", "until", "last day of submission", "petsa ng deadline"]);
+    if (deadlineFound) deadline = deadlineFound;
+
+    // Extract Contact
+    const contactFound = findValueAfter(["contact", "contact person", "phone", "hotline", "mobile", "inquiries"]);
+    if (contactFound) contact = contactFound;
+
+    // Extract Eligibility
+    const eligFound = findValueAfter(["eligibility", "qualifications", "requirements", "criteria", "who can apply"]);
+    if (eligFound) eligibility = eligFound;
+    else {
+      // Pick numbered list items
+      const listItems = lines.filter((l) => /^\d+\.\s+|^-\s+|^•\s+/.test(l));
+      if (listItems.length > 0) {
+        eligibility = listItems.slice(0, 4).join("\n");
+      }
+    }
+
+    // Infer Category
+    const lowerRaw = raw.toLowerCase();
+    if (lowerRaw.includes("training") || lowerRaw.includes("scholarship") || lowerRaw.includes("course") || lowerRaw.includes("skills") || lowerRaw.includes("tesda")) {
+      category = "Training";
+    } else if (lowerRaw.includes("job") || lowerRaw.includes("hiring") || lowerRaw.includes("vacancy") || lowerRaw.includes("employment") || lowerRaw.includes("worker") || lowerRaw.includes("staff")) {
+      category = "Job";
+    } else if (lowerRaw.includes("grant") || lowerRaw.includes("tupad") || lowerRaw.includes("ayuda") || lowerRaw.includes("cash") || lowerRaw.includes("financial assistance")) {
+      category = "Grant";
+    } else {
+      category = "Program";
+    }
+
+    return {
+      title: title || "Official Barangay Livelihood Program",
+      category,
+      status: "Open",
+      organization,
+      location,
+      slots,
+      deadline,
+      contact,
+      eligibility: eligibility || "1. Bonafide resident of Barangay Upper Mingading\n2. Must present valid government / resident ID",
+      description: raw,
+    };
+  };
+
   const handleScanOcrMemo = async () => {
     if (!attachedFile?.base64) return;
     setIsScanningOcr(true);
     setExtractedOcrText("");
 
     try {
-      const systemInstruction =
-        "You are an expert AI Document OCR Assistant for Barangay Upper Mingading. Read the provided memo, circular, or form image/document. Extract all visible text accurately, and structure the details clearly with Title, Organization, Category, Slots, Location, Deadline, Contact Person, Qualifications/Eligibility, and Detailed Description.";
+      const systemInstruction = `You are an expert AI Document OCR & Livelihood Form Assistant for Barangay Upper Mingading.
+Read the provided memo, circular, or form image/document.
+Extract all key details and return a clean JSON object with the following fields:
+{
+  "title": "Clean, concise title of the program, job, training, or livelihood post (e.g. SPES Summer Employment Program 2026, TESDA Free Agriculture Training)",
+  "category": "One of: Job, Training, Grant, Program",
+  "status": "One of: Open, Ongoing, Completed, Closed",
+  "organization": "Sponsor or organizing agency (e.g. Provincial Government of Cotabato, DOLE, TESDA, Barangay Upper Mingading)",
+  "location": "Venue or application location (e.g. Barangay Hall / Municipal PESO)",
+  "slots": "Number of slots if mentioned (e.g. 50) or empty string",
+  "deadline": "Deadline in YYYY-MM-DD format if mentioned, or empty string",
+  "contact": "Contact person or office hotline (e.g. Barangay Livelihood Focal Person: 09306259795)",
+  "eligibility": "Numbered list of qualifications, age limits, and criteria",
+  "description": "Full program description, objectives, requirements to bring, and application steps",
+  "rawText": "Complete readable text from the document"
+}`;
 
-      const userPrompt = `${ocrPrompt || "Extract all details from this memo."}\n\nPlease output the extracted memo content in clear structured format so the secretary can copy and use it for the barangay livelihood portal.`;
+      const userPrompt = `${ocrPrompt || "Extract all details from this memo."}\n\nPlease output the extracted details in structured JSON so all form fields are auto-filled.`;
 
       const result = await generateText(userPrompt, {
         systemInstruction,
@@ -562,14 +688,27 @@ const Livelihood = () => {
         result?.text ||
         "No text could be extracted from this document.";
 
-      setExtractedOcrText(extracted);
+      const parsed = parseExtractedDetails(extracted);
 
-      if (!formData.title.trim()) {
-        const firstLine = extracted.split("\n").find((l) => l.trim().length > 5) || "";
-        const cleanTitle = firstLine.replace(/^[#*•\-\s]+/, "").slice(0, 80).trim();
-        if (cleanTitle) {
-          setFormData((prev) => ({ ...prev, title: cleanTitle }));
-        }
+      if (parsed) {
+        setFormData((prev) => ({
+          ...prev,
+          title: parsed.title || prev.title,
+          category: ["Job", "Training", "Grant", "Program"].includes(parsed.category) ? parsed.category : prev.category,
+          status: ["Open", "Ongoing", "Completed", "Closed"].includes(parsed.status) ? parsed.status : prev.status,
+          organization: parsed.organization || prev.organization,
+          location: parsed.location || prev.location,
+          slots: parsed.slots ? String(parsed.slots) : prev.slots,
+          deadline: parsed.deadline || prev.deadline,
+          contact: parsed.contact || prev.contact,
+          eligibility: parsed.eligibility || prev.eligibility,
+          description: parsed.description || prev.description,
+        }));
+        setExtractedOcrText(parsed.rawText || parsed.description || extracted);
+        setAiGeneratedNotice("✨ Memo scanned and ALL form fields auto-filled!");
+        setTimeout(() => setAiGeneratedNotice(""), 4500);
+      } else {
+        setExtractedOcrText(extracted);
       }
     } catch (err) {
       console.error("OCR scanning error:", err);
@@ -581,20 +720,43 @@ const Livelihood = () => {
     }
   };
 
-  const handleCopyExtractedText = () => {
+  const handleCopyExtractedText = async () => {
     if (!extractedOcrText) return;
-    navigator.clipboard.writeText(extractedOcrText);
-    setCopyOcrStatus(true);
-    setTimeout(() => setCopyOcrStatus(false), 3000);
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(extractedOcrText);
+        setCopyOcrStatus(true);
+        setTimeout(() => setCopyOcrStatus(false), 3000);
+      }
+    } catch {
+      // ignore clipboard error in restricted webviews
+    }
   };
 
   const handleApplyExtractedTextToForm = () => {
     if (!extractedOcrText) return;
-    setFormData((prev) => ({
-      ...prev,
-      description: prev.description ? `${prev.description}\n\n--- EXTRACTED MEMO DETAILS ---\n${extractedOcrText}` : extractedOcrText,
-    }));
-    setAiGeneratedNotice("✅ Extracted text inserted into Description!");
+    const parsed = parseExtractedDetails(extractedOcrText);
+    if (parsed) {
+      setFormData((prev) => ({
+        ...prev,
+        title: parsed.title || prev.title,
+        category: ["Job", "Training", "Grant", "Program"].includes(parsed.category) ? parsed.category : prev.category,
+        status: ["Open", "Ongoing", "Completed", "Closed"].includes(parsed.status) ? parsed.status : prev.status,
+        organization: parsed.organization || prev.organization,
+        location: parsed.location || prev.location,
+        slots: parsed.slots ? String(parsed.slots) : prev.slots,
+        deadline: parsed.deadline || prev.deadline,
+        contact: parsed.contact || prev.contact,
+        eligibility: parsed.eligibility || prev.eligibility,
+        description: parsed.description || prev.description,
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        description: prev.description ? `${prev.description}\n\n--- EXTRACTED MEMO DETAILS ---\n${extractedOcrText}` : extractedOcrText,
+      }));
+    }
+    setAiGeneratedNotice("✅ Extracted details auto-filled into all form fields!");
     setTimeout(() => setAiGeneratedNotice(""), 4000);
   };
 
@@ -1240,21 +1402,20 @@ const Livelihood = () => {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-indigo-300 text-indigo-900 hover:bg-indigo-50 font-bold text-xs shadow-xs transition active:scale-95 cursor-pointer"
-                  title="Upload image or file memo from province or municipality"
+                  title="Upload image, document, or file"
                 >
                   <Plus size={14} className="text-purple-600 font-black" />
                   <Paperclip size={12} className="text-indigo-600" />
-                  <span>Attach Memo</span>
+                  <span>Attach File</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => handleAiGenerateDraft()}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold text-xs shadow-sm transition active:scale-95 cursor-pointer"
-                  title="Generate AI Livelihood Draft based on Title"
+                  className="inline-flex items-center justify-center px-4 py-1.5 rounded-lg bg-[#14532D] hover:bg-[#0f3e21] text-white font-bold text-xs shadow-sm transition active:scale-95 cursor-pointer"
+                  title="Generate Livelihood Draft based on Title"
                 >
-                  <Wand2 size={13} className="text-amber-300" />
-                  <span>✨ Generate AI Draft</span>
+                  <span>Generate</span>
                 </button>
               </div>
             </div>

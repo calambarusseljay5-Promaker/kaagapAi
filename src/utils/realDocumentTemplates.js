@@ -1,6 +1,6 @@
 export const BARANGAY_SEAL_SRC = "/logo.png";
 export const PUNONG_BARANGAY = "MAMERTO C. CLARITO";
-export const DEFAULT_PREPARED_BY = "FATMAH S. SUMPAO";
+export const DEFAULT_PREPARED_BY = "";
 
 export const normalizeDocumentTemplateText = (value) =>
   String(value || "")
@@ -515,6 +515,72 @@ const htmlParagraphToText = (paragraph) =>
     .replace(/&#39;/g, "'")
     .trim();
 
+export const getCustomTemplateContent = (templateOrType) => {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("kaagapai_document_templates_v1");
+    if (!raw) return null;
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) return null;
+    const key = getRealDocumentTemplateKey(templateOrType);
+    const found = list.find((t) => getRealDocumentTemplateKey(t) === key && t.status !== "Archived");
+    return found?.content || null;
+  } catch {
+    return null;
+  }
+};
+
+const replaceDynamicTemplatePlaceholders = (content, fields = {}, template = null) => {
+  if (!content) return "";
+  const key = getRealDocumentTemplateKey(template);
+  const rawResidentName = String(fields.residentName || "").trim();
+  const name = rawResidentName ? escapeHtml(rawResidentName.toUpperCase()) : "JUAN S. DELA CRUZ";
+  const rawAge = String(fields.age ?? "").trim();
+  const age = rawAge ? escapeHtml(rawAge) : "35";
+  const purok = getPurokName(fields, true) || "Kamonsil";
+  const rawPurpose = getPurposePhrase(fields);
+  const purpose = rawPurpose ? escapeHtml(rawPurpose.toUpperCase()) : "whatever legal purpose it may serve best";
+
+  const ordinalDay = getOrdinalDay(fields.issueDate);
+  const monthName = getMonthName(fields.issueDate);
+  const year = getYearNumber(fields.issueDate);
+
+  const civilStatus = getCivilStatusFormatted(fields.civilStatus);
+  const genderMap = getGenderFormatted(fields.gender);
+
+  const rawBirthDate = fields.birthDate || fields.birthday || fields.date_of_birth || fields.birthdate || fields.dob || "";
+  const birthdateStr = rawBirthDate ? formatBirthdate(rawBirthDate) : "";
+
+  const replacements = {
+    "{{FULL_NAME}}": name,
+    "{{AGE}}": age,
+    "{{SEX}}": genderMap.maleFemale,
+    "{{GENDER}}": genderMap.maleFemale,
+    "{{CIVIL_STATUS}}": civilStatus,
+    "{{ADDRESS}}": fields.address || `Purok ${purok}, Upper Mingading, Aleosan, Cotabato`,
+    "{{PUROK}}": purok,
+    "{{PURPOSE}}": purpose,
+    "{{DATE}}": `${monthName} ${ordinalDay}, ${year}`,
+    "{{DAY}}": ordinalDay,
+    "{{MONTH}}": monthName,
+    "{{YEAR}}": String(year),
+    "{{BIRTHDAY}}": birthdateStr,
+    "{{DATE_OF_BIRTH}}": birthdateStr,
+    "{{BARANGAY_CAPTAIN}}": PUNONG_BARANGAY,
+    "{{BUSINESS_NAME}}": escapeHtml(fields.businessName || "BANANA BUY AND SALE"),
+    "{{SOLO_PARENT_REASON}}": escapeHtml(getSoloParentReason(fields, genderMap)),
+    "{{CROPS_DETAILS}}": escapeHtml(fields.cropsText || "Rice Field ½ hectare, and Fruits Crops 1 hectare"),
+    "{{FARM_SIZE}}": escapeHtml(fields.farmSize || "One ( 1 ) hectare"),
+  };
+
+  let result = String(content);
+  Object.entries(replacements).forEach(([token, val]) => {
+    const regex = new RegExp(token.replace(/[{}]/g, "\\$&"), "gi");
+    result = result.replace(regex, val);
+  });
+  return result;
+};
+
 export const getDocumentBodyHtml = (fields = {}, template = null) => {
   const safeFields = fields || {};
   const stored = String(safeFields.documentText || "").trim();
@@ -530,6 +596,13 @@ export const getDocumentBodyHtml = (fields = {}, template = null) => {
         .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br />")}</p>`)
         .join("\n");
     }
+  }
+
+  // Check if a customized template content exists
+  const customContent = template?.content || getCustomTemplateContent(template || safeFields.documentType);
+  if (customContent) {
+    const populated = replaceDynamicTemplatePlaceholders(customContent, safeFields, template);
+    if (populated) return populated;
   }
 
   const list = buildBodyParagraphs(safeFields, template);
@@ -699,9 +772,17 @@ const getDocumentExtras = (fields = {}, template = null, editable = false) => {
   const safeFields = fields || {};
   const key = getRealDocumentTemplateKey(template);
 
+  // Solo parent certificates should completely omit the OR block
+  if (key === "solo") {
+    return "";
+  }
+
+  const rawOr = String(safeFields.orNumber || "").trim();
+  const hasCustomOr = rawOr && rawOr !== "2578557";
+
   const blankLine = `<u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u>`;
-  const orVal = safeFields.orNumber
-    ? `<u>${escapeHtml(safeFields.orNumber)}</u>`
+  const orVal = hasCustomOr
+    ? `<u>${escapeHtml(rawOr)}</u>`
     : (key === "residency" ? "" : blankLine);
   const dateVal = safeFields.dateIssued
     ? `<u>${escapeHtml(formatDateShort(safeFields.dateIssued))}</u>`
@@ -714,13 +795,7 @@ const getDocumentExtras = (fields = {}, template = null, editable = false) => {
     : (key === "residency" ? "" : blankLine);
 
   if (key === "clearance") {
-    const preparedByEditAttrs = getEditableFieldAttributes(editable, "preparedBy", "Prepared by");
-
     return `
-      <section class="real-doc-clearance-staff">
-        <p class="real-doc-staff-name" ${preparedByEditAttrs}><strong>${escapeHtml(safeFields.preparedBy || DEFAULT_PREPARED_BY)}</strong></p>
-        <p class="real-doc-staff-subtext">(Signature Over Printed Name)</p>
-      </section>
       <section class="real-doc-thumbmark" aria-hidden="true">
         <span></span>
       </section>
@@ -773,21 +848,10 @@ const getDocumentExtras = (fields = {}, template = null, editable = false) => {
     `;
   }
 
-  if (key === "solo" && (safeFields.orNumber || safeFields.dateIssued)) {
-    return `
-      <section class="real-doc-or real-doc-solo-or">
-        <div class="real-doc-or-table">
-          <div class="real-doc-or-row"><span class="real-doc-or-label">OR No.</span><span class="real-doc-or-val">${orVal}</span></div>
-          <div class="real-doc-or-row"><span class="real-doc-or-label">Date Issued:</span><span class="real-doc-or-val">${dateVal}</span></div>
-        </div>
-      </section>
-    `;
-  }
-
   return "";
 };
 
-const REAL_DOCUMENT_CSS = `
+export const REAL_DOCUMENT_CSS = `
   @font-face {
     font-family: 'Felix Titling';
     src: local('Felix Titling'), local('Felix-Titling'), local('FelixTitling'), local('Times New Roman');

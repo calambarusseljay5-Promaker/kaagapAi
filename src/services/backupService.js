@@ -38,6 +38,15 @@ const getStorage = () => {
   return window.localStorage;
 };
 
+const getLocalDateString = (d = new Date()) => {
+  const dateObj = typeof d === "string" || typeof d === "number" ? new Date(d) : d;
+  if (Number.isNaN(dateObj.getTime())) return "";
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const day = String(dateObj.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const createId = () => {
   if (typeof crypto !== "undefined" && crypto.randomUUID) {
     return crypto.randomUUID();
@@ -385,6 +394,10 @@ export async function createAndUploadBackup(type = "manual", triggerAction = "")
     source: "Local",
   });
 
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("kaagapai:backup-updated", { detail: entry }));
+  }
+
   return entry;
 }
 
@@ -675,44 +688,101 @@ export async function hasDataChangedSinceLastBackup() {
 }
 
 /**
+ * Daily Auto-Backup & Auto-Purge Routine:
+ * Checks if a daily backup has already been performed today.
+ * If next day / today not yet backed up:
+ * 1. Automatically deletes yesterday's and older automated backups to keep storage clean and minimal.
+ * 2. Creates a fresh, full snapshot for today ("automatic").
+ * 3. Updates lastAutoBackupAt and saves the registry.
+ */
+export async function runDailyAutoBackupRoutine() {
+  const settings = getBackupSettings();
+  if (!settings.autoBackupEnabled) return null;
+
+  const todayStr = getLocalDateString(new Date());
+  const currentRegistry = getRegistry();
+
+  // 1. Automatically find and delete all previous/yesterday's automatic backups
+  const previousAutoBackups = currentRegistry.filter((e) => {
+    if (e.type !== "automatic") return false;
+    const entryDateStr = getLocalDateString(new Date(e.createdAt || Date.now()));
+    return entryDateStr !== todayStr;
+  });
+
+  if (previousAutoBackups.length > 0) {
+    for (const oldEntry of previousAutoBackups) {
+      if (oldEntry.storagePath && oldEntry.cloudUploaded) {
+        await deleteFromStorage(oldEntry.storagePath).catch(() => {});
+      }
+      removeCachedBackup(oldEntry.id);
+      removeRegistryEntry(oldEntry.id);
+    }
+  }
+
+  // 2. Check if today already has an automatic backup
+  const updatedRegistry = getRegistry();
+  const todayAutoBackups = updatedRegistry.filter((e) => {
+    if (e.type !== "automatic") return false;
+    const entryDateStr = getLocalDateString(new Date(e.createdAt || Date.now()));
+    return entryDateStr === todayStr;
+  });
+
+  if (todayAutoBackups.length > 0) {
+    // If today already has auto backups, keep only the newest one from today
+    if (todayAutoBackups.length > 1) {
+      const sortedToday = [...todayAutoBackups].sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      const duplicates = sortedToday.slice(1);
+      for (const dup of duplicates) {
+        if (dup.storagePath && dup.cloudUploaded) {
+          await deleteFromStorage(dup.storagePath).catch(() => {});
+        }
+        removeCachedBackup(dup.id);
+        removeRegistryEntry(dup.id);
+      }
+    }
+    await enforceRetentionPolicy().catch(() => {});
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("kaagapai:backup-updated"));
+    }
+    return todayAutoBackups[0];
+  }
+
+  try {
+    // 3. Create today's fresh automatic backup
+    const newBackup = await createAndUploadBackup("automatic");
+
+    // 4. Update settings timestamp
+    saveBackupSettings({
+      ...settings,
+      lastAutoBackupAt: new Date().toISOString(),
+    });
+
+    recordAuditEvent({
+      module: "System Settings",
+      action: "Daily auto-backup executed",
+      details: `Daily automated backup Version ${newBackup.version} created for ${todayStr}. Yesterday's automated backup was automatically deleted.`,
+      source: "System",
+    });
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("kaagapai:backup-updated", { detail: newBackup }));
+    }
+
+    return newBackup;
+  } catch (err) {
+    console.warn("Daily auto-backup notice:", err.message);
+    return null;
+  }
+}
+
+/**
  * Check if auto-backup should run and execute it if conditions are met.
  * @returns {Promise<boolean>}
  */
 export async function checkAndRunAutoBackup() {
-  const settings = getBackupSettings();
-
-  if (!settings.autoBackupEnabled) return false;
-
-  const lastBackupAt = settings.lastAutoBackupAt;
-  if (lastBackupAt) {
-    const hoursSinceLastBackup = (Date.now() - new Date(lastBackupAt).getTime()) / 3600000;
-    if (hoursSinceLastBackup < 24) return false;
-  }
-
-  const changed = await hasDataChangedSinceLastBackup();
-  if (!changed) {
-    recordAuditEvent({
-      module: "System Settings",
-      action: "Auto-backup skipped",
-      details: "No data changes detected since last backup.",
-      source: "Local",
-    });
-    return false;
-  }
-
-  try {
-    await createAndUploadBackup("automatic");
-    return true;
-  } catch (error) {
-    console.error("Auto-backup failed:", error);
-    recordAuditEvent({
-      module: "System Settings",
-      action: "Auto-backup failed",
-      details: error.message || "Unknown error during automatic backup.",
-      source: "Local",
-    });
-    return false;
-  }
+  return await runDailyAutoBackupRoutine();
 }
 
 /**
@@ -721,7 +791,7 @@ export async function checkAndRunAutoBackup() {
  */
 export async function enforceRetentionPolicy() {
   const settings = getBackupSettings();
-  const retentionMs = settings.retentionDays * 86400000;
+  const retentionMs = (settings.retentionDays || 30) * 86400000;
   const cutoff = Date.now() - retentionMs;
 
   const registry = getRegistry();
@@ -737,6 +807,7 @@ export async function enforceRetentionPolicy() {
         // Continue deleting others even if one fails
       }
     }
+    removeCachedBackup(entry.id);
   }
 
   const remaining = registry.filter((e) => new Date(e.createdAt).getTime() >= cutoff);

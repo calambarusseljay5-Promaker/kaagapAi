@@ -10,20 +10,32 @@ export const DEFAULT_ADMIN_CREDENTIALS = {
   password: "kaagapai123",
   email: "uppermingading@gmail.com",
   fullName: "Barangay Administrator",
+  phone: "09306259795",
   role: "admin",
+  profilePhotoUrl: "",
 };
 
 export function getAdminCredentials() {
   if (typeof window === "undefined") return DEFAULT_ADMIN_CREDENTIALS;
   try {
     const raw = localStorage.getItem(ADMIN_CREDENTIALS_KEY);
-    if (!raw) return DEFAULT_ADMIN_CREDENTIALS;
+    const savedPhoto = localStorage.getItem("kaagapai_admin_profile_photo") || "";
+    if (!raw) {
+      return {
+        ...DEFAULT_ADMIN_CREDENTIALS,
+        profilePhotoUrl: savedPhoto,
+      };
+    }
     const parsed = JSON.parse(raw);
     return {
       ...DEFAULT_ADMIN_CREDENTIALS,
       ...parsed,
       username: String(parsed.username || DEFAULT_ADMIN_CREDENTIALS.username).trim(),
       password: String(parsed.password || DEFAULT_ADMIN_CREDENTIALS.password),
+      fullName: String(parsed.fullName || parsed.full_name || DEFAULT_ADMIN_CREDENTIALS.fullName).trim(),
+      email: String(parsed.email || DEFAULT_ADMIN_CREDENTIALS.email).trim(),
+      phone: String(parsed.phone || DEFAULT_ADMIN_CREDENTIALS.phone).trim(),
+      profilePhotoUrl: parsed.profilePhotoUrl || parsed.profile_photo_url || savedPhoto || "",
     };
   } catch {
     return DEFAULT_ADMIN_CREDENTIALS;
@@ -36,10 +48,23 @@ export function saveAdminCredentials(creds) {
   const next = {
     ...current,
     ...creds,
-    username: String(creds.username || current.username).trim(),
-    password: String(creds.password || current.password),
+    username: String(creds.username !== undefined ? creds.username : current.username).trim(),
+    password: String(creds.password !== undefined ? creds.password : current.password),
+    fullName: String(creds.fullName !== undefined ? creds.fullName : (creds.full_name !== undefined ? creds.full_name : current.fullName)).trim(),
+    email: String(creds.email !== undefined ? creds.email : current.email).trim(),
+    phone: String(creds.phone !== undefined ? creds.phone : current.phone).trim(),
+    profilePhotoUrl: creds.profilePhotoUrl !== undefined ? creds.profilePhotoUrl : (creds.profile_photo_url !== undefined ? creds.profile_photo_url : current.profilePhotoUrl),
   };
   localStorage.setItem(ADMIN_CREDENTIALS_KEY, JSON.stringify(next));
+  if (next.profilePhotoUrl) {
+    try {
+      localStorage.setItem("kaagapai_admin_profile_photo", next.profilePhotoUrl);
+    } catch {}
+  } else if (creds.profilePhotoUrl === "" || creds.profile_photo_url === "") {
+    try {
+      localStorage.removeItem("kaagapai_admin_profile_photo");
+    } catch {}
+  }
   return next;
 }
 
@@ -65,7 +90,9 @@ export function saveAdminSession(session) {
   const creds = getAdminCredentials();
   const settings = getSystemSettings();
   const savedPhoto = typeof window !== "undefined" ? localStorage.getItem("kaagapai_admin_profile_photo") : null;
-  const photoUrl = session.profile?.profile_photo_url || session.user?.user_metadata?.avatar_url || savedPhoto || null;
+  const photoUrl = session.profile?.profile_photo_url || session.user?.user_metadata?.avatar_url || savedPhoto || creds.profilePhotoUrl || null;
+  const activeFullName = session.user?.user_metadata?.full_name || session.profile?.full_name || creds.fullName || "Barangay Administrator";
+  const activePhone = session.profile?.phone || creds.phone || settings.officePhone || "";
 
   if (photoUrl && typeof window !== "undefined") {
     try {
@@ -76,9 +103,9 @@ export function saveAdminSession(session) {
   const serialized = {
     user: {
       id: session.user?.id || "00000000-0000-4000-a000-000000000001",
-      email: session.user?.email || settings.officeEmail || "uppermingading@gmail.com",
+      email: session.user?.email || creds.email || settings.officeEmail || "uppermingading@gmail.com",
       user_metadata: {
-        full_name: session.user?.user_metadata?.full_name || session.profile?.full_name || "Barangay Administrator",
+        full_name: activeFullName,
         username: session.user?.user_metadata?.username || creds.username || settings.adminUsername || "kaagapai",
         avatar_url: photoUrl,
       },
@@ -88,7 +115,8 @@ export function saveAdminSession(session) {
       id: session.profile?.id || session.user?.id || "00000000-0000-4000-a000-000000000001",
       role: "admin",
       registration_status: "Active",
-      full_name: session.profile?.full_name || "Barangay Administrator",
+      full_name: activeFullName,
+      phone: activePhone,
       profile_photo_url: photoUrl,
       ...session.profile,
     },
@@ -181,12 +209,19 @@ export async function loginUser(usernameOrEmail, password) {
     cleanInput === "uppermingading@gmail.com";
 
   if ((isUsernameMatch || isEmailMatch) && (inputPassword === activeAdminPassword || inputPassword === "kaagapai123")) {
+    const savedPhoto = typeof window !== "undefined" ? localStorage.getItem("kaagapai_admin_profile_photo") : null;
+    const finalPhoto = adminCreds.profilePhotoUrl || savedPhoto || null;
+    const finalFullName = adminCreds.fullName || "Barangay Administrator";
+    const finalEmail = adminCreds.email || activeOfficialEmail || "uppermingading@gmail.com";
+    const finalPhone = adminCreds.phone || settings.officePhone || "";
+
     const adminUser = {
       id: "00000000-0000-4000-a000-000000000001",
-      email: activeOfficialEmail,
+      email: finalEmail,
       user_metadata: {
-        full_name: "Barangay Administrator",
+        full_name: finalFullName,
         username: adminCreds.username || settings.adminUsername || "kaagapai",
+        avatar_url: finalPhoto,
       },
     };
 
@@ -194,7 +229,9 @@ export async function loginUser(usernameOrEmail, password) {
       id: "00000000-0000-4000-a000-000000000001",
       role: "admin",
       registration_status: "Active",
-      full_name: "Barangay Administrator",
+      full_name: finalFullName,
+      phone: finalPhone,
+      profile_photo_url: finalPhoto,
     };
 
     // Also attempt background sync with Supabase Auth if online
@@ -380,11 +417,37 @@ export async function getUserProfile(userId) {
   }
 }
 
+let cachedCurrentUserProfile = null;
+let cachedCurrentUserTimestamp = 0;
+const USER_PROFILE_CACHE_TTL_MS = 10000; // 10 seconds cache to eliminate repeated concurrent calls
+
+export function clearCurrentUserCache() {
+  cachedCurrentUserProfile = null;
+  cachedCurrentUserTimestamp = 0;
+}
+
 /**
  * Get current authenticated user and profile
  */
-export async function getCurrentUserWithProfile() {
+export async function getCurrentUserWithProfile(forceRefresh = false) {
+  if (!forceRefresh && cachedCurrentUserProfile && Date.now() - cachedCurrentUserTimestamp < USER_PROFILE_CACHE_TTL_MS) {
+    return cachedCurrentUserProfile;
+  }
+
+  const creds = getAdminCredentials();
+  const settings = getSystemSettings();
   const savedPhoto = typeof window !== "undefined" ? localStorage.getItem("kaagapai_admin_profile_photo") : null;
+  const finalPhoto = creds.profilePhotoUrl || savedPhoto || null;
+  const finalFullName = creds.fullName || "Barangay Administrator";
+  const finalEmail = creds.email || settings.officeEmail || "uppermingading@gmail.com";
+  const finalPhone = creds.phone || settings.officePhone || "";
+
+  const setCachedAndReturn = (val) => {
+    cachedCurrentUserProfile = val;
+    cachedCurrentUserTimestamp = Date.now();
+    return val;
+  };
+
   try {
     const adminSession = getAdminSession();
     const { data: sessionData } = await supabase.auth.getSession();
@@ -398,72 +461,107 @@ export async function getCurrentUserWithProfile() {
         id: userId,
         role: safeRole,
         registration_status: profile?.registration_status || "Active",
-        profile_photo_url: profile?.profile_photo_url || savedPhoto || null,
+        full_name: profile?.full_name || sessionData.session.user.user_metadata?.full_name || finalFullName,
+        phone: profile?.phone || finalPhone,
+        profile_photo_url: profile?.profile_photo_url || finalPhoto,
       };
 
-      return {
-        user: sessionData.session.user,
+      return setCachedAndReturn({
+        user: {
+          ...sessionData.session.user,
+          user_metadata: {
+            ...(sessionData.session.user.user_metadata || {}),
+            full_name: finalProfile.full_name,
+            avatar_url: finalProfile.profile_photo_url,
+          },
+        },
         profile: finalProfile,
-      };
+      });
     }
 
     if (adminSession?.user) {
-      const p = adminSession.profile || { role: "admin", registration_status: "Active" };
-      if (!p.profile_photo_url && savedPhoto) {
-        p.profile_photo_url = savedPhoto;
-      }
-      return {
-        user: adminSession.user,
-        profile: p,
+      const p = {
+        role: "admin",
+        registration_status: "Active",
+        full_name: adminSession.profile?.full_name || adminSession.user?.user_metadata?.full_name || finalFullName,
+        phone: adminSession.profile?.phone || finalPhone,
+        profile_photo_url: adminSession.profile?.profile_photo_url || finalPhoto,
+        ...(adminSession.profile || {}),
       };
+      return setCachedAndReturn({
+        user: {
+          ...adminSession.user,
+          user_metadata: {
+            ...(adminSession.user?.user_metadata || {}),
+            full_name: p.full_name,
+            avatar_url: p.profile_photo_url,
+          },
+        },
+        profile: p,
+      });
     }
 
-    return {
+    return setCachedAndReturn({
       user: {
         id: "00000000-0000-4000-a000-000000000001",
-        email: getSystemSettings().officeEmail || "uppermingading@gmail.com",
+        email: finalEmail,
         user_metadata: {
-          full_name: "Barangay Administrator",
-          username: getSystemSettings().adminUsername || "kaagapai",
-          avatar_url: savedPhoto || null,
+          full_name: finalFullName,
+          username: creds.username || settings.adminUsername || "kaagapai",
+          avatar_url: finalPhoto,
         },
       },
       profile: {
         id: "00000000-0000-4000-a000-000000000001",
         role: "admin",
         registration_status: "Active",
-        profile_photo_url: savedPhoto || null,
+        full_name: finalFullName,
+        phone: finalPhone,
+        profile_photo_url: finalPhoto,
       },
-    };
+    });
   } catch (error) {
     const adminSession = getAdminSession();
     if (adminSession?.user) {
-      const p = adminSession.profile || { role: "admin", registration_status: "Active" };
-      if (!p.profile_photo_url && savedPhoto) {
-        p.profile_photo_url = savedPhoto;
-      }
-      return {
-        user: adminSession.user,
-        profile: p,
+      const p = {
+        role: "admin",
+        registration_status: "Active",
+        full_name: adminSession.profile?.full_name || adminSession.user?.user_metadata?.full_name || finalFullName,
+        phone: adminSession.profile?.phone || finalPhone,
+        profile_photo_url: adminSession.profile?.profile_photo_url || finalPhoto,
+        ...(adminSession.profile || {}),
       };
+      return setCachedAndReturn({
+        user: {
+          ...adminSession.user,
+          user_metadata: {
+            ...(adminSession.user?.user_metadata || {}),
+            full_name: p.full_name,
+            avatar_url: p.profile_photo_url,
+          },
+        },
+        profile: p,
+      });
     }
-    return {
+    return setCachedAndReturn({
       user: {
         id: "00000000-0000-4000-a000-000000000001",
-        email: getSystemSettings().officeEmail || "uppermingading@gmail.com",
+        email: finalEmail,
         user_metadata: {
-          full_name: "Barangay Administrator",
-          username: getSystemSettings().adminUsername || "kaagapai",
-          avatar_url: savedPhoto || null,
+          full_name: finalFullName,
+          username: creds.username || settings.adminUsername || "kaagapai",
+          avatar_url: finalPhoto,
         },
       },
       profile: {
         id: "00000000-0000-4000-a000-000000000001",
         role: "admin",
         registration_status: "Active",
-        profile_photo_url: savedPhoto || null,
+        full_name: finalFullName,
+        phone: finalPhone,
+        profile_photo_url: finalPhoto,
       },
-    };
+    });
   }
 }
 
@@ -472,6 +570,7 @@ export async function getCurrentUserWithProfile() {
  */
 export async function clearAuthSession() {
   try {
+    clearCurrentUserCache();
     clearAdminSession();
     if (typeof window !== "undefined" && window.sessionStorage) {
       sessionStorage.clear();

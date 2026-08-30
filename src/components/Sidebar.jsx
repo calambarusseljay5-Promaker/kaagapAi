@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Users,
   FileText,
+  Files,
   BarChart3,
   Building2,
   Briefcase,
@@ -43,6 +44,7 @@ const iconMap = {
   LayoutDashboard: <LayoutDashboard size={17} className="stroke-[2]" />,
   Users: <Users size={17} className="stroke-[2]" />,
   FileText: <FileText size={17} className="stroke-[2]" />,
+  Files: <Files size={17} className="stroke-[2]" />,
   BarChart3: <BarChart3 size={17} className="stroke-[2]" />,
   Building2: <Building2 size={17} className="stroke-[2]" />,
   Briefcase: <Briefcase size={17} className="stroke-[2]" />,
@@ -230,9 +232,9 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
                 </h1>
                 <div className="mt-2 flex items-center gap-2">
                   <AdminOrbitLogo />
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-extrabold leading-tight text-white whitespace-nowrap">Barangay Upper Mingading</p>
-                    <p className="mt-0.5 text-[9.5px] font-semibold text-emerald-200/90 whitespace-nowrap">Aleosan, Cotabato</p>
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <p className="text-[10.5px] font-extrabold leading-tight text-white truncate">Barangay Upper Mingading</p>
+                    <p className="mt-0.5 text-[9px] font-semibold text-emerald-200/90 truncate">Aleosan, Cotabato</p>
                   </div>
                 </div>
               </motion.div>
@@ -253,48 +255,24 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
       </div>
 
       <nav className="flex-1 space-y-3.5 overflow-y-auto custom-scrollbar px-2 py-2.5">
-        {navigationGroups.map((group, groupIndex) => (
-          <motion.div
-            key={group.label}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{
-              delay: shouldReduceMotion ? 0 : groupIndex * 0.04,
-              duration: shouldReduceMotion ? 0 : 0.2,
-            }}
-          >
-            {!effectiveCollapsed && (
-              <p className="mb-1.5 px-2 text-[9.5px] font-extrabold uppercase tracking-widest text-emerald-200/90">
-                {group.label}
-              </p>
-            )}
-            <div className="space-y-0.5">
-              {group.items.map((item, itemIndex) => {
+        {navigationGroups.map((group) => (
+          <motion.div key={group.label} variants={itemVariants} className="space-y-1">
+            <div className="space-y-1">
+              {group.items.map((item) => {
                 const active = getActiveState(item.path);
                 return (
-                  <motion.div
-                    key={item.path}
-                    variants={itemVariants}
-                    initial="hidden"
-                    animate="visible"
-                    whileHover={shouldReduceMotion ? undefined : { x: 2 }}
-                    whileTap={shouldReduceMotion ? undefined : { scale: 0.99 }}
-                    transition={{
-                      delay: shouldReduceMotion ? 0 : groupIndex * 0.04 + itemIndex * 0.025,
-                      type: "spring",
-                      stiffness: 300,
-                      damping: 30,
-                    }}
-                  >
+                  <motion.div key={item.name} whileHover={{ x: 4 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
                     <NavLink
                       to={item.path}
-                      className={`group relative flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-bold transition-all duration-200 ${
-                        active
-                          ? "bg-white/20 text-white shadow-md ring-1 ring-white/30 backdrop-blur-md"
-                          : "text-emerald-50/90 hover:bg-white/10 hover:text-white"
-                      } ${effectiveCollapsed ? "justify-center" : ""}`}
                       onMouseEnter={() => effectiveCollapsed && setHoveredItem(item.path)}
-                      onMouseLeave={() => setHoveredItem(null)}
+                      onMouseLeave={() => effectiveCollapsed && setHoveredItem(null)}
+                      className={`group relative flex items-center rounded-xl font-bold transition-all duration-200 ${
+                        effectiveCollapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2 text-xs"
+                      } ${
+                        active
+                          ? "bg-gradient-to-r from-emerald-600/90 to-emerald-500/80 text-white shadow-md shadow-emerald-950/40 ring-1 ring-white/20"
+                          : "text-emerald-100/90 hover:bg-white/10 hover:text-white hover:shadow-xs"
+                      }`}
                     >
                       {active && (
                         <motion.span
@@ -357,15 +335,15 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
       </nav>
 
       {!effectiveCollapsed ? (
-        <div className="p-3">
-          <div className="rounded-[14px] border border-white/20 bg-white/10 backdrop-blur-md p-3">
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#FFB800] text-[#00552E] shadow-sm font-bold">
-                <Landmark size={18} />
+        <div className="p-2.5">
+          <div className="rounded-xl border border-white/20 bg-white/10 backdrop-blur-md px-2.5 py-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#FFB800] text-[#00552E] shadow-sm font-bold">
+                <Landmark size={15} />
               </span>
-              <div className="min-w-0">
-                <p className="text-xs font-extrabold leading-tight text-white whitespace-nowrap">Barangay Upper Mingading</p>
-                <p className="text-[10px] font-medium leading-tight text-emerald-100/90 mt-0.5 whitespace-nowrap">Aleosan, Cotabato</p>
+              <div className="min-w-0 flex-1 overflow-hidden">
+                <p className="text-[10.5px] font-extrabold leading-tight text-white truncate">Brgy. Upper Mingading</p>
+                <p className="text-[9.5px] font-medium leading-tight text-emerald-100/90 mt-0.5 truncate">Aleosan, Cotabato</p>
               </div>
             </div>
           </div>

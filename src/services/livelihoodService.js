@@ -36,7 +36,51 @@ const preparePayload = (data = {}) => ({
   updated_at: new Date().toISOString(),
 });
 
+export async function cleanupExpiredLivelihoodPosts() {
+  try {
+    const { data: posts, error } = await supabase
+      .from(TABLE)
+      .select("*");
+
+    if (error || !Array.isArray(posts) || posts.length === 0) return 0;
+
+    const todayStr = new Date().toLocaleDateString("en-CA");
+    const nowTime = Date.now();
+
+    const expiredPosts = posts.filter((post) => {
+      if (!post.deadline) return false;
+      const deadlineDate = new Date(post.deadline.includes("T") ? post.deadline : `${post.deadline}T23:59:59`);
+      if (isNaN(deadlineDate.getTime())) return false;
+      return post.deadline <= todayStr || deadlineDate.getTime() <= nowTime;
+    });
+
+    if (expiredPosts.length === 0) return 0;
+
+    for (const post of expiredPosts) {
+      try {
+        moveToRecycleBin(TABLE, post.id, post, `Auto-expired deadline (${post.deadline})`);
+        await supabase.from(TABLE).delete().eq("id", post.id);
+        deleteKnowledgeForSource("livelihood", post.id).catch(() => {});
+      } catch (postErr) {
+        console.warn("Failed to auto-clean single livelihood post:", postErr);
+      }
+    }
+
+    return expiredPosts.length;
+  } catch (err) {
+    console.warn("Notice during livelihood auto-expiration cleanup:", err);
+    return 0;
+  }
+}
+
 export async function fetchLivelihoodPosts({ search = "", category = "", status = "", limit = 100 } = {}) {
+  // Automatically cleanup expired livelihood posts into the Recycle Bin
+  try {
+    await cleanupExpiredLivelihoodPosts();
+  } catch (e) {
+    console.warn("Auto-clean livelihood notice:", e);
+  }
+
   let query = supabase
     .from(TABLE)
     .select("*")

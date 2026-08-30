@@ -359,143 +359,98 @@ const DashboardOverview = ({
             </>
           ) : null}
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 items-stretch gap-2.5 sm:gap-3 flex-1">
-            {/* Left side: 5 Compact KPI Cards with Distinct Themed Backgrounds & HD Colors (8 columns on lg) */}
-            <div className="lg:col-span-8 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2 sm:gap-2.5 items-center">
+          <div className="w-full">
+            {/* 5 Compact KPI Cards with Distinct Themed Backgrounds & HD Colors */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-2.5 items-center w-full">
               {/* Card 1: Residents (Emerald Green Theme) */}
-              <div className="relative overflow-hidden bg-gradient-to-br from-[#ECFDF5] via-[#D1FAE5]/70 to-[#A7F3D0]/60 rounded-xl p-2 sm:p-2.5 flex flex-col justify-between h-[84px] border border-emerald-300/80 shadow-md shadow-emerald-950/10 hover:shadow-lg hover:border-emerald-400 transition-all duration-300 hover:scale-[1.02] group">
+              <div className="relative overflow-hidden bg-gradient-to-br from-[#ECFDF5] via-[#D1FAE5]/70 to-[#A7F3D0]/60 rounded-xl px-2.5 py-1.5 sm:py-2 flex flex-col justify-between h-[62px] sm:h-[66px] border border-emerald-300/80 shadow-xs hover:shadow-md hover:border-emerald-400 transition-all duration-300 hover:scale-[1.015] group">
                 <div className="flex items-center justify-between relative z-10">
-                  <span className="text-[8.5px] font-black uppercase tracking-wider text-emerald-900">Residents</span>
+                  <span className="text-[8px] sm:text-[8.5px] font-black uppercase tracking-wider text-emerald-900">Residents</span>
                   <div className="p-0.5 rounded-md bg-emerald-600 text-white shadow-xs group-hover:scale-110 transition-transform duration-300">
-                    <Users size={11} className="stroke-[2.5]" />
+                    <Users size={10} className="stroke-[2.5]" />
                   </div>
                 </div>
-                <div className="text-left relative z-10">
-                  <span className="block text-lg sm:text-xl font-black text-emerald-950 tracking-tight leading-none">{formatCount(totalRes)}</span>
-                  <div className="mt-0.5 flex items-center">
-                    <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7.5px] font-extrabold bg-emerald-600/15 text-emerald-800 border border-emerald-400/50">
-                      <span className="h-1 w-1 rounded-full bg-emerald-600 animate-pulse"></span>
-                      Live records
-                    </span>
-                  </div>
+                <div className="text-left relative z-10 flex items-center justify-between gap-1">
+                  <span className="block text-base sm:text-lg font-black text-emerald-950 tracking-tight leading-none">{formatCount(totalRes)}</span>
+                  <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7px] font-extrabold bg-emerald-600/15 text-emerald-800 border border-emerald-400/50">
+                    <span className="h-1 w-1 rounded-full bg-emerald-600 animate-pulse"></span>
+                    Live records
+                  </span>
                 </div>
               </div>
 
               {/* Card 2: Households (Warm Amber/Orange Theme) */}
-              <div className="relative overflow-hidden bg-gradient-to-br from-[#FFFBEB] via-[#FEF3C7]/70 to-[#FDE68A]/60 rounded-xl p-2 sm:p-2.5 flex flex-col justify-between h-[84px] border border-amber-300/80 shadow-md shadow-amber-950/10 hover:shadow-lg hover:border-amber-400 transition-all duration-300 hover:scale-[1.02] group">
+              <div className="relative overflow-hidden bg-gradient-to-br from-[#FFFBEB] via-[#FEF3C7]/70 to-[#FDE68A]/60 rounded-xl px-2.5 py-1.5 sm:py-2 flex flex-col justify-between h-[62px] sm:h-[66px] border border-amber-300/80 shadow-xs hover:shadow-md hover:border-amber-400 transition-all duration-300 hover:scale-[1.015] group">
                 <div className="flex items-center justify-between relative z-10">
-                  <span className="text-[8.5px] font-black uppercase tracking-wider text-amber-900">Households</span>
+                  <span className="text-[8px] sm:text-[8.5px] font-black uppercase tracking-wider text-amber-900">Households</span>
                   <div className="p-0.5 rounded-md bg-amber-500 text-white shadow-xs group-hover:scale-110 transition-transform duration-300">
-                    <Home size={11} className="stroke-[2.5]" />
+                    <Home size={10} className="stroke-[2.5]" />
                   </div>
                 </div>
-                <div className="text-left relative z-10">
-                  <span className="block text-lg sm:text-xl font-black text-amber-950 tracking-tight leading-none">{formatCount(demographics.householdsCount)}</span>
-                  <div className="mt-0.5 flex items-center">
-                    <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7.5px] font-extrabold bg-amber-500/15 text-amber-900 border border-amber-400/50">
-                      <span className="h-1 w-1 rounded-full bg-amber-500"></span>
-                      Total families
-                    </span>
-                  </div>
+                <div className="text-left relative z-10 flex items-center justify-between gap-1">
+                  <span className="block text-base sm:text-lg font-black text-amber-950 tracking-tight leading-none">{formatCount(demographics.householdsCount)}</span>
+                  <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7px] font-extrabold bg-amber-500/15 text-amber-900 border border-amber-400/50">
+                    <span className="h-1 w-1 rounded-full bg-amber-500"></span>
+                    Total families
+                  </span>
                 </div>
               </div>
 
               {/* Card 3: Total Requests (Rose / Coral Theme) */}
-              <div className="relative overflow-hidden bg-gradient-to-br from-[#FFF1F2] via-[#FFE4E6]/70 to-[#FECDD3]/60 rounded-xl p-2 sm:p-2.5 flex flex-col justify-between h-[84px] border border-rose-300/80 shadow-md shadow-rose-950/10 hover:shadow-lg hover:border-rose-400 transition-all duration-300 hover:scale-[1.02] group">
+              <div className="relative overflow-hidden bg-gradient-to-br from-[#FFF1F2] via-[#FFE4E6]/70 to-[#FECDD3]/60 rounded-xl px-2.5 py-1.5 sm:py-2 flex flex-col justify-between h-[62px] sm:h-[66px] border border-rose-300/80 shadow-xs hover:shadow-md hover:border-rose-400 transition-all duration-300 hover:scale-[1.015] group">
                 <div className="flex items-center justify-between relative z-10">
-                  <span className="text-[8.5px] font-black uppercase tracking-wider text-rose-900">Requests</span>
+                  <span className="text-[8px] sm:text-[8.5px] font-black uppercase tracking-wider text-rose-900">Requests</span>
                   <div className="p-0.5 rounded-md bg-rose-600 text-white shadow-xs group-hover:scale-110 transition-transform duration-300">
-                    <FileText size={11} className="stroke-[2.5]" />
+                    <FileText size={10} className="stroke-[2.5]" />
                   </div>
                 </div>
-                <div className="text-left relative z-10">
-                  <span className="block text-lg sm:text-xl font-black text-rose-950 tracking-tight leading-none">
+                <div className="text-left relative z-10 flex items-center justify-between gap-1">
+                  <span className="block text-base sm:text-lg font-black text-rose-950 tracking-tight leading-none">
                     {formatCount(overview.totalRequests !== undefined ? overview.totalRequests : (safeRequests.length || 34))}
                   </span>
-                  <div className="mt-0.5 flex items-center">
-                    <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7.5px] font-extrabold bg-rose-600/15 text-rose-800 border border-rose-400/50">
-                      <span className="h-1 w-1 rounded-full bg-rose-600"></span>
-                      All filings
-                    </span>
-                  </div>
+                  <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7px] font-extrabold bg-rose-600/15 text-rose-800 border border-rose-400/50">
+                    <span className="h-1 w-1 rounded-full bg-rose-600"></span>
+                    All filings
+                  </span>
                 </div>
               </div>
 
               {/* Card 4: Issued Documents (Royal Purple Theme) */}
-              <div className="relative overflow-hidden bg-gradient-to-br from-[#FAF5FF] via-[#F3E8FF]/70 to-[#E9D5FF]/60 rounded-xl p-2 sm:p-2.5 flex flex-col justify-between h-[84px] border border-purple-300/80 shadow-md shadow-purple-950/10 hover:shadow-lg hover:border-purple-400 transition-all duration-300 hover:scale-[1.02] group">
+              <div className="relative overflow-hidden bg-gradient-to-br from-[#FAF5FF] via-[#F3E8FF]/70 to-[#E9D5FF]/60 rounded-xl px-2.5 py-1.5 sm:py-2 flex flex-col justify-between h-[62px] sm:h-[66px] border border-purple-300/80 shadow-xs hover:shadow-md hover:border-purple-400 transition-all duration-300 hover:scale-[1.015] group">
                 <div className="flex items-center justify-between relative z-10">
-                  <span className="text-[8.5px] font-black uppercase tracking-wider text-purple-900">Issued</span>
+                  <span className="text-[8px] sm:text-[8.5px] font-black uppercase tracking-wider text-purple-900">Issued</span>
                   <div className="p-0.5 rounded-md bg-purple-600 text-white shadow-xs group-hover:scale-110 transition-transform duration-300">
-                    <FileCheck2 size={11} className="stroke-[2.5]" />
+                    <FileCheck2 size={10} className="stroke-[2.5]" />
                   </div>
                 </div>
-                <div className="text-left relative z-10">
-                  <span className="block text-lg sm:text-xl font-black text-purple-950 tracking-tight leading-none">
+                <div className="text-left relative z-10 flex items-center justify-between gap-1">
+                  <span className="block text-base sm:text-lg font-black text-purple-950 tracking-tight leading-none">
                     {overview.documentsIssued !== undefined ? formatCount(overview.documentsIssued) : "8"}
                   </span>
-                  <div className="mt-0.5 flex items-center">
-                    <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7.5px] font-extrabold bg-purple-600/15 text-purple-900 border border-purple-400/50">
-                      <span className="h-1 w-1 rounded-full bg-purple-600"></span>
-                      Released docs
-                    </span>
-                  </div>
+                  <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7px] font-extrabold bg-purple-600/15 text-purple-900 border border-purple-400/50">
+                    <span className="h-1 w-1 rounded-full bg-purple-600"></span>
+                    Released docs
+                  </span>
                 </div>
               </div>
 
               {/* Card 5: Pending Requests (Electric Sky Blue Theme) */}
-              <div className="relative overflow-hidden bg-gradient-to-br from-[#EFF6FF] via-[#DBEAFE]/70 to-[#BFDBFE]/60 rounded-xl p-2 sm:p-2.5 flex flex-col justify-between h-[84px] border border-blue-300/80 shadow-md shadow-blue-950/10 hover:shadow-lg hover:border-blue-400 transition-all duration-300 hover:scale-[1.02] group">
+              <div className="relative overflow-hidden bg-gradient-to-br from-[#EFF6FF] via-[#DBEAFE]/70 to-[#BFDBFE]/60 rounded-xl px-2.5 py-1.5 sm:py-2 flex flex-col justify-between h-[62px] sm:h-[66px] border border-blue-300/80 shadow-xs hover:shadow-md hover:border-blue-400 transition-all duration-300 hover:scale-[1.015] group">
                 <div className="flex items-center justify-between relative z-10">
-                  <span className="text-[8.5px] font-black uppercase tracking-wider text-blue-900">Pending</span>
+                  <span className="text-[8px] sm:text-[8.5px] font-black uppercase tracking-wider text-blue-900">Pending</span>
                   <div className="p-0.5 rounded-md bg-blue-600 text-white shadow-xs group-hover:scale-110 transition-transform duration-300">
-                    <Clock size={11} className="stroke-[2.5]" />
+                    <Clock size={10} className="stroke-[2.5]" />
                   </div>
                 </div>
-                <div className="text-left relative z-10">
-                  <span className="block text-lg sm:text-xl font-black text-blue-950 tracking-tight leading-none">
+                <div className="text-left relative z-10 flex items-center justify-between gap-1">
+                  <span className="block text-base sm:text-lg font-black text-blue-950 tracking-tight leading-none">
                     {overview.pendingRequests !== undefined ? formatCount(overview.pendingRequests) : "28"}
                   </span>
-                  <div className="mt-0.5 flex items-center">
-                    <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7.5px] font-extrabold bg-blue-600/15 text-blue-900 border border-blue-400/50">
-                      <span className="h-1 w-1 rounded-full bg-blue-600"></span>
-                      Needs review
-                    </span>
-                  </div>
+                  <span className="inline-flex items-center gap-1 px-1 py-0.5 rounded text-[7px] font-extrabold bg-blue-600/15 text-blue-900 border border-blue-400/50">
+                    <span className="h-1 w-1 rounded-full bg-blue-600"></span>
+                    Needs review
+                  </span>
                 </div>
-              </div>
-            </div>
-
-            {/* Right side: 3D Admin Showcase Card (4 columns on lg) */}
-            <div className="lg:col-span-4 relative overflow-hidden rounded-xl h-[84px] border border-emerald-400/40 shadow-md group bg-gradient-to-r from-[#012217] via-[#023522] to-[#011C13] flex items-center justify-between p-2 sm:p-2.5 select-none">
-              {/* Subtle ambient glow behind avatar */}
-              <div className="absolute right-0 top-0 w-32 h-full bg-emerald-500/15 blur-xl pointer-events-none" />
-
-              {/* Left Column: Badges & Titles */}
-              <div className="relative z-10 flex flex-col justify-between h-full py-0.5 min-w-0 pr-2">
-                <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-900/70 border border-emerald-400/40 backdrop-blur-md shadow-xs w-fit">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span className="text-[8px] font-black uppercase tracking-wider text-emerald-200">Admin Operations</span>
-                </div>
-                <div className="min-w-0 mt-0.5">
-                  <h3 className="text-[11.5px] sm:text-[12px] font-black text-white leading-tight drop-shadow-xs truncate">
-                    KaagapA.I Central Desk
-                  </h3>
-                  <p className="text-[8px] font-semibold text-emerald-200/90 leading-tight truncate mt-0.5">
-                    Active Operations & Monitoring
-                  </p>
-                </div>
-              </div>
-
-              {/* Right Column: 3D Admin Avatar (Cleanly framed, 100% visible, not cropped) */}
-              <div className="relative h-full aspect-square shrink-0 flex items-center justify-center overflow-hidden rounded-lg border border-emerald-400/30 bg-emerald-950/60 shadow-inner group-hover:scale-105 transition-transform duration-500">
-                <img
-                  src="/admin-3d-avatar.png"
-                  alt="KaagapAI Admin"
-                  className="w-full h-full object-cover object-top brightness-105"
-                  onError={(e) => {
-                    e.target.onerror = null;
-                    e.target.src = "/admin-3d-workspace.jpg";
-                  }}
-                />
               </div>
             </div>
           </div>
@@ -526,25 +481,19 @@ const DashboardOverview = ({
             </span>
           </div>
 
-          {/* Bulletproof Animated Wave-Morphing & Color-Shifting SVG Area Chart */}
+          {/* Clean Static HD Curved Area & Line Chart */}
           <div className="h-[145px] w-full min-w-0 relative">
             <svg className="w-full h-full overflow-visible" viewBox="0 0 500 140" preserveAspectRatio="none">
               <defs>
-                <linearGradient id="growthColorShiftGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#10B981" stopOpacity="0.45">
-                    <animate attributeName="stop-color" values="#10B981;#06B6D4;#8B5CF6;#F59E0B;#10B981" dur="8s" repeatCount="indefinite" />
-                  </stop>
-                  <stop offset="100%" stopColor="#10B981" stopOpacity="0.02">
-                    <animate attributeName="stop-color" values="#10B981;#06B6D4;#8B5CF6;#F59E0B;#10B981" dur="8s" repeatCount="indefinite" />
-                  </stop>
+                <linearGradient id="growthCurveAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#059669" stopOpacity="0.45" />
+                  <stop offset="60%" stopColor="#10B981" stopOpacity="0.16" />
+                  <stop offset="100%" stopColor="#10B981" stopOpacity="0.01" />
                 </linearGradient>
-                <linearGradient id="growthSecondaryWaveGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#06B6D4" stopOpacity="0.30">
-                    <animate attributeName="stop-color" values="#06B6D4;#8B5CF6;#10B981;#F59E0B;#06B6D4" dur="7s" repeatCount="indefinite" />
-                  </stop>
-                  <stop offset="100%" stopColor="#06B6D4" stopOpacity="0.0">
-                    <animate attributeName="stop-color" values="#06B6D4;#8B5CF6;#10B981;#F59E0B;#06B6D4" dur="7s" repeatCount="indefinite" />
-                  </stop>
+                <linearGradient id="growthCurveStrokeGrad" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#047857" />
+                  <stop offset="50%" stopColor="#059669" />
+                  <stop offset="100%" stopColor="#0D9488" />
                 </linearGradient>
               </defs>
 
@@ -552,112 +501,70 @@ const DashboardOverview = ({
               <line x1="25" y1="20" x2="475" y2="20" stroke="#F1F5F9" strokeDasharray="4 4" />
               <line x1="25" y1="55" x2="475" y2="55" stroke="#F1F5F9" strokeDasharray="4 4" />
               <line x1="25" y1="90" x2="475" y2="90" stroke="#F1F5F9" strokeDasharray="4 4" />
-              <line x1="25" y1="115" x2="475" y2="115" stroke="#E2E8F0" />
+              <line x1="25" y1="118" x2="475" y2="118" stroke="#E2E8F0" />
 
-              {/* Back Wave Layer (Ambient Ocean Wave Flow) */}
+              {/* Smooth Curved Area Gradient Fill */}
               <path
-                d="M 25,108 C 80,88 160,90 250,62 C 340,68 410,26 440,22 L 475,14 L 475,115 L 25,115 Z"
-                fill="url(#growthSecondaryWaveGrad)"
-              >
-                <animate
-                  attributeName="d"
-                  values="
-                    M 25,108 C 80,88 160,90 250,62 C 340,68 410,26 440,22 L 475,14 L 475,115 L 25,115 Z;
-                    M 25,104 C 80,98 160,78 250,74 C 340,48 410,38 440,16 L 475,14 L 475,115 L 25,115 Z;
-                    M 25,102 C 80,106 160,84 250,66 C 340,58 410,28 440,24 L 475,14 L 475,115 L 25,115 Z;
-                    M 25,108 C 80,88 160,90 250,62 C 340,68 410,26 440,22 L 475,14 L 475,115 L 25,115 Z
-                  "
-                  dur="6.5s"
-                  repeatCount="indefinite"
-                />
-              </path>
+                d="M 30,108 C 50,107 60,103 70,102 C 85,100 95,96 110,94 C 125,91 135,84 150,82 C 165,79 175,74 190,72 C 205,70 215,66 230,64 C 245,61 255,54 270,52 C 285,49 295,44 310,42 C 325,39 335,32 350,30 C 365,27 375,23 390,22 C 405,20 415,17 430,16 C 445,14 455,12 470,12 L 470,118 L 30,118 Z"
+                fill="url(#growthCurveAreaGrad)"
+                className="animate-area-fade"
+              />
 
-              {/* Front Wave Layer (Primary Undulating Area Fill) */}
+              {/* Smooth Curved Connected Line */}
               <path
-                d="M 25,105 C 80,95 160,82 250,68 C 340,54 410,32 440,20 L 475,14 L 475,115 L 25,115 Z"
-                fill="url(#growthColorShiftGrad)"
-              >
-                <animate
-                  attributeName="d"
-                  values="
-                    M 25,105 C 80,95 160,82 250,68 C 340,54 410,32 440,20 L 475,14 L 475,115 L 25,115 Z;
-                    M 25,100 C 80,108 160,74 250,76 C 340,44 410,42 440,15 L 475,14 L 475,115 L 25,115 Z;
-                    M 25,108 C 80,86 160,94 250,60 C 340,66 410,22 440,26 L 475,14 L 475,115 L 25,115 Z;
-                    M 25,102 C 80,100 160,78 250,72 C 340,50 410,36 440,18 L 475,14 L 475,115 L 25,115 Z;
-                    M 25,105 C 80,95 160,82 250,68 C 340,54 410,32 440,20 L 475,14 L 475,115 L 25,115 Z
-                  "
-                  dur="5s"
-                  repeatCount="indefinite"
-                />
-              </path>
-
-              {/* Front Animated Morphing Wave Line */}
-              <path
-                d="M 25,105 C 80,95 160,82 250,68 C 340,54 410,32 440,20 L 475,14"
+                d="M 30,108 C 50,107 60,103 70,102 C 85,100 95,96 110,94 C 125,91 135,84 150,82 C 165,79 175,74 190,72 C 205,70 215,66 230,64 C 245,61 255,54 270,52 C 285,49 295,44 310,42 C 325,39 335,32 350,30 C 365,27 375,23 390,22 C 405,20 415,17 430,16 C 445,14 455,12 470,12"
                 fill="none"
-                stroke="#10B981"
-                strokeWidth="3"
+                stroke="url(#growthCurveStrokeGrad)"
+                strokeWidth="3.5"
                 strokeLinecap="round"
-                className="drop-shadow-sm"
-              >
-                <animate
-                  attributeName="d"
-                  values="
-                    M 25,105 C 80,95 160,82 250,68 C 340,54 410,32 440,20 L 475,14;
-                    M 25,100 C 80,108 160,74 250,76 C 340,44 410,42 440,15 L 475,14;
-                    M 25,108 C 80,86 160,94 250,60 C 340,66 410,22 440,26 L 475,14;
-                    M 25,102 C 80,100 160,78 250,72 C 340,50 410,36 440,18 L 475,14;
-                    M 25,105 C 80,95 160,82 250,68 C 340,54 410,32 440,20 L 475,14
-                  "
-                  dur="5s"
-                  repeatCount="indefinite"
-                />
-                <animate attributeName="stroke" values="#10B981;#06B6D4;#8B5CF6;#F59E0B;#10B981" dur="8s" repeatCount="indefinite" />
-              </path>
+                strokeLinejoin="round"
+                className="drop-shadow-xs animate-curve-draw"
+              />
 
-              {/* 12 Month Floating / Bobbing Data Point Circles */}
+              {/* 12 Connected Month Data Point Circles (Positioned Exactly On Curve) */}
               {[
-                { m: "Jan", x: 25, y: "105;100;108;102;105" },
-                { m: "Feb", x: 66, y: "98;106;88;98;98" },
-                { m: "Mar", x: 107, y: "88;74;94;80;88" },
-                { m: "Apr", x: 148, y: "78;82;68;74;78" },
-                { m: "May", x: 189, y: "68;76;60;72;68" },
-                { m: "Jun", x: 230, y: "58;62;52;58;58" },
-                { m: "Jul", x: 270, y: "48;44;64;50;48" },
-                { m: "Aug", x: 311, y: "39;45;30;38;39" },
-                { m: "Sep", x: 352, y: "32;42;22;36;32" },
-                { m: "Oct", x: 393, y: "26;28;24;26;26" },
-                { m: "Nov", x: 434, y: "20;15;26;18;20" },
-                { m: "Dec", x: 475, y: "14;14;14;14;14" },
-              ].map((pt) => (
+                { m: "Jan", x: 30, y: 108 },
+                { m: "Feb", x: 70, y: 102 },
+                { m: "Mar", x: 110, y: 94 },
+                { m: "Apr", x: 150, y: 82 },
+                { m: "May", x: 190, y: 72 },
+                { m: "Jun", x: 230, y: 64 },
+                { m: "Jul", x: 270, y: 52 },
+                { m: "Aug", x: 310, y: 42 },
+                { m: "Sep", x: 350, y: 30 },
+                { m: "Oct", x: 390, y: 22 },
+                { m: "Nov", x: 430, y: 16 },
+                { m: "Dec", x: 470, y: 12 },
+              ].map((pt, idx) => (
                 <circle
                   key={pt.m}
                   cx={pt.x}
-                  cy={Number(pt.y.split(";")[0])}
+                  cy={pt.y}
                   r="4.5"
-                  fill="#10B981"
+                  fill="#047857"
                   stroke="#FFFFFF"
-                  strokeWidth="2"
-                  className="transition-all duration-300 hover:r-6 cursor-pointer drop-shadow-md"
-                >
-                  <animate
-                    attributeName="cy"
-                    values={pt.y}
-                    dur="5s"
-                    repeatCount="indefinite"
-                  />
-                  <animate
-                    attributeName="fill"
-                    values="#10B981;#06B6D4;#8B5CF6;#F59E0B;#10B981"
-                    dur="8s"
-                    repeatCount="indefinite"
-                  />
-                </circle>
+                  strokeWidth="2.5"
+                  style={{ animationDelay: `${0.2 + idx * 0.06}s` }}
+                  className="transition-all duration-150 hover:r-6 cursor-pointer drop-shadow-sm animate-dot-pop"
+                />
               ))}
 
               {/* 12 Month Labels */}
-              {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map((m, i) => (
-                <text key={m} x={25 + i * ((475 - 25) / 11)} y="132" fill="#94A3B8" fontSize="9.5" fontWeight="700" textAnchor="middle">{m}</text>
+              {[
+                { m: "Jan", x: 30 },
+                { m: "Feb", x: 70 },
+                { m: "Mar", x: 110 },
+                { m: "Apr", x: 150 },
+                { m: "May", x: 190 },
+                { m: "Jun", x: 230 },
+                { m: "Jul", x: 270 },
+                { m: "Aug", x: 310 },
+                { m: "Sep", x: 350 },
+                { m: "Oct", x: 390 },
+                { m: "Nov", x: 430 },
+                { m: "Dec", x: 470 },
+              ].map((pt) => (
+                <text key={pt.m} x={pt.x} y="133" fill="#64748B" fontSize="9.5" fontWeight="700" textAnchor="middle">{pt.m}</text>
               ))}
             </svg>
           </div>
@@ -686,11 +593,11 @@ const DashboardOverview = ({
 
               {/* Donut Chart Ring on top of orbit animation (z-10) */}
               <svg className="w-full h-full transform -rotate-90 relative z-10" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#EC4899" strokeWidth="15" strokeDasharray="67 238" strokeDashoffset="0" className="animate-donut-draw" />
-                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#6366F1" strokeWidth="15" strokeDasharray="54 238" strokeDashoffset="-69" className="animate-donut-draw" />
-                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#F59E0B" strokeWidth="15" strokeDasharray="46 238" strokeDashoffset="-125" className="animate-donut-draw" />
-                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#A855F7" strokeWidth="15" strokeDasharray="35 238" strokeDashoffset="-173" className="animate-donut-draw" />
-                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#10B981" strokeWidth="15" strokeDasharray="30 238" strokeDashoffset="-210" className="animate-donut-draw" />
+                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#EC4899" strokeWidth="15" strokeDasharray="67 238" strokeDashoffset="0" style={{ animationDelay: '0.05s' }} className="animate-donut-draw" />
+                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#6366F1" strokeWidth="15" strokeDasharray="54 238" strokeDashoffset="-69" style={{ animationDelay: '0.18s' }} className="animate-donut-draw" />
+                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#F59E0B" strokeWidth="15" strokeDasharray="46 238" strokeDashoffset="-125" style={{ animationDelay: '0.3s' }} className="animate-donut-draw" />
+                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#A855F7" strokeWidth="15" strokeDasharray="35 238" strokeDashoffset="-173" style={{ animationDelay: '0.42s' }} className="animate-donut-draw" />
+                <circle cx="50" cy="50" r="38" fill="transparent" stroke="#10B981" strokeWidth="15" strokeDasharray="30 238" strokeDashoffset="-210" style={{ animationDelay: '0.55s' }} className="animate-donut-draw" />
               </svg>
 
               {/* Center Text on top-most layer (z-20) */}
@@ -740,7 +647,11 @@ const DashboardOverview = ({
                   </div>
                   <div
                     className="w-full max-w-[28px] rounded-t-lg transition-all duration-700 group-hover:brightness-110 shadow-sm animate-bar-grow"
-                    style={{ height: `${heightPercent}%`, backgroundColor: item.fill || DEMOGRAPHICS_COLORS[idx % DEMOGRAPHICS_COLORS.length] }}
+                    style={{
+                      height: `${heightPercent}%`,
+                      backgroundColor: item.fill || DEMOGRAPHICS_COLORS[idx % DEMOGRAPHICS_COLORS.length],
+                      animationDelay: `${0.1 + idx * 0.08}s`
+                    }}
                   />
                   <span className="absolute -bottom-6 text-[9px] font-extrabold text-slate-600 truncate max-w-[48px] group-hover:text-[#0B6B3A] transition text-center">{item.purok}</span>
                 </div>

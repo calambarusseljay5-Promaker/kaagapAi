@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabaseClient";
 import { getPurokFilterAliases } from "../utils/residentProfile";
+import { syncApprovedOnlineRegistrations } from "./residentActivationService";
 
 const RESIDENTS_TABLE = "residents";
 const RESIDENT_ACCOUNTS_TABLE = "resident_accounts";
@@ -239,11 +240,29 @@ const buildResidentsQuery = (search = "", statusFilter = "", filters = {}) => {
   return query;
 };
 
+let cachedResidentsData = null;
+let cachedResidentsTimestamp = 0;
+const RESIDENTS_CACHE_TTL_MS = 20000; // 20 seconds cache for un-filtered resident list
+
+export function invalidateResidentsCache() {
+  cachedResidentsData = null;
+  cachedResidentsTimestamp = 0;
+}
+
 /**
  * Fetch all residents with search and status filtering
  */
 export async function fetchResidents(search = "", statusFilter = "", filters = {}) {
+  const isBaseQuery = !search && !statusFilter && Object.keys(filters || {}).every((k) => k === "withAccounts" || k === "forceRefresh");
+
+  if (isBaseQuery && !filters?.forceRefresh && cachedResidentsData && Date.now() - cachedResidentsTimestamp < RESIDENTS_CACHE_TTL_MS) {
+    return cachedResidentsData;
+  }
+
   try {
+    // Non-blocking background sync for unlinked approved online registrations
+    syncApprovedOnlineRegistrations().catch(() => {});
+
     const {
       limit = null,
       pageSize = RESIDENT_FETCH_PAGE_SIZE,
@@ -259,12 +278,20 @@ export async function fetchResidents(search = "", statusFilter = "", filters = {
       const to = rowLimit
         ? Math.min(from + fetchPageSize - 1, rowLimit - 1)
         : from + fetchPageSize - 1;
-      const { data, error } = await buildResidentsQuery(search, statusFilter, queryFilters)
+      let queryResult = await buildResidentsQuery(search, statusFilter, queryFilters)
         .order("created_at", { ascending: false })
         .range(from, to);
 
-      if (error) throw error;
+      if (queryResult.error && withAccounts) {
+        console.warn("Retrying fetchResidents without embedded accounts relation:", queryResult.error?.message);
+        queryResult = await buildResidentsQuery(search, statusFilter, { ...queryFilters, withAccounts: false })
+          .order("created_at", { ascending: false })
+          .range(from, to);
+      }
 
+      if (queryResult.error) throw queryResult.error;
+
+      const data = queryResult.data;
       rows.push(...(data || []));
 
       if (!data?.length || data.length < fetchPageSize || (rowLimit && rows.length >= rowLimit)) {
@@ -273,29 +300,39 @@ export async function fetchResidents(search = "", statusFilter = "", filters = {
     }
 
     const residents = rowLimit ? rows.slice(0, rowLimit) : rows;
+    let finalResidents = residents;
 
     if (withAccounts) {
-      return residents.map((resident) => {
-        const rawAccount = resident.resident_accounts;
-        const account = Array.isArray(rawAccount)
-          ? rawAccount[0] || null
-          : rawAccount || null;
+      const hasEmbeddedAccounts = rows.some((r) => r.resident_accounts !== undefined);
+      if (hasEmbeddedAccounts) {
+        finalResidents = residents.map((resident) => {
+          const rawAccount = resident.resident_accounts;
+          const account = Array.isArray(rawAccount)
+            ? rawAccount[0] || null
+            : rawAccount || null;
 
-        // Exclude the resident_accounts array field from mapping to keep it identical to original shape
-        const { resident_accounts, ...cleanResident } = resident;
+          const { resident_accounts, ...cleanResident } = resident;
 
-        return {
-          ...cleanResident,
-          resident_account: account,
-          portal_username: account?.username || "",
-          portal_password: account?.plain_password || account?.password || "",
-          portal_account_status: account?.account_status || "",
-          portal_must_change_credentials: Boolean(account?.must_change_credentials),
-        };
-      });
+          return {
+            ...cleanResident,
+            resident_account: account,
+            portal_username: account?.username || cleanResident.portal_username || "",
+            portal_password: account?.plain_password || account?.password || cleanResident.portal_password || "",
+            portal_account_status: account?.account_status || "",
+            portal_must_change_credentials: Boolean(account?.must_change_credentials),
+          };
+        });
+      } else {
+        finalResidents = await attachResidentAccounts(residents);
+      }
     }
 
-    return residents;
+    if (isBaseQuery) {
+      cachedResidentsData = finalResidents;
+      cachedResidentsTimestamp = Date.now();
+    }
+
+    return finalResidents;
   } catch (error) {
     console.error("Error fetching residents:", error);
     throw normalizeResidentError(error);
@@ -307,6 +344,7 @@ export async function fetchResidents(search = "", statusFilter = "", filters = {
  */
 export async function createResident(residentData) {
   try {
+    invalidateResidentsCache();
     const payload = prepareResidentMutation({
       status: "Active",
       ...residentData,
@@ -334,6 +372,7 @@ export async function createResident(residentData) {
  */
 export async function updateResident(resident, updates) {
   try {
+    invalidateResidentsCache();
     const id = getResidentId(resident);
     if (!id) throw new Error("Unable to update resident: ID is missing.");
     const payload = prepareResidentMutation(updates);
@@ -359,6 +398,7 @@ export async function updateResident(resident, updates) {
  */
 export async function deleteResident(resident) {
   try {
+    invalidateResidentsCache();
     const id = getResidentId(resident);
     if (!id) throw new Error("Unable to delete resident: ID is missing.");
 

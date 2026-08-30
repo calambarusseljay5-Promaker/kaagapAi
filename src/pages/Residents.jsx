@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import Header from "../components/Header";
+import { showAdminSystemToast } from "../utils/toast";
 import {
   archiveResident,
   createResident,
@@ -30,7 +31,7 @@ const getResidentKey = (resident) => {
   if (!resident || typeof resident !== "object") {
     return null;
   }
-  return KEY_FIELDS.find((key) => key in resident) || null;
+  return KEY_FIELDS.find((field) => resident[field] !== undefined && resident[field] !== null) || null;
 };
 
 const getResidentKeyValue = (resident) => {
@@ -43,7 +44,16 @@ const Residents = () => {
   const [form, setForm] = useState(initialForm);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [message, setMessage] = useState(null);
+  const [message, _setMessage] = useState(null);
+  const setMessage = useCallback((msg) => {
+    if (msg) {
+      if (typeof msg === "string") {
+        showAdminSystemToast(msg, "success");
+      } else if (msg.text) {
+        showAdminSystemToast(msg.text, msg.type || "success", msg.title);
+      }
+    }
+  }, []);
   const [isEditing, setIsEditing] = useState(false);
   const [selectedResident, setSelectedResident] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -244,18 +254,6 @@ const Residents = () => {
               </button>
             </div>
           </div>
-
-          {message ? (
-            <div
-              className={`mt-6 rounded-3xl px-5 py-4 text-sm ${
-                message.type === "error"
-                  ? "bg-rose-50 text-rose-700"
-                  : "bg-emerald-50 text-emerald-700"
-              }`}
-            >
-              {message.text}
-            </div>
-          ) : null}
 
           <form onSubmit={handleSubmit} className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <label className="block text-sm font-medium text-slate-700">
