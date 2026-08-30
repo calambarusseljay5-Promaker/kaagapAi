@@ -204,16 +204,76 @@ if (typeof window !== "undefined" && "speechSynthesis" in window) {
   }
 }
 
-// Unlocks / primes browser speech synthesis audio context during user interactions (clicks)
+let globalAudioPlayer = null;
+let activeSpeechToken = null;
+let speechHeartbeatTimer = null;
+let currentSpeechUtterances = [];
+let audioContextInstance = null;
+
+// Get or initialize persistent HTML5 Audio element for mobile compatibility
+const getGlobalAudioPlayer = () => {
+  if (typeof window === "undefined") return null;
+  if (!globalAudioPlayer) {
+    globalAudioPlayer = new Audio();
+    globalAudioPlayer.setAttribute("playsinline", "true");
+    globalAudioPlayer.setAttribute("webkit-playsinline", "true");
+    globalAudioPlayer.preload = "auto";
+  }
+  return globalAudioPlayer;
+};
+
+// Unlocks / primes browser speech synthesis and mobile audio channels during user interactions (tap/click)
 const primeSpeechSynthesis = () => {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  if (typeof window === "undefined") return;
+
+  // 1. Prime HTML5 Audio element (Essential for iOS Mobile Safari & Android Chrome)
   try {
-    window.speechSynthesis.resume();
-    // Warm up speech synthesizer pipeline with a zero-volume momentary utterance on user gesture
-    const silent = new SpeechSynthesisUtterance(" ");
-    silent.volume = 0.01;
-    silent.rate = 10;
-    window.speechSynthesis.speak(silent);
+    const player = getGlobalAudioPlayer();
+    if (player) {
+      // 1-sample silent WAV to unlock mobile hardware audio pipeline
+      player.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+      player.volume = 0.01;
+      const playPromise = player.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            player.pause();
+            player.currentTime = 0;
+            player.volume = 1.0;
+          })
+          .catch(() => {
+            // Ignore policy restriction during prime
+          });
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // 2. Prime Web AudioContext (Unlocks iOS system audio session)
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass) {
+      if (!audioContextInstance) {
+        audioContextInstance = new AudioContextClass();
+      }
+      if (audioContextInstance.state === "suspended") {
+        audioContextInstance.resume();
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  // 3. Prime Web Speech Synthesis
+  try {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.resume();
+      const silent = new SpeechSynthesisUtterance(" ");
+      silent.volume = 0.01;
+      silent.rate = 10;
+      window.speechSynthesis.speak(silent);
+    }
   } catch {
     // ignore
   }
@@ -387,26 +447,9 @@ const getProfessionalVoice = (isTagalog = false) => {
   return voices[0] || null;
 };
 
-let currentSpeechUtterances = [];
-let activeSpeechToken = null;
-let speechHeartbeatTimer = null;
-
-const speakAssistantText = (text, onStart = null, onEnd = null) => {
-  stopAssistantSpeech();
-  if (!text || typeof window === "undefined" || !("speechSynthesis" in window)) {
-    if (onEnd) onEnd();
-    return;
-  }
-
-  const speechToken = Date.now() + Math.random();
-  activeSpeechToken = speechToken;
-
-  const isTagalog = isTagalogText(text);
-  const chosenVoice = getProfessionalVoice(isTagalog);
-  const isNative = isNativeFilipinoVoice(chosenVoice);
-  const cleanText = cleanTextForSpeech(text, isTagalog, isNative);
-
-  if (!cleanText) {
+// Fallback: Native Web Speech Synthesis for Desktop or Offline
+const speakViaSpeechSynthesis = (sentences, isTagalog, chosenVoice, speechToken, onStart, onEnd) => {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
     if (onEnd) onEnd();
     return;
   }
@@ -415,7 +458,7 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
     window.speechSynthesis.cancel();
     window.speechSynthesis.resume();
 
-    // Heartbeat to prevent Chrome/Edge speech synthesis 15-second pause bug
+    // Heartbeat to prevent Chrome/Edge/Safari 15-second speech cutoff
     if (speechHeartbeatTimer) clearInterval(speechHeartbeatTimer);
     speechHeartbeatTimer = setInterval(() => {
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -425,20 +468,10 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
       }
     }, 4000);
 
-    // Split text into natural sentence chunks to ensure smooth browser playback without freezing
-    const rawSentences = cleanText.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [cleanText];
-    const sentences = rawSentences.map((s) => s.trim()).filter(Boolean);
-
-    if (sentences.length === 0) {
-      if (onEnd) onEnd();
-      return;
-    }
-
     let currentIndex = 0;
     let started = false;
 
     const speakNextSentence = () => {
-      // Abort immediately if speech was stopped, muted, or cancelled
       if (activeSpeechToken !== speechToken) {
         return;
       }
@@ -458,6 +491,7 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
       currentIndex++;
 
       const utterance = new SpeechSynthesisUtterance(sentence);
+      const isNative = isNativeFilipinoVoice(chosenVoice);
       if (chosenVoice) {
         utterance.voice = chosenVoice;
         utterance.lang = chosenVoice.lang || (isNative ? "fil-PH" : "en-US");
@@ -495,13 +529,10 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
       };
 
       currentSpeechUtterances.push(utterance);
-      
-      // Resume and speak with tick
       window.speechSynthesis.resume();
       window.speechSynthesis.speak(utterance);
     };
 
-    // Small delay after cancel() to ensure clean speech queue in Chromium
     setTimeout(() => {
       if (activeSpeechToken === speechToken) {
         window.speechSynthesis.resume();
@@ -509,14 +540,126 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
       }
     }, 60);
   } catch (err) {
-    console.warn("Speech synthesis error:", err);
+    console.warn("Speech synthesis fallback error:", err);
     activeSpeechToken = null;
-    if (speechHeartbeatTimer) {
-      clearInterval(speechHeartbeatTimer);
-      speechHeartbeatTimer = null;
-    }
     if (onEnd) onEnd();
   }
+};
+
+// Universal Hybrid Voice Assistant: Plays via High-Quality HTML5 Cloud Audio on Mobile & Desktop with Web Speech fallback
+const speakAssistantText = (text, onStart = null, onEnd = null) => {
+  stopAssistantSpeech();
+  if (!text || typeof window === "undefined") {
+    if (onEnd) onEnd();
+    return;
+  }
+
+  const speechToken = Date.now() + Math.random();
+  activeSpeechToken = speechToken;
+
+  const isTagalog = isTagalogText(text);
+  const chosenVoice = getProfessionalVoice(isTagalog);
+  const isNative = isNativeFilipinoVoice(chosenVoice);
+  const cleanText = cleanTextForSpeech(text, isTagalog, isNative);
+
+  if (!cleanText) {
+    if (onEnd) onEnd();
+    return;
+  }
+
+  // Split text into natural, digestible sentences (max 130 chars per chunk for 100% mobile compatibility)
+  const rawChunks = cleanText.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [cleanText];
+  const sentences = [];
+  rawChunks.forEach((chunk) => {
+    const trimmed = chunk.trim();
+    if (!trimmed) return;
+    if (trimmed.length > 130) {
+      // Split sub-clauses by comma or space
+      const subClauses = trimmed.split(/,\s+/);
+      subClauses.forEach((sc) => {
+        if (sc.trim()) sentences.push(sc.trim());
+      });
+    } else {
+      sentences.push(trimmed);
+    }
+  });
+
+  if (sentences.length === 0) {
+    if (onEnd) onEnd();
+    return;
+  }
+
+  // Try HTML5 Cloud Audio first (Works on iOS Mobile Safari, Android Chrome, Samsung Internet & Tablets)
+  try {
+    const player = getGlobalAudioPlayer();
+    if (player) {
+      let chunkIndex = 0;
+      let hasStarted = false;
+
+      const playNextAudioChunk = () => {
+        if (activeSpeechToken !== speechToken) {
+          return;
+        }
+
+        if (chunkIndex >= sentences.length) {
+          activeSpeechToken = null;
+          if (onEnd) onEnd();
+          return;
+        }
+
+        const currentSentence = sentences[chunkIndex];
+        chunkIndex++;
+
+        const langCode = isTagalog ? "tl" : "en";
+        const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(currentSentence)}&tl=${langCode}&client=tw-ob`;
+
+        player.src = ttsUrl;
+        player.volume = 1.0;
+
+        player.onplay = () => {
+          if (activeSpeechToken !== speechToken) {
+            player.pause();
+            return;
+          }
+          if (!hasStarted) {
+            hasStarted = true;
+            if (onStart) onStart();
+          }
+        };
+
+        player.onended = () => {
+          if (activeSpeechToken === speechToken) {
+            playNextAudioChunk();
+          }
+        };
+
+        player.onerror = () => {
+          console.warn("HTML5 audio playback error, falling back to Web Speech Synthesis");
+          if (activeSpeechToken === speechToken) {
+            speakViaSpeechSynthesis(sentences.slice(chunkIndex - 1), isTagalog, chosenVoice, speechToken, onStart, onEnd);
+          }
+        };
+
+        const playPromise = player.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((err) => {
+            console.warn("Audio play promise rejected, switching to Speech Synthesis:", err);
+            if (activeSpeechToken === speechToken) {
+              speakViaSpeechSynthesis(sentences, isTagalog, chosenVoice, speechToken, onStart, onEnd);
+            }
+          });
+        }
+      };
+
+      playNextAudioChunk();
+      return;
+    }
+  } catch (audioErr) {
+    console.warn("HTML5 Audio setup failed, using Web Speech API:", audioErr);
+  }
+
+  // Direct Web Speech API fallback if audio element unavailable
+  speakViaSpeechSynthesis(sentences, isTagalog, chosenVoice, speechToken, onStart, onEnd);
 };
 
 const stopAssistantSpeech = () => {
@@ -526,6 +669,17 @@ const stopAssistantSpeech = () => {
     speechHeartbeatTimer = null;
   }
   currentSpeechUtterances = [];
+
+  // Stop HTML5 Audio Player
+  try {
+    if (globalAudioPlayer) {
+      globalAudioPlayer.pause();
+      globalAudioPlayer.currentTime = 0;
+      globalAudioPlayer.src = "";
+    }
+  } catch {}
+
+  // Stop Web Speech Synthesis
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     try {
       window.speechSynthesis.cancel();
