@@ -204,6 +204,21 @@ if (typeof window !== "undefined" && "speechSynthesis" in window) {
   }
 }
 
+// Unlocks / primes browser speech synthesis audio context during user interactions (clicks)
+const primeSpeechSynthesis = () => {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  try {
+    window.speechSynthesis.resume();
+    // Warm up speech synthesizer pipeline with a zero-volume momentary utterance on user gesture
+    const silent = new SpeechSynthesisUtterance(" ");
+    silent.volume = 0.01;
+    silent.rate = 10;
+    window.speechSynthesis.speak(silent);
+  } catch {
+    // ignore
+  }
+};
+
 const isTagalogText = (text = "") => {
   if (!text) return false;
   const lower = text.toLowerCase();
@@ -297,7 +312,7 @@ const cleanTextForSpeech = (str = "", isTagalog = false, isNativeVoice = false) 
     .replace(/\s+/g, " ")
     .trim();
 
-  // If speaking Tagalog through a non-native English synthesizer, apply minimal particle fix
+  // If speaking Tagalog through a non-native English synthesizer, apply minimal phonetic particle fix
   if (isTagalog && !isNativeVoice) {
     cleaned = cleaned
       .replace(/\bmga\b/gi, "manga")
@@ -310,21 +325,24 @@ const cleanTextForSpeech = (str = "", isTagalog = false, isNativeVoice = false) 
 };
 
 const getProfessionalVoice = (isTagalog = false) => {
-  let voices = cachedSpeechVoices;
-  if (!voices || voices.length === 0) {
-    if (typeof window !== "undefined" && window.speechSynthesis) {
+  let voices = [];
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    try {
       voices = window.speechSynthesis.getVoices() || [];
-    }
+    } catch {}
+  }
+  if (!voices || voices.length === 0) {
+    voices = cachedSpeechVoices || [];
   }
   if (!voices || voices.length === 0) return null;
 
   if (isTagalog) {
     // 1. Native Filipino / Tagalog voices (Microsoft Natural Blessica/Angelo, Google Filipino, Android/iOS Tagalog)
-    const nativeFilipino = voices.find(v => isNativeFilipinoVoice(v));
+    const nativeFilipino = voices.find((v) => isNativeFilipinoVoice(v));
     if (nativeFilipino) return nativeFilipino;
 
     // 2. English (Philippines) accent (sounds natural with Filipino terminology)
-    const phEnglish = voices.find(v => {
+    const phEnglish = voices.find((v) => {
       const l = (v.lang || "").toLowerCase();
       const n = (v.name || "").toLowerCase();
       return l === "en-ph" || n.includes("philippines") || n.includes("philippine");
@@ -333,44 +351,45 @@ const getProfessionalVoice = (isTagalog = false) => {
   }
 
   // 3. Premium Natural English Voices (Microsoft Natural, Google US/UK, Samantha/Siri)
-  const msNaturalJenny = voices.find(v => v.name.includes("Jenny") && v.name.includes("Natural"));
+  const msNaturalJenny = voices.find((v) => v.name.includes("Jenny") && v.name.includes("Natural"));
   if (msNaturalJenny) return msNaturalJenny;
 
-  const msNaturalAria = voices.find(v => v.name.includes("Aria") && v.name.includes("Natural"));
+  const msNaturalAria = voices.find((v) => v.name.includes("Aria") && v.name.includes("Natural"));
   if (msNaturalAria) return msNaturalAria;
 
-  const msNaturalGuy = voices.find(v => v.name.includes("Guy") && v.name.includes("Natural"));
+  const msNaturalGuy = voices.find((v) => v.name.includes("Guy") && v.name.includes("Natural"));
   if (msNaturalGuy) return msNaturalGuy;
 
-  const anyMsNaturalEn = voices.find(v => v.name.includes("Natural") && ((v.lang || "").startsWith("en")));
+  const anyMsNaturalEn = voices.find((v) => v.name.includes("Natural") && ((v.lang || "").startsWith("en")));
   if (anyMsNaturalEn) return anyMsNaturalEn;
 
-  const googleUS = voices.find(v => v.name.includes("Google US English") || v.name.includes("Google English"));
+  const googleUS = voices.find((v) => v.name.includes("Google US English") || v.name.includes("Google English"));
   if (googleUS) return googleUS;
 
-  const googleUK = voices.find(v => v.name.includes("Google UK English Female") || v.name.includes("Google UK English"));
+  const googleUK = voices.find((v) => v.name.includes("Google UK English Female") || v.name.includes("Google UK English"));
   if (googleUK) return googleUK;
 
-  const siriSamantha = voices.find(v => v.name === "Samantha" || v.name === "Karen" || v.name === "Victoria" || v.name === "Daniel");
+  const siriSamantha = voices.find((v) => v.name === "Samantha" || v.name === "Karen" || v.name === "Victoria" || v.name === "Daniel");
   if (siriSamantha) return siriSamantha;
 
-  const msZira = voices.find(v => v.name.includes("Zira"));
+  const msZira = voices.find((v) => v.name.includes("Zira"));
   if (msZira) return msZira;
 
-  const msDavid = voices.find(v => v.name.includes("David"));
+  const msDavid = voices.find((v) => v.name.includes("David"));
   if (msDavid) return msDavid;
 
-  const standardEn = voices.find(v => {
+  const standardEn = voices.find((v) => {
     const l = (v.lang || "").toLowerCase();
     return l === "en-us" || l === "en-gb" || l === "en-ca" || l === "en-au" || l.startsWith("en");
   });
   if (standardEn) return standardEn;
 
-  return voices[0];
+  return voices[0] || null;
 };
 
 let currentSpeechUtterances = [];
 let activeSpeechToken = null;
+let speechHeartbeatTimer = null;
 
 const speakAssistantText = (text, onStart = null, onEnd = null) => {
   stopAssistantSpeech();
@@ -394,6 +413,17 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
 
   try {
     window.speechSynthesis.cancel();
+    window.speechSynthesis.resume();
+
+    // Heartbeat to prevent Chrome/Edge speech synthesis 15-second pause bug
+    if (speechHeartbeatTimer) clearInterval(speechHeartbeatTimer);
+    speechHeartbeatTimer = setInterval(() => {
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        if (window.speechSynthesis.speaking) {
+          window.speechSynthesis.resume();
+        }
+      }
+    }, 4000);
 
     // Split text into natural sentence chunks to ensure smooth browser playback without freezing
     const rawSentences = cleanText.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [cleanText];
@@ -415,6 +445,10 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
 
       if (currentIndex >= sentences.length) {
         activeSpeechToken = null;
+        if (speechHeartbeatTimer) {
+          clearInterval(speechHeartbeatTimer);
+          speechHeartbeatTimer = null;
+        }
         if (onEnd) onEnd();
         currentSpeechUtterances = [];
         return;
@@ -426,13 +460,14 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
       const utterance = new SpeechSynthesisUtterance(sentence);
       if (chosenVoice) {
         utterance.voice = chosenVoice;
-        utterance.lang = chosenVoice.lang || (isTagalog ? "fil-PH" : "en-US");
+        utterance.lang = chosenVoice.lang || (isNative ? "fil-PH" : "en-US");
       } else {
-        utterance.lang = isTagalog ? "fil-PH" : "en-US";
+        utterance.lang = "en-US";
       }
 
       utterance.rate = isTagalog ? 0.94 : 0.98;
       utterance.pitch = 1.0;
+      utterance.volume = 1.0;
 
       utterance.onstart = () => {
         if (activeSpeechToken !== speechToken) {
@@ -452,6 +487,7 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
       };
 
       utterance.onerror = (e) => {
+        console.warn("Speech synthesis utterance error:", e?.error);
         if (activeSpeechToken !== speechToken || e?.error === "canceled" || e?.error === "interrupted") {
           return;
         }
@@ -459,19 +495,36 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
       };
 
       currentSpeechUtterances.push(utterance);
+      
+      // Resume and speak with tick
+      window.speechSynthesis.resume();
       window.speechSynthesis.speak(utterance);
     };
 
-    speakNextSentence();
+    // Small delay after cancel() to ensure clean speech queue in Chromium
+    setTimeout(() => {
+      if (activeSpeechToken === speechToken) {
+        window.speechSynthesis.resume();
+        speakNextSentence();
+      }
+    }, 60);
   } catch (err) {
     console.warn("Speech synthesis error:", err);
     activeSpeechToken = null;
+    if (speechHeartbeatTimer) {
+      clearInterval(speechHeartbeatTimer);
+      speechHeartbeatTimer = null;
+    }
     if (onEnd) onEnd();
   }
 };
 
 const stopAssistantSpeech = () => {
   activeSpeechToken = null;
+  if (speechHeartbeatTimer) {
+    clearInterval(speechHeartbeatTimer);
+    speechHeartbeatTimer = null;
+  }
   currentSpeechUtterances = [];
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     try {
@@ -2782,6 +2835,11 @@ const UserDashboard = () => {
     const question = questionText.trim();
     if (!question) return;
 
+    // Prime speech synthesis on user interaction to unlock audio context in production browsers
+    if (voiceEnabled) {
+      primeSpeechSynthesis();
+    }
+
     const userMessage = { id: `user-${Date.now()}`, role: "user", text: question };
     const nextMessagesWithUser = [...assistantMessages, userMessage];
     setAssistantMessages(nextMessagesWithUser);
@@ -2840,11 +2898,17 @@ const UserDashboard = () => {
 
   const handlePrompt = (promptText) => {
     setAssistantOpen(true);
+    if (voiceEnabled) {
+      primeSpeechSynthesis();
+    }
     submitAssistantQuestion(promptText);
   };
 
   const handleAssistantSubmit = async (event) => {
     event.preventDefault();
+    if (voiceEnabled) {
+      primeSpeechSynthesis();
+    }
     submitAssistantQuestion(assistantInput);
   };
 
@@ -8097,6 +8161,7 @@ const UserDashboard = () => {
                           localStorage.setItem("kaagapai_chatbot_voice_enabled", "false");
                         } catch {}
                       } else {
+                        primeSpeechSynthesis();
                         setVoiceEnabled(true);
                         try {
                           localStorage.setItem("kaagapai_chatbot_voice_enabled", "true");
@@ -8325,6 +8390,7 @@ const UserDashboard = () => {
                                     stopAssistantSpeech();
                                     setSpeakingChatId(null);
                                   } else {
+                                    primeSpeechSynthesis();
                                     speakAssistantText(
                                       chat.text,
                                       () => setSpeakingChatId(chat.id),
