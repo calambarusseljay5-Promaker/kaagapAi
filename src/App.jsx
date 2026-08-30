@@ -69,6 +69,8 @@ function App() {
           <Route path="/" element={<RootPortal />} />
           <Route path="/login" element={<RootPortal />} />
           <Route path="/portal" element={<Login portalMode="resident" />} />
+          <Route path="/resident" element={<Login portalMode="resident" />} />
+          <Route path="/resident-login" element={<Login portalMode="resident" />} />
 
           {/* Hidden Admin & Staff Login Routes */}
           <Route path="/admin" element={<Login portalMode="admin" />} />

@@ -141,16 +141,34 @@ const Login = ({ portalMode = null }) => {
   const location = useLocation();
   const currentPath = location.pathname ? location.pathname.toLowerCase() : "";
   const isTargetAdmin = isTargetAdminPortal(portalMode, currentPath);
+  const isExplicitResidentRoute =
+    portalMode === "resident" ||
+    currentPath.includes("resident") ||
+    currentPath.includes("portal");
 
-  // View state: 'landing' (1st view matching NDMC reference) or 'login' (2nd view matching Image 3)
-  const [currentView, setCurrentView] = useState(() => (isTargetAdmin ? "login" : "landing"));
-  
+  // View state: 'landing' or 'login'
+  const [currentView, setCurrentView] = useState(() =>
+    isTargetAdmin || isExplicitResidentRoute ? "login" : "landing"
+  );
+
   const [modalStep, setModalStep] = useState(() =>
     isTargetAdmin ? "admin_login" : "resident_login"
   );
   const [accessMode, setAccessMode] = useState(() =>
     isTargetAdmin ? "Admin" : "Resident"
   );
+
+  useEffect(() => {
+    if (isTargetAdmin) {
+      setCurrentView("login");
+      setAccessMode("Admin");
+      setModalStep("admin_login");
+    } else if (isExplicitResidentRoute) {
+      setCurrentView("login");
+      setAccessMode("Resident");
+      setModalStep("resident_login");
+    }
+  }, [isTargetAdmin, isExplicitResidentRoute]);
   const [residentAuthMode, setResidentAuthMode] = useState("signin");
   const [registrationProof, setRegistrationProof] = useState(null);
   const [registrationStep, setRegistrationStep] = useState(1);
