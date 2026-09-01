@@ -180,6 +180,140 @@ const buildGratitudeAnswer = (question) => {
   return "You're welcome! If you need anything else about barangay services or documents, feel free to ask. Have a great day!";
 };
 
+const buildPoliticalHistoryAnswer = (question, language = "tagalog") => {
+  const norm = normalizeText(question);
+
+  // Check if asking about a specific past leader
+  if (includesAny(norm, ["catenas", "gaudencio"])) {
+    return language === "tagalog"
+      ? "🏛️ **Hon. Gaudencio Catenas** (1952–1958)\n• **Posisyon:** Teniente del Barrio\n• **Mga Nagawa:** Pinasimulan ang pagbubukas ng Bacolod Primary School (itinatag noong 1953) sa donasyong 2 ektaryang lupa ni G. Sagadan, kasama ang 1.85 ektarya para sa barangay site."
+      : "🏛️ **Hon. Gaudencio Catenas** (1952–1958)\n• **Position:** Teniente del Barrio\n• **Accomplishments:** Facilitated the opening of Bacolod Primary School (founded in 1953) with 2 hectares donated by Mr. Sagadan, plus 1.85 hectares donated for the barangay site.";
+  }
+
+  if (includesAny(norm, ["bolivar", "dioscoro"])) {
+    return language === "tagalog"
+      ? "🏛️ **Hon. Dioscoro Bolivar** (1958–1964)\n• **Posisyon:** Teniente del Barrio\n• **Mga Nagawa:** Noong 1958 sa kanyang panunungkulan, opisyal na nahati ang barangay sa dalawa (Upper Mingading at Lower Mingading)."
+      : "🏛️ **Hon. Dioscoro Bolivar** (1958–1964)\n• **Position:** Teniente del Barrio\n• **Accomplishments:** In 1958 during his tenure, the barangay was officially divided into two: Upper Mingading and Lower Mingading.";
+  }
+
+  if (includesAny(norm, ["eustaquio", "eustaquio garito"])) {
+    return language === "tagalog"
+      ? "🏛️ **Hon. Eustaquio Garito**\n• **Posisyon:** Teniente del Barrio\n• **Mga Nagawa:** Napanatili ang pangmatagalang kapayapaan, pagkakaisa, at pagkakaunawaan sa pagitan ng mga mamamayang Muslim at Kristiyano sa barangay."
+      : "🏛️ **Hon. Eustaquio Garito**\n• **Position:** Teniente del Barrio\n• **Accomplishments:** Maintained longstanding unity, peace, and harmony between Muslim and Christian constituents.";
+  }
+
+  if (includesAny(norm, ["cari", "segundo"])) {
+    return language === "tagalog"
+      ? "🏛️ **Hon. Segundo Cari** (1969–1972)\n• **Posisyon:** Barangay Captain\n• **Mga Nagawa:** Pinalawak ang nasasakupang teritoryo ng barangay patungo sa mga bahagi ng Lower Mingading kasunod ng labanang ILAGA-Black Shirt nang magbenta ng lupa ang ilang residente."
+      : "🏛️ **Hon. Segundo Cari** (1969–1972)\n• **Position:** Barangay Captain\n• **Accomplishments:** Expanded the barangay territory into parts of Lower Mingading following the ILAGA-Black Shirt conflict when Moro residents vacated and sold land.";
+  }
+
+  if (includesAny(norm, ["capio", "bonifacio"])) {
+    return language === "tagalog"
+      ? "🏛️ **Hon. Bonifacio Capio** (1972–1986)\n• **Posisyon:** Barangay Captain\n• **Mga Nagawa:** Isinaayos at pinaganda ang kalsada mula San Mateo patungong Upper Mingading, at pinasimulan ang pagbubukas ng daan patungong Sitio Nalpan."
+      : "🏛️ **Hon. Bonifacio Capio** (1972–1986)\n• **Position:** Barangay Captain\n• **Accomplishments:** Improved the San Mateo to Upper Mingading road and initiated the road opening to Sitio Nalpan.";
+  }
+
+  if (includesAny(norm, ["sofia", "sofia garito"])) {
+    return language === "tagalog"
+      ? "🏛️ **Hon. Sofia Garito** (1986–1991)\n• **Posisyon:** Barangay Captain\n• **Mga Nagawa:** Isinagawa ang rehabilitasyon ng kalsada mula San Mateo hanggang Upper Mingading, at hinikayat ang mga mamamayan na magtanim ng permanenteng punong prutas at forest trees."
+      : "🏛️ **Hon. Sofia Garito** (1986–1991)\n• **Position:** Barangay Captain\n• **Accomplishments:** Rehabilitated the San Mateo–Upper Mingading road and encouraged constituents to plant permanent fruit and forest trees.";
+  }
+
+  if (includesAny(norm, ["calician", "sito"])) {
+    return language === "tagalog"
+      ? "🏛️ **Hon. Sito Calician** (1991–1994)\n• **Posisyon:** Barangay Captain\n• **Mga Nagawa:** Itinatag at inorganisa ang Civilian Volunteer Officer (CVO / Barangay Tanod) para sa kaligtasan at kapayapaan ng barangay."
+      : "🏛️ **Hon. Sito Calician** (1991–1994)\n• **Position:** Barangay Captain\n• **Accomplishments:** Organized the Civilian Volunteer Officers (CVO) in the barangay to maintain local safety and security.";
+  }
+
+  if (includesAny(norm, ["mamerto", "mamerto garito"])) {
+    return language === "tagalog"
+      ? "🏛️ **Hon. Mamerto Garito** (1994–2004)\n• **Posisyon:** Barangay Captain\n• **Mga Nagawa:** Pagtatayo ng Barangay Hall, Health Center, Water System, Day Care Center, at All-Weather Road. Pag-organisa ng CAFGU, kooperatiba, at Farmers Association. Pagpapakabit ng kuryente (electrification) at street lights sa barangay."
+      : "🏛️ **Hon. Mamerto Garito** (1994–2004)\n• **Position:** Barangay Captain\n• **Accomplishments:** Construction of Barangay Hall, Health Center, Water System, Day Care Center, and All-Weather Road. Organized CAFGU, cooperatives, and Farmer Association. Established barangay electrification and street lights.";
+  }
+
+  if (includesAny(norm, ["myrna", "myrna garito"])) {
+    return language === "tagalog"
+      ? "🏛️ **Hon. Myrna Garito** (2004–2007)\n• **Posisyon:** Punong Barangay\n• **Mga Nagawa:** Pagtatayo ng MRF (Materials Recovery Facility) at water system sa Puroks Malipayon at Motor; pagbubukas ng Brgy Road mula Purok Payhod hanggang Purok Buklod; pagbubukas ng Bacolod Annex Primary School sa Purok Muslim; bagong Barangay Hall sa suporta ni Cong. Em 'Lala' Taliño-Mendoza; Box Culvert at 2 classrooms sa Purok Muslim."
+      : "🏛️ **Hon. Myrna Garito** (2004–2007)\n• **Position:** Punong Barangay\n• **Accomplishments:** Constructed Materials Recovery Facility (MRF) and water system in Puroks Malipayon & Motor. Opened Brgy Road from Purok Payhod to Purok Buklod. Opened Bacolod Annex Primary School in Purok Muslim. Built new Punong Barangay Office & Brgy Hall funded by Cong. Em 'Lala' Taliño-Mendoza. Box Culvert & 2 classrooms in Purok Muslim.";
+  }
+
+  if (includesAny(norm, ["caponpon", "wilson", "kasalukuyang kapitan", "current captain", "punong barangay ngayon"])) {
+    return language === "tagalog"
+      ? "🏛️ **Hon. Wilson Caponpon** (2007–Kasalukuyan)\n• **Posisyon:** Punong Barangay (Kasalukuyang Punong Barangay)\n• **Mga Nagawa:** Pagpapatupad ng Pambansa, Panlalawigan, at Pambayang mga programa; pagpapanatili ng kapayapaan at kaayusan; pagpapaganda at pagpapagawa ng mga kalsada.\n🏆 **Mga Gawad at Parangal:** Model Barangay in Solid Waste Management, Best Performing Barangay (Provincial level), Special Award for Best Recycling Innovation, Model RIC (Recycle), Special Award Nominee sa National Level."
+      : "🏛️ **Hon. Wilson Caponpon** (2007–Present)\n• **Position:** Punong Barangay (Current Barangay Captain)\n• **Accomplishments:** Implemented National, Provincial, and Municipal programs; maintained peace and order; improved and paved barangay roads.\n🏆 **Awards & Recognitions:** Model Barangay in Solid Waste Management, Best Performing Barangay at Provincial level, Special Award (Best Recycling Innovation), Model RIC, Special Award Nominee at National level.";
+  }
+
+  // Full Political History Timeline
+  if (language === "tagalog") {
+    return `🏛️ **OPISYAL NA KASAYSAYANG PULITIKAL AT MGA NAGING PINUNO NG BARANGAY UPPER MINGADING (1952–KASALUKUYAN)**:
+
+1. **Hon. Gaudencio Catenas** (1952–1958) — *Teniente del Barrio*
+   • Pinasimulan ang pagbubukas ng Bacolod Primary School (1953) sa donasyong 2 ektaryang lupa ni G. Sagadan, kasama ang 1.85 ektarya para sa barangay site.
+
+2. **Hon. Dioscoro Bolivar** (1958–1964) — *Teniente del Barrio*
+   • Noong 1958, opisyal na nahati ang barangay sa dalawa (Upper Mingading at Lower Mingading).
+
+3. **Hon. Eustaquio Garito** — *Teniente del Barrio*
+   • Napanatili ang pangmatagalang kapayapaan at pagkakaisa sa pagitan ng mga mamamayang Muslim at Kristiyano.
+
+4. **Hon. Segundo Cari** (1969–1972) — *Barangay Captain*
+   • Pinalawak ang teritoryo ng barangay kasunod ng labanang ILAGA-Black Shirt.
+
+5. **Hon. Bonifacio Capio** (1972–1986) — *Barangay Captain*
+   • Isinaayos ang kalsada mula San Mateo patungong Upper Mingading at nagbukas ng daan patungong Sitio Nalpan.
+
+6. **Hon. Sofia Garito** (1986–1991) — *Barangay Captain*
+   • Rehabilitasyon ng San Mateo–Upper Mingading road at paghihikayat sa pagtatanim ng permanenteng punong prutas at kagubatan.
+
+7. **Hon. Sito Calician** (1991–1994) — *Barangay Captain*
+   • Itinatag at inorganisa ang Civilian Volunteer Officer (CVO / Barangay Tanod).
+
+8. **Hon. Mamerto Garito** (1994–2004) — *Barangay Captain*
+   • Pagtatayo ng Barangay Hall, Health Center, Water System, Day Care Center, at All-Weather Road; pag-organisa ng CAFGU, kooperatiba, at Farmers Association; pagpapakabit ng kuryente at streetlights.
+
+9. **Hon. Myrna Garito** (2004–2007) — *Punong Barangay*
+   • Pagtatayo ng MRF at water system sa Puroks Malipayon at Motor; pagbubukas ng Bacolod Annex Primary School sa Purok Muslim; bagong Barangay Hall sa tulong ni Cong. Em "Lala" Taliño-Mendoza; 2 silid-aralan at Box Culvert.
+
+10. **Hon. Wilson Caponpon** (2007–Kasalukuyan) — *Punong Barangay*
+    • Pagpapatupad ng pambansa, panlalawigan, at pambayang programa; pagpapanatili ng kapayapaan at kaayusan; pagpapaganda ng mga kalsada.
+    🏆 **Mga Parangal:** Best Performing Barangay, Model Barangay in Solid Waste Management, Best Recycling Innovation sa Provincial at National levels.`;
+  }
+
+  return `🏛️ **OFFICIAL POLITICAL HISTORY & LEADERSHIP TIMELINE OF BARANGAY UPPER MINGADING (1952–PRESENT)**:
+
+1. **Hon. Gaudencio Catenas** (1952–1958) — *Teniente del Barrio*
+   • Facilitated the opening of Bacolod Primary School (founded 1953) with 2 hectares donated by Mr. Sagadan, plus 1.85 hectares donated for the barangay site.
+
+2. **Hon. Dioscoro Bolivar** (1958–1964) — *Teniente del Barrio*
+   • In 1958, the barangay was officially divided into Upper Mingading and Lower Mingading.
+
+3. **Hon. Eustaquio Garito** — *Teniente del Barrio*
+   • Maintained longstanding peace and unity between Muslim and Christian constituents.
+
+4. **Hon. Segundo Cari** (1969–1972) — *Barangay Captain*
+   • Expanded barangay territory into parts of Lower Mingading following the ILAGA-Black Shirt conflict.
+
+5. **Hon. Bonifacio Capio** (1972–1986) — *Barangay Captain*
+   • Improved San Mateo to Upper Mingading road and initiated road opening to Sitio Nalpan.
+
+6. **Hon. Sofia Garito** (1986–1991) — *Barangay Captain*
+   • Rehabilitated San Mateo–Upper Mingading road; encouraged planting of permanent fruit and forest trees.
+
+7. **Hon. Sito Calician** (1991–1994) — *Barangay Captain*
+   • Organized the Civilian Volunteer Officers (CVO / Barangay Tanod) in the barangay.
+
+8. **Hon. Mamerto Garito** (1994–2004) — *Barangay Captain*
+   • Constructed Barangay Hall, Health Center, Water System, Day Care Center, and All-Weather Road; organized CAFGU, cooperatives, and Farmer Association; established barangay electrification and street lights.
+
+9. **Hon. Myrna Garito** (2004–2007) — *Punong Barangay*
+   • Constructed Materials Recovery Facility (MRF) and water system in Puroks Malipayon & Motor; opened Brgy Road from Purok Payhod to Purok Buklod; opened Bacolod Annex Primary School in Purok Muslim; new Barangay Hall funded by Cong. Em "Lala" Taliño-Mendoza; Box Culvert & 2 classrooms.
+
+10. **Hon. Wilson Caponpon** (2007–Present) — *Punong Barangay*
+    • Implemented National, Provincial, and Municipal programs; maintained peace and order; improved and paved barangay roads.
+    🏆 **Awards:** Model Barangay in Solid Waste Management, Best Performing Barangay at Provincial level, Best Recycling Innovation, Special Award Nominee at National level.`;
+};
+
 const OFFICIAL_ROLES_KNOWLEDGE_TEXT = `
 KNOWLEDGE CATEGORY: BARANGAY OFFICIALS - ROLES AND FUNCTIONS
 
@@ -1774,12 +1908,15 @@ async function buildLocalAnswer(question, context = {}) {
       : "Hello! I'm KaagapAI, your Barangay Assistant. How can I help you today? You can ask about document requests, barangay services, complaints, announcements, livelihood programs, health services, and more.";
   }
 
-  // History / Kasaysayan Intent
-  const isHistory = includesAny(normalizedQ || normalizeText(question), ["history", "kasaysayan", "pinagmulan", "origin"]);
+  // History / Kasaysayan & Political Leadership Intent
+  const isHistory = includesAny(normalizedQ || normalizeText(question), [
+    "history", "kasaysayan", "pinagmulan", "origin", "political", "pulitika", "politika",
+    "pinuno", "leader", "leaders", "punong barangay", "kapitan", "teniente", "dating kapitan",
+    "nakaraang kapitan", "previous captain", "past captain", "past leaders", "accomplishments",
+    "catenas", "bolivar", "cari", "capio", "calician", "caponpon"
+  ]);
   if (isHistory) {
-    return language === "tagalog"
-      ? "Paumanhin po, hindi ko alam ang opisyal na kasaysayan ng Barangay Upper Mingading sa aking kasalukuyang records. Para sa karagdagang impormasyon at opisyal na detalye, maaari po kayong sumangguni o bumisita sa ating Barangay Office."
-      : "I'm sorry, I don't have the official history of Barangay Upper Mingading in my records. For more information and official details, please coordinate with or visit our Barangay Office.";
+    return buildPoliticalHistoryAnswer(question, language);
   }
 
   // Waste Management Intent (Checked before complaints to handle garbage collection queries containing 'basura')

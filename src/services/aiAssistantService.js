@@ -396,6 +396,18 @@ AI knowledge trainer records:
 - Loaded knowledge items: ${snapshot.knowledgeItems.length}
 ${snapshot.knowledgeItems.slice(0, MAX_KNOWLEDGE_CONTEXT).map(formatKnowledgeLine).join("\n") || "No AI knowledge records loaded."}
 
+Official Political History & Leadership Timeline of Barangay Upper Mingading:
+1. Hon. Gaudencio Catenas (1952–1958) - Teniente del Barrio. Facilitated opening of Bacolod Primary School (1953) with 2 hectares donated by Mr. Sagadan, plus 1.85 hectares donated for barangay site.
+2. Hon. Dioscoro Bolivar (1958–1964) - Teniente del Barrio. In 1958, the barangay was divided into Upper Mingading and Lower Mingading.
+3. Hon. Eustaquio Garito - Teniente del Barrio. Maintained longstanding unity among Muslim and Christian constituents.
+4. Hon. Segundo Cari (1969–1972) - Barangay Captain. Expanded barangay territory following ILAGA-Black Shirt conflict.
+5. Hon. Bonifacio Capio (1972–1986) - Barangay Captain. Improved San Mateo-Upper Mingading road; opened road to Sitio Nalpan.
+6. Hon. Sofia Garito (1986–1991) - Barangay Captain. Rehabilitated San Mateo-Upper Mingading road; encouraged planting fruit/forest trees.
+7. Hon. Sito Calician (1991–1994) - Barangay Captain. Organized Civilian Volunteer Officers (CVO).
+8. Hon. Mamerto Garito (1994–2004) - Barangay Captain. Constructed Barangay Hall, Health Center, Water System, Day Care Center, All-Weather Road. Organized CAFGU, cooperatives, Farmer Association. Electrification & streetlights.
+9. Hon. Myrna Garito (2004–2007) - Punong Barangay. Constructed MRF and water system in Puroks Malipayon & Motor. Opened Brgy Road from Payhod to Buklod. Bacolod Annex Primary School in Purok Muslim. New Barangay Hall funded by Cong. Em "Lala" Taliño-Mendoza. Box Culvert & 2 classrooms.
+10. Hon. Wilson Caponpon (2007–Present) - Current Punong Barangay. Implemented government programs, maintained peace and order, improved roads. Awards: Model Barangay in Solid Waste Management, Best Performing Barangay at Provincial level, Best Recycling Innovation, Special Award Nominee at National level.
+
 Context warnings:
 ${contextWarnings || "None"}`;
 }
@@ -446,6 +458,11 @@ function stripSuggestedQuestions(answer) {
 
 function buildLocalFallbackAnswer(question, snapshot) {
   const wantsAssistantPurpose = isAssistantMetaQuestion(question);
+  const wantsHistory = includesAny(question, [
+    "history", "kasaysayan", "pinagmulan", "origin", "political", "politika", "pulitika",
+    "leader", "leaders", "kapitan", "captain", "teniente", "catenas", "bolivar", "garito",
+    "cari", "capio", "calician", "caponpon", "accomplishments"
+  ]);
   const wantsDocuments = includesAny(question, ["document", "request", "clearance", "certificate"]);
   const wantsPending = includesAny(question, ["pending", "waiting", "approval"]);
   const wantsArchive = includesAny(question, ["archive", "archived"]);
@@ -461,6 +478,20 @@ function buildLocalFallbackAnswer(question, snapshot) {
 
   if (wantsAssistantPurpose) {
     return buildAssistantPurposeAnswer();
+  } else if (wantsHistory) {
+    return [
+      "🏛️ Political History & Leadership Timeline of Barangay Upper Mingading:",
+      "1. Hon. Gaudencio Catenas (1952–1958) - Teniente del Barrio. Facilitated Bacolod Primary School opening (1953) with 2 hectares donated by Mr. Sagadan, plus 1.85 ha for barangay site.",
+      "2. Hon. Dioscoro Bolivar (1958–1964) - Teniente del Barrio. In 1958, the barangay divided into Upper Mingading and Lower Mingading.",
+      "3. Hon. Eustaquio Garito - Teniente del Barrio. Maintained peace and unity between Muslim and Christian constituents.",
+      "4. Hon. Segundo Cari (1969–1972) - Barangay Captain. Expanded barangay territory following ILAGA-Black Shirt conflict.",
+      "5. Hon. Bonifacio Capio (1972–1986) - Barangay Captain. Improved San Mateo-Upper Mingading road; opened road to Sitio Nalpan.",
+      "6. Hon. Sofia Garito (1986–1991) - Barangay Captain. Rehabilitated San Mateo-Upper Mingading road; encouraged fruit/forest tree planting.",
+      "7. Hon. Sito Calician (1991–1994) - Barangay Captain. Organized Civilian Volunteer Officers (CVO).",
+      "8. Hon. Mamerto Garito (1994–2004) - Barangay Captain. Built Barangay Hall, Health Center, Water System, Day Care Center, All-Weather Road. Organized CAFGU, cooperatives, Farmer Association. Electrification & streetlights.",
+      "9. Hon. Myrna Garito (2004–2007) - Punong Barangay. Built MRF & water system in Puroks Malipayon & Motor. Opened Brgy Road Payhod-Buklod, Bacolod Annex Primary School in Purok Muslim. Built new Barangay Hall. Box Culvert & 2 classrooms.",
+      "10. Hon. Wilson Caponpon (2007–Present) - Current Punong Barangay. Implemented major programs, maintained peace and order, improved roads. Won Model Barangay in Solid Waste Management, Best Performing Barangay, and Best Recycling Innovation."
+    ].join("\n");
   } else if (wantsPending && wantsDocuments) {
     lines.push(`Pending document requests: ${snapshot.pendingRequests.length}`);
     lines.push(
