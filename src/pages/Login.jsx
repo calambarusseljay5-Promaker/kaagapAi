@@ -425,10 +425,17 @@ const Login = ({ portalMode = null }) => {
       value = value.toLowerCase().replace(/[^a-z0-9_.-]/g, "");
     }
 
+    const fieldName =
+      name === "kaagapai_login_identifier"
+        ? "email"
+        : name === "kaagapai_login_secret"
+        ? "password"
+        : name;
+
     setFormData((current) => ({
       ...current,
-      [name]: type === "checkbox" ? checked : value,
-      ...(name === "is_pwd" && !checked ? { pwd_type: "" } : {}),
+      [fieldName]: type === "checkbox" ? checked : value,
+      ...(fieldName === "is_pwd" && !checked ? { pwd_type: "" } : {}),
     }));
     setError(null);
   };
@@ -1971,7 +1978,7 @@ const Login = ({ portalMode = null }) => {
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300" size={18} />
                 <input
                   type="text"
-                  name="email"
+                  name="kaagapai_login_identifier"
                   value={formData.email}
                   onChange={handleInputChange}
                   placeholder={
@@ -1987,16 +1994,21 @@ const Login = ({ portalMode = null }) => {
                   spellCheck="false"
                   data-lpignore="true"
                   data-1p-ignore="true"
+                  data-form-type="other"
                 />
               </div>
 
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300" size={18} />
                 <input
-                  type={showPassword ? "text" : "password"}
-                  name="password"
+                  type="text"
+                  name="kaagapai_login_secret"
                   value={formData.password}
                   onChange={handleInputChange}
+                  style={{
+                    WebkitTextSecurity: showPassword ? "none" : "disc",
+                    textSecurity: showPassword ? "none" : "disc",
+                  }}
                   placeholder={
                     modalStep === "admin_login" || accessMode === "Admin"
                       ? "Enter admin password"
@@ -2004,9 +2016,13 @@ const Login = ({ portalMode = null }) => {
                   }
                   className="w-full h-12 rounded-xl bg-black/35 border border-emerald-400/30 pl-11 pr-11 outline-none text-xs font-semibold text-white placeholder-emerald-200/60 focus:border-emerald-400 focus:bg-black/50 focus:ring-2 focus:ring-emerald-400/30 transition-all duration-200 backdrop-blur-md"
                   required
-                  autoComplete="new-password"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck="false"
                   data-lpignore="true"
                   data-1p-ignore="true"
+                  data-form-type="other"
                 />
                 <button
                   type="button"
