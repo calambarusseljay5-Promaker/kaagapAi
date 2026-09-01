@@ -731,6 +731,38 @@ const isThirdPartyPrivacyQuestion = (normalizedQ) => {
   return false;
 };
 
+const isAdminPortalQuestion = (normalizedQ) => {
+  return includesAny(normalizedQ, [
+    "admin portal", "admin login", "access the admin", "access admin", "admin access",
+    "paano pumunta sa admin", "paano mag login sa admin", "admin account", "admin dashboard",
+    "portal ng admin", "login ng admin"
+  ]);
+};
+
+const buildAdminPortalAnswer = (language = "tagalog") => {
+  if (language === "tagalog") {
+    return [
+      "🔒 **Impormasyon Ukol sa Admin Portal:**",
+      "",
+      "Ang **Admin Portal** (`/admin`) ay eksklusibo lamang para sa mga awtorisadong opisyal at kawani ng Barangay Upper Mingading (Punong Barangay, Barangay Secretary, Treasurer, at Administrators).",
+      "",
+      "Hindi po pinapahintulutan ang mga regular na resident accounts na pumasok sa Admin Portal upang maprotektahan ang seguridad at privacy ng mga opisyal na rekord ng barangay.",
+      "",
+      "Kung ikaw ay isang residente, mag-log in lamang sa **Resident Portal** gamit ang inyong rehistradong username at password."
+    ].join("\n");
+  }
+
+  return [
+    "🔒 **Admin Portal Access Advisory:**",
+    "",
+    "The **Admin Portal** (`/admin`) is strictly restricted to authorized Barangay Upper Mingading officials and administrative staff (Punong Barangay, Barangay Secretary, Treasurer, and Administrators).",
+    "",
+    "Regular resident accounts cannot access the admin portal to safeguard the security, confidentiality, and integrity of official barangay records.",
+    "",
+    "If you are a resident, please access your account through the **Resident Portal** using your registered credentials."
+  ].join("\n");
+};
+
 const isDefiniteOutOfScope = (normalizedQ) => {
   const OUT_OF_SCOPE_WORDS = [
     "recipe", "luto", "lutuin", "adobo", "sinigang", "cake", "bake", "nba", "basketball score",
@@ -1206,8 +1238,15 @@ const scoreKnowledgeMatch = (question, item = {}) => {
 
 const getRelevantKnowledge = (question, knowledgeItems = []) =>
   knowledgeItems
+    .filter(
+      (item) =>
+        !item?.content?.includes("Q1: Question:") &&
+        !item?.content?.includes("Q2: Question:") &&
+        !item?.content?.includes("Q3: Question:") &&
+        !item?.content?.includes("Audience: Selected Residents:")
+    )
     .map((item) => ({ item, score: scoreKnowledgeMatch(question, item) }))
-    .filter(({ score }) => score >= 2 || (score >= 1 && hasKnowledgeIntent(question)))
+    .filter(({ score }) => score >= 3)
     .sort((first, second) => second.score - first.score)
     .slice(0, 5)
     .map(({ item }) => item);
@@ -2013,16 +2052,21 @@ const findSmartAnswerInKnowledge = (question, relevantKnowledge, language = "tag
 
 const buildKnowledgeSummaryAnswer = (relevantKnowledge, language, question = "") => {
   const smartAnswer = findSmartAnswerInKnowledge(question, relevantKnowledge, language);
-  if (smartAnswer) return smartAnswer;
+  if (
+    smartAnswer &&
+    !smartAnswer.includes("Q1: Question:") &&
+    !smartAnswer.includes("Q2: Question:") &&
+    !smartAnswer.includes("Q3: Question:") &&
+    !smartAnswer.includes("Audience: Selected Residents:")
+  ) {
+    return smartAnswer;
+  }
 
-  const topItem = relevantKnowledge[0];
-  return (topItem?.content || topItem?.title || "").trim();
+  return buildOutOfScopeLimitationAnswer(language);
 };
 
 const buildMissingKnowledgeAnswer = (question, language) => {
-  return language === "tagalog"
-    ? "Para sa eksaktong detalye ukol sa katanungang ito, maaari po kayong sumangguni o bumisita sa ating Barangay Upper Mingading Office sa oras ng opisina."
-    : "For specific details regarding this request, please inquire directly at our Barangay Upper Mingading Office during office hours.";
+  return buildOutOfScopeLimitationAnswer(language);
 };
 
 const answerFromKnowledge = async (question, relevantKnowledge, context, language) => {
@@ -2524,6 +2568,8 @@ export async function askResidentAssistant(question, context = {}) {
 
   if (isCurrentCaptain) {
     answer = buildCurrentCaptainAnswer(language);
+  } else if (isAdminPortalQuestion(normalizedQ)) {
+    answer = buildAdminPortalAnswer(language);
   } else if (isHistory) {
     answer = buildPoliticalHistoryAnswer(trimmedQuestion, language);
   } else if (isPolicy) {
