@@ -2442,6 +2442,7 @@ export async function askResidentAssistant(question, context = {}) {
   const trimmedQuestion = question?.trim();
   if (!trimmedQuestion) return "";
 
+  const resident = context.resident || null;
   const normalizedQ = normalizeText(trimmedQuestion);
   const language = isTagalogQuestion(trimmedQuestion) ? "tagalog" : "english";
 
@@ -2458,6 +2459,13 @@ export async function askResidentAssistant(question, context = {}) {
       includesAny(normalizedQ, ["captain", "kapitan", "leader", "pinuno"]) &&
       includesAny(normalizedQ, ["first", "1st", "una", "unang", "dating", "nakaraan", "past", "previous", "all", "lahat", "who", "sino", "list", "talaan"])
     );
+
+  // Check Policy / Ordinance / Community Rules Intent
+  const isPolicy = includesAny(normalizedQ, [
+    "policy", "policies", "patakaran", "polisiya", "ordinance", "ordinansa", "batas", "tuntunin",
+    "curfew", "solid waste", "waste management", "segregation", "basura", "videoke", "karaoke", "ingay",
+    "noise", "stray animal", "stray", "alagang hayop", "aso", "pusa", "lupon", "tagapamayapa", "reklamo"
+  ]);
 
   const startTime = Date.now();
   let answer = "";
