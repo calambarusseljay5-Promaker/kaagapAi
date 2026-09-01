@@ -614,6 +614,98 @@ const PERSONAL_SERVICE_PHRASES = [
   "tirahan ko",
 ];
 
+const buildSelfProfileAnswer = (resident, language = "tagalog") => {
+  if (!resident) {
+    return language === "tagalog"
+      ? "Mangyaring mag-log in sa inyong account upang makita ang inyong rehistradong impormasyon."
+      : "Please log in to your account to view your registered profile information.";
+  }
+
+  const purokText = resident.purok ? `Purok ${resident.purok}` : "Upper Mingading";
+  const fullName = resident.full_name || "N/A";
+  const age = resident.age ? `${resident.age} anyos / years old` : "N/A";
+  const phone = resident.phone || "N/A";
+  const email = resident.email || resident.username || "N/A";
+  const civilStatus = resident.civil_status || "Single";
+  const status = resident.status || "Active";
+
+  if (language === "tagalog") {
+    return `👤 **Impormasyon ng Iyong Rehistradong Profile:**\n\n• **Pangalan:** ${fullName}\n• **Purok:** ${purokText}\n• **Telepono / Contact:** ${phone}\n• **Email / Username:** ${email}\n• **Edad:** ${age}\n• **Civil Status:** ${civilStatus}\n• **Katayuan ng Account:** ${status}\n\n*Paalala: Maaari ninyong baguhin o i-update ang inyong sariling profile sa "My Profile" tab.*`;
+  }
+
+  return `👤 **Your Registered Profile Information:**\n\n• **Full Name:** ${fullName}\n• **Purok / Zone:** ${purokText}\n• **Contact Phone:** ${phone}\n• **Email / Username:** ${email}\n• **Age:** ${age}\n• **Civil Status:** ${civilStatus}\n• **Account Status:** ${status}\n\n*Note: You can review or update your details in the "My Profile" tab.*`;
+};
+
+const buildPrivacyLimitationAnswer = (language = "tagalog") => {
+  if (language === "tagalog") {
+    return "🔒 **Paalala sa Data Privacy:**\n\nAlinsunod sa **Data Privacy Act of 2012 (RA 10173)**, mahigpit na pinangangalagaan ang personal na impormasyon, numero ng telepono, at tirahan ng bawat indibidwal na residente at hindi ito maaaring ibigay sa publiko o sa pamamagitan ng virtual assistant.\n\nKung may kailangan kayong opisyal na transaksyon o emergency, mangyaring makipag-ugnayan nang direkta sa ating **Barangay Office** sa **09306259795**.";
+  }
+
+  return "🔒 **Data Privacy Advisory:**\n\nIn compliance with the **Data Privacy Act of 2012 (RA 10173)**, personal records, private contact numbers, and personal details of individual residents are strictly confidential and cannot be disclosed by the AI virtual assistant.\n\nFor official community inquiries or emergency assistance, please contact the **Barangay Office** directly at **09306259795**.";
+};
+
+const buildOutOfScopeLimitationAnswer = (language = "tagalog") => {
+  if (language === "tagalog") {
+    return "Paumanhin po, wala po akong impormasyon ukol diyan dahil ang aking kaalaman ay limitado lamang sa mga opisyal na serbisyo, dokumento, patakaran, anunsyo, kasaysayan, at mga programa ng ating Barangay Upper Mingading.\n\nHanda po akong tumulong sa inyo ukol sa mga sumusunod:\n• 📄 **Barangay Clearances at Certificates**\n• 📜 **Mga Patakaran at Ordinansa**\n• 🏛️ **Kasaysayan at mga Pinuno ng Barangay**\n• 📢 **Mga Anunsyo at Trabaho / Livelihood**";
+  }
+
+  return "I apologize, but I do not have information regarding that topic as my knowledge is strictly limited to official services, document requests, clearances, community policies, announcements, and programs of Barangay Upper Mingading.\n\nI would be happy to assist you with:\n• 📄 **Barangay Clearances & Document Requests**\n• 📜 **Barangay Policies & Ordinances**\n• 🏛️ **Political History & Leadership**\n• 📢 **Announcements & Livelihood Programs**";
+};
+
+const isSelfProfileQuestion = (normalizedQ, resident) => {
+  const selfPatterns = [
+    "my info", "my information", "my profile", "my account", "my details", "about me",
+    "ano ang info ko", "ano ang profile ko", "impormasyon ko", "details ko", "aking detalye",
+    "aking profile", "aking impormasyon", "sino ako", "who am i", "my registered details"
+  ];
+  if (includesAny(normalizedQ, selfPatterns)) return true;
+
+  if (resident?.full_name) {
+    const residentNameNorm = normalizeText(resident.full_name);
+    if (residentNameNorm && normalizedQ.includes(residentNameNorm)) {
+      return true;
+    }
+  }
+  if (resident?.first_name && resident?.last_name) {
+    const fn = normalizeText(`${resident.first_name} ${resident.last_name}`);
+    if (fn && normalizedQ.includes(fn)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const isThirdPartyPrivacyQuestion = (normalizedQ) => {
+  const privacyTriggers = [
+    "her number", "his number", "their number", "phone number of", "contact number of",
+    "cellphone number of", "number ni", "numero ni", "address of", "tirahan ni",
+    "saan nakatira", "where does", "contact info of", "give me the info of", "give me the information of",
+    "information of", "info of", "info ni", "impormasyon ni", "details of", "records of",
+    "what about her number", "what about his number", "ano number ni", "anong number ni",
+    "anong phone number ni", "ano cp number ni", "ano ang number ni", "ano ang cp number"
+  ];
+
+  if (includesAny(normalizedQ, privacyTriggers)) {
+    // Exempt official barangay hotlines or official public leadership questions
+    if (includesAny(normalizedQ, ["hotline", "office", "barangay phone", "emergency", "captain", "kapitan", "wilson caponpon", "tanod", "hall"])) {
+      return false;
+    }
+    return true;
+  }
+
+  return false;
+};
+
+const isDefiniteOutOfScope = (normalizedQ) => {
+  const OUT_OF_SCOPE_WORDS = [
+    "recipe", "luto", "lutuin", "adobo", "sinigang", "cake", "bake", "nba", "basketball score",
+    "movie", "pelikula", "actor", "actress", "celebrity", "minecraft", "roblox", "valorant",
+    "python code", "java code", "react code", "html code", "homework in math", "solve math",
+    "capital of", "president of america", "weather in tokyo", "translate to spanish"
+  ];
+  return includesAny(normalizedQ, OUT_OF_SCOPE_WORDS);
+};
+
 const isServiceQuestion = (question) => {
   const normalized = normalizeText(question);
   return includesAny(normalized, SERVICE_TERMS) || includesAny(normalized, PERSONAL_SERVICE_PHRASES);
@@ -2372,29 +2464,32 @@ export async function askResidentAssistant(question, context = {}) {
 
   if (isHistory) {
     answer = buildPoliticalHistoryAnswer(trimmedQuestion, language);
+  } else if (isPolicy) {
+    answer = buildBarangayPolicyAnswer(trimmedQuestion, context.knowledgeItems || [], language);
+  } else if (isSelfProfileQuestion(normalizedQ, resident)) {
+    answer = buildSelfProfileAnswer(resident, language);
+  } else if (isThirdPartyPrivacyQuestion(normalizedQ)) {
+    answer = buildPrivacyLimitationAnswer(language);
+  } else if (isGreetingMessage(trimmedQuestion)) {
+    answer = buildGreetingAnswer(trimmedQuestion, resident);
+  } else if (isApologyMessage(trimmedQuestion)) {
+    answer = buildApologyAnswer(trimmedQuestion);
+  } else if (isGratitudeMessage(trimmedQuestion)) {
+    answer = buildGratitudeAnswer(trimmedQuestion);
+  } else if (isDefiniteOutOfScope(normalizedQ)) {
+    answer = buildOutOfScopeLimitationAnswer(language);
   } else {
-    // Check Policy / Ordinance / Community Rules Intent
-    const isPolicy = includesAny(normalizedQ, [
-      "policy", "policies", "patakaran", "polisiya", "ordinance", "ordinansa", "batas", "tuntunin",
-      "curfew", "solid waste", "waste management", "segregation", "basura", "videoke", "karaoke", "ingay",
-      "noise", "stray animal", "stray", "alagang hayop", "aso", "pusa", "lupon", "tagapamayapa", "reklamo"
-    ]);
-
-    if (isPolicy) {
-      answer = buildBarangayPolicyAnswer(trimmedQuestion, context.knowledgeItems || [], language);
-    } else {
-      // Only fetch fresh stats if not already provided in context to avoid unnecessary network delay
-      if (!context.residentStats?.loaded) {
-        try {
-          const freshStats = await fetchResidentStats();
-          context.residentStats = freshStats;
-        } catch (error) {
-          console.error("Failed to dynamically fetch fresh stats for AI prompt:", error);
-        }
+    // Only fetch fresh stats if not already provided in context to avoid unnecessary network delay
+    if (!context.residentStats?.loaded) {
+      try {
+        const freshStats = await fetchResidentStats();
+        context.residentStats = freshStats;
+      } catch (error) {
+        console.error("Failed to dynamically fetch fresh stats for AI prompt:", error);
       }
-
-      answer = await queryGeminiWithRichContext(trimmedQuestion, context);
     }
+
+    answer = await queryGeminiWithRichContext(trimmedQuestion, context);
   }
 
   // Realistic AI Thinking & Processing Delay (3 to 4.5 seconds)
@@ -2442,16 +2537,25 @@ By Purok: ${formatCounts(residentStats.purokCounts)}`
       .map((r, i) => `- ${r.document_type} (Status: ${r.status}, Requested: ${formatDate(r.created_at)})`)
       .join("\n") || "No requests submitted yet.";
 
+    // Filter out raw announcement clones or raw Q&A dump templates from knowledge
+    const sanitizedKnowledgeItems = (knowledgeItems || []).filter(
+      (k) =>
+        !k.content?.includes("Audience: Selected Residents:") &&
+        !k.content?.includes("Q1: Question:") &&
+        !k.content?.includes("Q2: Question:") &&
+        !k.title?.toLowerCase().includes("carnapping")
+    );
+
     const knowledgeStr = [
       OFFICIAL_ROLES_KNOWLEDGE_TEXT,
       OFFICIAL_BARANGAY_POLICIES_TEXT,
-      ...knowledgeItems.map((k, i) => `- Title: ${k.title}\n  Content: ${k.content}`)
+      ...sanitizedKnowledgeItems.map((k, i) => `- Title: ${k.title}\n  Content: ${k.content}`)
     ].join("\n\n");
 
     const settings = getSystemSettings();
     const officeHours = settings.officeHours || "Monday to Friday, 8:00 AM - 5:00 PM";
     const contactEmail = settings.officeEmail || "not set";
-    const contactPhone = settings.officePhone || "not set";
+    const contactPhone = settings.officePhone || "09306259795";
 
     const rawDataStr = residentStats?.anonymousResidents 
       ? JSON.stringify(residentStats.anonymousResidents) 
@@ -2471,15 +2575,19 @@ MANDATORY LANGUAGE MATCHING RULE (STRICT - PANEL EVALUATION CRITICAL):
   * IF USER ASKS IN BISAYA / CEBUANO -> YOU MUST REPLY IN NATURAL BISAYA/CEBUANO OR POLITE TAGALOG.
 - STRICT PROHIBITION: NEVER respond in Tagalog to an English question, and NEVER respond in English to a Tagalog question!
 
+CRITICAL DATA PRIVACY CONSTRAINT (DATA PRIVACY ACT OF 2012 / RA 10173):
+- NEVER disclose personal contact numbers, residential addresses, or private information of any individual resident.
+- If asked for someone else's personal info or phone number: Politely explain that under the Data Privacy Act of 2012, personal resident information is strictly confidential, and advise them to contact the Barangay Office at 09306259795.
+- If the logged-in resident asks for their OWN profile/information, summarize their own profile details clearly.
+
+CRITICAL OUT-OF-SCOPE & UNKNOWN INQUIRY LIMITATION:
+- If the user asks about an unknown person, an unrelated non-barangay topic, or something outside Barangay Upper Mingading:
+  * DO NOT guess or dump random unrelated announcements, Q&A numbers (e.g. Q1, Q2), or raw database markers.
+  * Politely state that you do not have information regarding that topic as your knowledge is specifically tailored for Barangay Upper Mingading services.
+
 FAST, CONCISE & ACCURATE RESPONSES:
 - Answer the user's question directly and concisely without unnecessary filler or delays.
 - Keep explanations clear and actionable.
-
-STRICT OUT-OF-SCOPE RULE:
-If the user asks about non-barangay topics (such as cooking recipes, general games, movies, non-barangay coding, or global trivia):
-- Refuse politely in the matching language and redirect them to barangay services.
-- Tagalog Refusal Example: "Pasensya na po, ako ay nakatutok lamang sa pagtulong sa mga serbisyo, dokumento, anunsyo, at mga programa ng Barangay Upper Mingading. Paano ko po kayo matutulungan sa ating barangay services ngayon?"
-- English Refusal Example: "I apologize, but I specialize exclusively in assisting with Barangay Upper Mingading services, documents, announcements, and community programs. How may I assist you with our barangay services today?"
 
 MANDATORY CHART RULE FOR ALL TOTAL / COUNT INQUIRIES:
 Whenever the user asks for ANY population, purok count, senior count, PWD count, or document count:
@@ -2529,7 +2637,7 @@ ${rawDataStr}
 User Question:
 ${question}
 
-Follow the System Instructions strictly. Language MUST match the user question (${detectedLang}). Be direct and accurate.`;
+Follow the System Instructions strictly. Language MUST match the user question (${detectedLang}). If unknown or unrelated, clearly state you don't have information on that topic. Be direct and accurate.`;
 
     const result = await generateText(prompt, {
       systemInstruction: systemInstructionText,
