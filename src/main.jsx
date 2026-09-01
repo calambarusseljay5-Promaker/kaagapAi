@@ -59,12 +59,18 @@ class GlobalErrorBoundary extends React.Component {
           )}
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
             <button
-              onClick={() => {
+              onClick={async () => {
                 try {
-                  localStorage.clear();
-                  sessionStorage.clear();
+                  if ('caches' in window) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.map((k) => caches.delete(k)));
+                  }
+                  if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (const reg of registrations) await reg.unregister();
+                  }
                 } catch (e) {}
-                window.location.reload();
+                window.location.href = window.location.pathname + '?nocache=' + Date.now();
               }}
               style={{
                 background: '#059669',
