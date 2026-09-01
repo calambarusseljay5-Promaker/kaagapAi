@@ -326,6 +326,108 @@ const buildPoliticalHistoryAnswer = (question, language = "tagalog") => {
     🏆 **Awards:** Model Barangay in Solid Waste Management, Best Performing Barangay at Provincial level, Best Recycling Innovation, Special Award Nominee at National level.`;
 };
 
+const OFFICIAL_BARANGAY_POLICIES_TEXT = `
+KNOWLEDGE CATEGORY: BARANGAY UPPER MINGADING POLICIES, ORDINANCES, AND COMMUNITY RULES
+
+1. CURFEW ORDINANCE FOR MINORS (Ordinansa sa Curfew):
+- Hours: 10:00 PM to 4:00 AM daily.
+- Applies to all youth and minors aged 17 and below, except when accompanied by parents/guardians, coming home from legitimate school activities or emergency situations.
+- Purpose: Ensure peace, safety, and protection of minors against crime and delinquency.
+
+2. SOLID WASTE MANAGEMENT & RECYCLING (Batas at Patakaran sa Basura - RA 9003):
+- Mandatory Waste Segregation at Source: Every household must segregate garbage into Biodegradable (Nabubulok), Non-biodegradable / Recyclable (Di-nabubulok), and Residual/Hazardous waste.
+- Barangay MRF (Materials Recovery Facility): Functional recycling hub in Puroks Malipayon & Motor.
+- Strict Prohibition: NO OPEN BURNING (Bawal mag-sunog ng basura). Penalty applies for burning leaves, plastic, or household waste.
+- Awards: Model Barangay in Solid Waste Management (Provincial Level) & Best Recycling Innovation Awardee.
+
+3. PEACE & ORDER / NOISE REGULATION & VIDEOKE POLICY (Patakaran sa Ingay at Videoke):
+- Videoke and loud audio sound systems are permitted only until 10:00 PM to preserve neighborly peace, sleep, and public rest.
+- Public disturbance and unruly conduct in public streets are strictly prohibited.
+
+4. RESPONSIBLE PET OWNERSHIP & STRAY ANIMAL CONTROL (Anti-Rabies / Patakaran sa Alagang Hayop):
+- All pet dogs and cats must be kept within the owner's premises or leashed when in public.
+- Roaming stray animals on public streets are prohibited.
+- Free Anti-Rabies Vaccination is provided during barangay veterinary and health drives.
+
+5. KATARUNGANG PAMBARANGAY / DISPUTE RESOLUTION (Lupon Tagapamayapa):
+- Barangay conciliation and amicable settlement: All neighborhood disputes between residents must first be brought before the Punong Barangay and Lupong Tagapamayapa before filing in court.
+- Venue: Barangay Peace & Order Office / Barangay Hall.
+
+6. BARANGAY CLEARANCE & CERTIFICATE ISSUANCE POLICY:
+- Requirements: Valid Government ID, Cedula (Community Tax Certificate), and settlement of standard processing fee (₱50 for clearances; Indigency is Free).
+- Only registered residents or authorized family representatives with written authorization and valid IDs may claim documents.
+
+7. EMERGENCY & DISASTER EVACUATION POLICY:
+- Designated Evacuation Center: Barangay Hall / Upper Mingading Gymnasium / Bacolod Primary School.
+- Emergency Contact Hotline: 09306259795.
+`;
+
+const buildBarangayPolicyAnswer = (question, knowledgeItems = [], language = "tagalog") => {
+  const norm = normalizeText(question);
+
+  // 1. Curfew
+  if (includesAny(norm, ["curfew", "oras ng labas", "minors", "kabataan sa gabi", " curfew"])) {
+    return language === "tagalog"
+      ? "🌙 **Patakaran sa Curfew ng Barangay Upper Mingading:**\n\n• **Oras ng Curfew:** 10:00 PM hanggang 4:00 AM araw-araw para sa mga menor de edad (17 anyos pababa).\n• **Eksepsyon:** Kung may kasamang magulang/guardian o galing sa lehitimong aktibidad sa paaralan o emergency.\n• **Layunin:** Para sa kaligtasan, kapayapaan, at proteksyon ng ating mga kabataan."
+      : "🌙 **Barangay Upper Mingading Curfew Policy:**\n\n• **Curfew Hours:** 10:00 PM to 4:00 AM daily for minors (aged 17 and below).\n• **Exceptions:** Minors accompanied by parents/guardians, emergency situations, or returning from official school activities.\n• **Purpose:** To maintain peace and order and ensure the safety of youth in the community.";
+  }
+
+  // 2. Solid Waste Management / Basura / Recycling
+  if (includesAny(norm, ["solid waste", "basura", "garbage", "segregation", "mrf", "recycling", "sunog", "pagsusunog"])) {
+    return language === "tagalog"
+      ? "♻️ **Patakaran sa Solid Waste Management at Basura ng Barangay Upper Mingading:**\n\n• **Mandatory Waste Segregation:** Kinakailangang ihiwalay ang basura sa bahay: Nabubulok (Biodegradable), Di-nabubulok / Recyclable, at Residual.\n• **Bawal Magsunog (No Open Burning):** Mahigpit na ipinagbabawal ang pagsusunog ng dahon, plastik, o anumang basura (may karampatang multa ayon sa RA 9003).\n• **Materials Recovery Facility (MRF):** May aktibong pasilidad sa Puroks Malipayon at Motor para sa pag-recycle.\n🏆 Ang ating barangay ay pinarangalan bilang **Model Barangay in Solid Waste Management** at **Best Recycling Innovation Awardee**!"
+      : "♻️ **Barangay Upper Mingading Solid Waste Management & Cleanliness Policy:**\n\n• **Mandatory Segregation at Source:** All households must segregate waste into Biodegradable, Recyclable, and Residual waste.\n• **Strict No Open Burning Policy:** Burning of dried leaves, plastics, or garbage is strictly prohibited under RA 9003 and local ordinances.\n• **Materials Recovery Facility (MRF):** Active recycling facilities operate in Purok Malipayon and Purok Motor.\n🏆 Upper Mingading is an awarded **Model Barangay in Solid Waste Management** and recipient of the **Best Recycling Innovation Award**!";
+  }
+
+  // 3. Videoke / Noise Regulation / Ingay
+  if (includesAny(norm, ["videoke", "karaoke", "ingay", "noise", "tugtog", "sound system", "loud"])) {
+    return language === "tagalog"
+      ? "🔇 **Patakaran sa Videoke at Ingay sa Barangay Upper Mingading:**\n\n• **Takdang Oras:** Ang paggamit ng videoke, karaoke, at malalakas na sound system ay pinapayagan lamang hanggang **10:00 PM**.\n• **Layunin:** Upang mapanatili ang katahimikan, kapayapaan, at sapat na pahinga ng ating mga kapitbahay at manggagawa."
+      : "🔇 **Barangay Upper Mingading Noise & Videoke Policy:**\n\n• **Permitted Hours:** Videoke, karaoke, and loud music/sound systems are allowed only until **10:00 PM**.\n• **Purpose:** To ensure peace and quiet and respect community rest hours for all residents.";
+  }
+
+  // 4. Stray Animals / Alagang Hayop / Aso / Pusa
+  if (includesAny(norm, ["aso", "pusa", "stray", "hayop", "pet", "pets", "rabies", "tali", "leash"])) {
+    return language === "tagalog"
+      ? "🐕 **Patakaran sa Responsableng Pag-aalaga ng Hayop (Pet Ownership):**\n\n• **Bawal ang Pagala-gala:** Mahigpit na ipinagbabawal ang pagpapagala ng aso at pusa sa pampublikong kalsada.\n• **Pagpapatali / Kulong:** Dapat nakatali o nasa loob ng bakuran ang mga alagang hayop.\n• **Anti-Rabies:** May libreng Anti-Rabies Vaccination drive ang barangay para sa kalusugan ng komunidad."
+      : "🐕 **Responsible Pet Ownership & Stray Animal Policy:**\n\n• **Stray Animal Ban:** Roaming stray dogs and cats on public roads are strictly prohibited.\n• **Leash / Enclosure:** Pets must be kept leashed or contained within private property.\n• **Anti-Rabies:** Free Anti-Rabies vaccinations are conducted during barangay veterinary drives.";
+  }
+
+  // 5. Lupon Tagapamayapa / Katarungang Pambarangay / Reklamo
+  if (includesAny(norm, ["lupon", "tagapamayapa", "reklamo", "complaint", "away", "alitan", "katarungang pambarangay", "mediation"])) {
+    return language === "tagalog"
+      ? "⚖️ **Katarungang Pambarangay at Paghahain ng Reklamo:**\n\n• **Barangay Conciliation:** Lahat ng alitan o reklamo sa pagitan ng mga residente ay kailangang dumaan muna sa Punong Barangay at Lupong Tagapamayapa para sa mapayapang mediation bago dalhin sa korte.\n• **Paano Magreklamo:** Pumunta sa Barangay Hall / Peace and Order Office upang pormal na maghain ng reklamo."
+      : "⚖️ **Katarungang Pambarangay / Dispute Resolution:**\n\n• **Mediation First:** All disputes between residents must first undergo mediation and conciliation before the Punong Barangay / Lupong Tagapamayapa before filing in court.\n• **Filing:** Visit the Barangay Hall / Peace & Order Office to file a formal blotter or complaint.";
+  }
+
+  // Check if custom knowledge items have matching policies
+  const policyKnowledge = (knowledgeItems || []).filter(
+    (k) =>
+      k.category?.toLowerCase().includes("policy") ||
+      k.title?.toLowerCase().includes("ordinance") ||
+      k.title?.toLowerCase().includes("patakaran") ||
+      k.title?.toLowerCase().includes("policy")
+  );
+
+  if (policyKnowledge.length > 0) {
+    const customList = policyKnowledge
+      .map((k) => `• **${k.title}**: ${k.content}`)
+      .join("\n\n");
+
+    if (language === "tagalog") {
+      return `📜 **Mga Opisyal na Patakaran at Ordinansa ng Barangay Upper Mingading:**\n\n1. 🌙 **Curfew para sa Minors:** 10:00 PM – 4:00 AM.\n2. ♻️ **Solid Waste Management:** Mandatory segregation at bawal magsunog ng basura (RA 9003).\n3. 🔇 **Videoke & Noise Regulation:** Hanggang 10:00 PM lamang ang videoke at malalakas na tugtog.\n4. 🐕 **Pet Ownership:** Bawal ang pagala-galang aso sa kalsada; libreng anti-rabies vaccination.\n5. ⚖️ **Katarungang Pambarangay:** Lahat ng alitan ay dinidinig sa Lupong Tagapamayapa.\n\n${customList}`;
+    }
+    return `📜 **Official Policies & Ordinances of Barangay Upper Mingading:**\n\n1. 🌙 **Curfew for Minors:** 10:00 PM – 4:00 AM daily.\n2. ♻️ **Solid Waste Management:** Mandatory waste segregation and strict ban on open burning (RA 9003).\n3. 🔇 **Videoke & Noise Regulation:** Loud audio and videoke allowed only until 10:00 PM.\n4. 🐕 **Responsible Pet Ownership:** Stray animals prohibited on roads; regular anti-rabies vaccination.\n5. ⚖️ **Katarungang Pambarangay:** Mandatory mediation before the Lupon Tagapamayapa for neighborhood disputes.\n\n${customList}`;
+  }
+
+  // General Policies Overview
+  if (language === "tagalog") {
+    return `📜 **Mga Pangunahing Patakaran at Ordinansa ng Barangay Upper Mingading:**\n\n1. 🌙 **Curfew para sa Minors (17 anyos pababa):** 10:00 PM hanggang 4:00 AM araw-araw para sa kaligtasan ng kabataan.\n2. ♻️ **Solid Waste Management & Cleanliness (RA 9003):** Mahigpit na waste segregation (Nabubulok, Di-nabubulok, Recyclable) at **bawal magsunog ng basura (No Open Burning)**. Ang barangay ay Model Barangay sa Basura at may Materials Recovery Facility (MRF).\n3. 🔇 **Ordinansa sa Videoke at Ingay:** Pinapayagan lamang ang videoke at malalakas na tugtog hanggang **10:00 PM**.\n4. 🐕 **Responsableng Pag-aalaga ng Aso/Pusa:** Bawal ang pagala-galang hayop sa kalsada. Libreng anti-rabies vaccination sa barangay.\n5. ⚖️ **Katarungang Pambarangay (Lupong Tagapamayapa):** Lahat ng alitan ng kapitbahay ay kailangang idaan sa mediation sa barangay bago magsampa sa korte.\n6. 📄 **Document Issuance:** Kailangan ng Valid ID at Cedula sa pagkuha ng barangay clearance at certifications.`;
+  }
+
+  return `📜 **Primary Policies & Community Ordinances of Barangay Upper Mingading:**\n\n1. 🌙 **Curfew for Minors (Aged 17 & Below):** 10:00 PM to 4:00 AM daily for youth safety and protection.\n2. ♻️ **Solid Waste Management & Cleanliness (RA 9003):** Mandatory waste segregation at source and **strict prohibition against open burning (No Open Burning)**. Upper Mingading is an awarded Model Barangay with operational MRF.\n3. 🔇 **Videoke & Noise Regulation:** Videoke and loud sound systems are permitted only until **10:00 PM**.\n4. 🐕 **Responsible Pet Ownership:** Stray animals are prohibited from roaming public streets; free anti-rabies vaccinations provided.\n5. ⚖️ **Katarungang Pambarangay (Lupon Tagapamayapa):** Mandatory community mediation before court proceedings for local disputes.\n6. 📄 **Document Issuance Policy:** Valid Government ID and Cedula required for barangay clearances and certificates.`;
+};
+
 const OFFICIAL_ROLES_KNOWLEDGE_TEXT = `
 KNOWLEDGE CATEGORY: BARANGAY OFFICIALS - ROLES AND FUNCTIONS
 
@@ -2269,6 +2371,17 @@ export async function askResidentAssistant(question, context = {}) {
     return buildPoliticalHistoryAnswer(trimmedQuestion, language);
   }
 
+  // Check Policy / Ordinance / Community Rules Intent
+  const isPolicy = includesAny(normalizedQ, [
+    "policy", "policies", "patakaran", "polisiya", "ordinance", "ordinansa", "batas", "tuntunin",
+    "curfew", "solid waste", "waste management", "segregation", "basura", "videoke", "karaoke", "ingay",
+    "noise", "stray animal", "stray", "alagang hayop", "aso", "pusa", "lupon", "tagapamayapa", "reklamo"
+  ]);
+
+  if (isPolicy) {
+    return buildBarangayPolicyAnswer(trimmedQuestion, context.knowledgeItems || [], language);
+  }
+
   // Only fetch fresh stats if not already provided in context to avoid unnecessary network delay
   if (!context.residentStats?.loaded) {
     try {
@@ -2319,6 +2432,7 @@ By Purok: ${formatCounts(residentStats.purokCounts)}`
 
     const knowledgeStr = [
       OFFICIAL_ROLES_KNOWLEDGE_TEXT,
+      OFFICIAL_BARANGAY_POLICIES_TEXT,
       ...knowledgeItems.map((k, i) => `- Title: ${k.title}\n  Content: ${k.content}`)
     ].join("\n\n");
 

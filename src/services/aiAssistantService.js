@@ -408,6 +408,14 @@ Official Political History & Leadership Timeline of Barangay Upper Mingading:
 9. Hon. Myrna Garito (2004–2007) - Punong Barangay. Constructed MRF and water system in Puroks Malipayon & Motor. Opened Brgy Road from Payhod to Buklod. Bacolod Annex Primary School in Purok Muslim. New Barangay Hall funded by Cong. Em "Lala" Taliño-Mendoza. Box Culvert & 2 classrooms.
 10. Hon. Wilson Caponpon (2007–Present) - Current Punong Barangay. Implemented government programs, maintained peace and order, improved roads. Awards: Model Barangay in Solid Waste Management, Best Performing Barangay at Provincial level, Best Recycling Innovation, Special Award Nominee at National level.
 
+Official Policies & Ordinances of Barangay Upper Mingading:
+1. Curfew for Minors (below 18): 10:00 PM to 4:00 AM daily.
+2. Solid Waste Management (RA 9003): Mandatory waste segregation (Nabubulok, Di-nabubulok, Recyclable). Strict ban on open burning (No Open Burning). Awarded Model Barangay in Solid Waste Management & Best Recycling Innovation.
+3. Videoke & Noise Regulation: Videoke and loud sounds are allowed only until 10:00 PM.
+4. Responsible Pet Ownership: Stray dogs/cats prohibited on public streets; free anti-rabies vaccinations.
+5. Katarungang Pambarangay: Mandatory mediation by Lupon Tagapamayapa for neighborhood disputes before filing in court.
+6. Document Issuance: Valid ID, Cedula, and ₱50 standard processing fee (Indigency is Free).
+
 Context warnings:
 ${contextWarnings || "None"}`;
 }
@@ -472,12 +480,23 @@ function buildLocalFallbackAnswer(question, snapshot) {
   const wantsResident = includesAny(question, ["resident", "population", "purok", "gender", "age", "male", "female", "senior", "pwd", "pwed"]);
   const wantsTemplate = includesAny(question, ["template", "available", "requirements", "fee"]);
   const wantsLivelihood = includesAny(question, ["livelihood", "job", "jobs", "program", "programs", "training"]);
+  const wantsPolicies = includesAny(question, ["policy", "policies", "patakaran", "polisiya", "ordinance", "ordinansa", "curfew", "solid waste", "basura", "videoke", "ingay", "noise", "stray", "aso", "lupon"]);
   const wantsAnnouncement = includesAny(question, ["announcement", "announcements", "publish", "published"]);
 
   const lines = [];
 
   if (wantsAssistantPurpose) {
     return buildAssistantPurposeAnswer();
+  } else if (wantsPolicies) {
+    return [
+      "📜 Mga Opisyal na Patakaran at Ordinansa ng Barangay Upper Mingading:",
+      "1. 🌙 Curfew para sa Minors (17 anyos pababa): 10:00 PM hanggang 4:00 AM araw-araw.",
+      "2. ♻️ Solid Waste Management (RA 9003): Mandatory waste segregation at bawal magsunog ng basura (No Open Burning). Model Barangay awardee na may Materials Recovery Facility (MRF).",
+      "3. 🔇 Videoke & Noise Regulation: Hanggang 10:00 PM lamang ang videoke at malalakas na tugtog.",
+      "4. 🐕 Pet Ownership: Bawal ang pagala-galang aso sa kalsada; regular na libreng anti-rabies vaccination.",
+      "5. ⚖️ Katarungang Pambarangay: Lahat ng alitan ng kapitbahay ay dinidinig sa Lupong Tagapamayapa bago dalhin sa korte.",
+      "6. 📄 Document Issuance: Kailangan ng Valid ID at Cedula sa pagkuha ng barangay clearance at certificates."
+    ].join("\n");
   } else if (wantsHistory) {
     return [
       "🏛️ Political History & Leadership Timeline of Barangay Upper Mingading:",
