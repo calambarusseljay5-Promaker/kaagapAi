@@ -399,8 +399,15 @@ const Login = ({ portalMode = null }) => {
     [formData]
   );
 
-  // Initial loading splash simulation (500ms)
+  // Initial loading splash simulation (500ms) and ensuring blank login fields
   useEffect(() => {
+    setFormData((current) => ({
+      ...current,
+      email: "",
+      password: "",
+      username: "",
+      portal_password: "",
+    }));
     const splashTimer = setTimeout(() => {
       setInitialLoading(false);
     }, 500);
@@ -444,6 +451,13 @@ const Login = ({ portalMode = null }) => {
     sessionStorage.removeItem("just_logged_out");
     setModalStep(type);
     setAccessMode(type === "admin_login" ? "Admin" : "Resident");
+    setFormData((current) => ({
+      ...current,
+      email: "",
+      password: "",
+      username: "",
+      portal_password: "",
+    }));
     setError(null);
     setNotice(null);
     setCurrentView("login");
@@ -1934,7 +1948,7 @@ const Login = ({ portalMode = null }) => {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="w-full space-y-3.5">
+            <form onSubmit={handleSubmit} className="w-full space-y-3.5" autoComplete="off">
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300" size={18} />
                 <input
@@ -1949,7 +1963,7 @@ const Login = ({ portalMode = null }) => {
                   }
                   className="w-full h-12 rounded-xl bg-black/35 border border-emerald-400/30 pl-11 pr-4 outline-none text-xs font-semibold text-white placeholder-emerald-200/60 focus:border-emerald-400 focus:bg-black/50 focus:ring-2 focus:ring-emerald-400/30 transition-all duration-200 backdrop-blur-md"
                   required
-                  autoComplete={modalStep === "admin_login" || accessMode === "Admin" ? "username" : "tel"}
+                  autoComplete="off"
                 />
               </div>
 
@@ -1967,7 +1981,7 @@ const Login = ({ portalMode = null }) => {
                   }
                   className="w-full h-12 rounded-xl bg-black/35 border border-emerald-400/30 pl-11 pr-11 outline-none text-xs font-semibold text-white placeholder-emerald-200/60 focus:border-emerald-400 focus:bg-black/50 focus:ring-2 focus:ring-emerald-400/30 transition-all duration-200 backdrop-blur-md"
                   required
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                 />
                 <button
                   type="button"

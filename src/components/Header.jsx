@@ -124,8 +124,8 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
   const displayName = getDisplayName(account?.user, account);
   const displayEmail = getAdminCredentials().email || getSystemSettings().officeEmail || account?.user?.email || "uppermingading@gmail.com";
   const displayRole = account?.profile?.role || "Administrator";
-  const savedPhoto = typeof window !== "undefined" ? localStorage.getItem("kaagapai_admin_profile_photo") : null;
-  const profilePhotoUrl = account?.profile?.profile_photo_url || account?.user?.user_metadata?.avatar_url || getAdminCredentials().profilePhotoUrl || savedPhoto || null;
+  const savedPhoto = (typeof window !== "undefined" ? localStorage.getItem("kaagapai_admin_profile_photo") : null) || getAdminCredentials().profilePhotoUrl || getSystemSettings().adminProfilePhotoUrl || "";
+  const profilePhotoUrl = account?.profile?.profile_photo_url || account?.user?.user_metadata?.avatar_url || savedPhoto || null;
 
   const messages = useMemo(() => {
     if (title) {
@@ -641,9 +641,16 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                     borderStyle: 'solid',
                   }}
                 >
-                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20 text-white ring-2 ring-emerald-300/50">
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20 text-white ring-2 ring-emerald-300/50 overflow-hidden">
                     {profilePhotoUrl ? (
-                      <img src={profilePhotoUrl} alt="" className="h-full w-full rounded-full object-cover" />
+                      <img
+                        src={profilePhotoUrl}
+                        alt="Admin Profile"
+                        className="h-full w-full rounded-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.style.display = "none";
+                        }}
+                      />
                     ) : (
                       <User size={16} className="text-white" />
                     )}
@@ -660,9 +667,16 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                     <div className="fixed inset-0 z-[99990]" onClick={() => setShowProfile(false)} />
                     <div className="absolute right-0 top-full z-[99999] mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl backdrop-blur-xl text-slate-900" style={{ width: 'min(16rem, calc(100vw - 2rem))' }}>
                     <div className="flex items-center gap-3 border-b border-slate-100 px-2 pb-3 pt-1">
-                      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00552E]/10 text-[#00552E] ring-2 ring-[#00552E]/20">
+                      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00552E]/10 text-[#00552E] ring-2 ring-[#00552E]/20 overflow-hidden">
                         {profilePhotoUrl ? (
-                          <img src={profilePhotoUrl} alt="" className="h-full w-full rounded-full object-cover" />
+                          <img
+                            src={profilePhotoUrl}
+                            alt="Admin Profile"
+                            className="h-full w-full rounded-full object-cover"
+                            onError={(e) => {
+                              e.currentTarget.style.display = "none";
+                            }}
+                          />
                         ) : (
                           <User size={20} className="text-[#00552E]" />
                         )}

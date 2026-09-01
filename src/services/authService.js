@@ -89,7 +89,7 @@ export function saveAdminSession(session) {
 
   const creds = getAdminCredentials();
   const settings = getSystemSettings();
-  const savedPhoto = typeof window !== "undefined" ? localStorage.getItem("kaagapai_admin_profile_photo") : null;
+  const savedPhoto = (typeof window !== "undefined" ? localStorage.getItem("kaagapai_admin_profile_photo") : null) || creds.profilePhotoUrl || settings.adminProfilePhotoUrl || "";
   const photoUrl = session.profile?.profile_photo_url || session.user?.user_metadata?.avatar_url || savedPhoto || creds.profilePhotoUrl || null;
   const activeFullName = session.user?.user_metadata?.full_name || session.profile?.full_name || creds.fullName || "Barangay Administrator";
   const activePhone = session.profile?.phone || creds.phone || settings.officePhone || "";
@@ -102,23 +102,24 @@ export function saveAdminSession(session) {
 
   const serialized = {
     user: {
+      ...(session.user || {}),
       id: session.user?.id || "00000000-0000-4000-a000-000000000001",
       email: session.user?.email || creds.email || settings.officeEmail || "uppermingading@gmail.com",
       user_metadata: {
+        ...(session.user?.user_metadata || {}),
         full_name: activeFullName,
         username: session.user?.user_metadata?.username || creds.username || settings.adminUsername || "kaagapai",
         avatar_url: photoUrl,
       },
-      ...session.user,
     },
     profile: {
+      ...(session.profile || {}),
       id: session.profile?.id || session.user?.id || "00000000-0000-4000-a000-000000000001",
       role: "admin",
       registration_status: "Active",
       full_name: activeFullName,
       phone: activePhone,
       profile_photo_url: photoUrl,
-      ...session.profile,
     },
     session: session.session || {
       access_token: "admin-jwt-session-token",
@@ -245,7 +246,12 @@ export async function loginUser(usernameOrEmail, password) {
         adminUser.id = supaAuth.user.id;
         adminProfile.id = supaAuth.user.id;
         const fetchedProfile = await getUserProfile(supaAuth.user.id).catch(() => null);
-        if (fetchedProfile) Object.assign(adminProfile, fetchedProfile);
+        if (fetchedProfile) {
+          Object.assign(adminProfile, fetchedProfile);
+          if (!adminProfile.profile_photo_url && finalPhoto) {
+            adminProfile.profile_photo_url = finalPhoto;
+          }
+        }
       }
     } catch {}
 
@@ -483,10 +489,10 @@ export async function getCurrentUserWithProfile(forceRefresh = false) {
       const p = {
         role: "admin",
         registration_status: "Active",
+        ...(adminSession.profile || {}),
         full_name: adminSession.profile?.full_name || adminSession.user?.user_metadata?.full_name || finalFullName,
         phone: adminSession.profile?.phone || finalPhone,
-        profile_photo_url: adminSession.profile?.profile_photo_url || finalPhoto,
-        ...(adminSession.profile || {}),
+        profile_photo_url: adminSession.profile?.profile_photo_url || finalPhoto || savedPhoto || null,
       };
       return setCachedAndReturn({
         user: {
