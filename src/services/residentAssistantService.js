@@ -183,6 +183,18 @@ const buildGratitudeAnswer = (question) => {
 const buildPoliticalHistoryAnswer = (question, language = "tagalog") => {
   const norm = normalizeText(question);
 
+  // Check if asking about the first leader or first captain
+  if (
+    includesAny(norm, [
+      "first captain", "1st captain", "unang kapitan", "unang pinuno", "first leader",
+      "1st barangay captain", "first barangay captain", "sino ang unang", "who is the first"
+    ])
+  ) {
+    return language === "tagalog"
+      ? "🏛️ **Ang Unang Pinuno at Kapitan ng Barangay Upper Mingading:**\n\n1. **Hon. Gaudencio Catenas** (1952–1958) — Ang **Unang Pinuno (Teniente del Barrio)** ng barangay. Sa kanyang pamumuno itinatag ang Bacolod Primary School noong 1953 mula sa donasyong 2 ektaryang lupa ni G. Sagadan kasama ang 1.85 ektarya para sa barangay site.\n\n2. **Hon. Segundo Cari** (1969–1972) — Ang **Unang may opisyal na titulong Barangay Captain** sa Upper Mingading na nagpalawak ng teritoryo ng barangay."
+      : "🏛️ **The First Leader & Barangay Captain of Barangay Upper Mingading:**\n\n1. **Hon. Gaudencio Catenas** (1952–1958) — The **1st Leader (Teniente del Barrio)** of the barangay. He facilitated the opening of Bacolod Primary School (founded in 1953) on 2 hectares of donated land by Mr. Sagadan, plus 1.85 hectares for the barangay site.\n\n2. **Hon. Segundo Cari** (1969–1972) — The **1st official to carry the title of Barangay Captain** in Upper Mingading, who expanded the barangay territory.";
+  }
+
   // Check if asking about a specific past leader
   if (includesAny(norm, ["catenas", "gaudencio"])) {
     return language === "tagalog"
@@ -521,30 +533,32 @@ const buildApologyAnswer = (question) =>
     : "No worries, it's okay. I'm here to help with barangay documents, announcements, livelihood/jobs, and other resident assistance.";
 
 const isGreetingMessage = (question) => {
-  const normalized = normalizeText(question);
-  const words = normalized.split(" ").filter(Boolean);
-  return (
-    words.length <= 5 &&
+  const normalized = normalizeText(question).trim();
+  const words = normalized.split(/\s+/).filter(Boolean);
+  if (words.length > 5) return false;
+
+  // Never match as greeting if question contains meaningful domain topics or question words
+  if (
     includesAny(normalized, [
-      "hello",
-      "hi",
-      "hai",
-      "hey",
-      "good morning",
-      "goodmorning",
-      "good afternoon",
-      "goodafternoon",
-      "good evening",
-      "goodevening",
-      "kumusta",
-      "kamusta",
-      "magandang araw",
-      "magandang umaga",
-      "magandang hapon",
-      "magandang gabi",
-      "magandang tanghali",
+      "history", "kasaysayan", "political", "politika", "pulitika", "pinagmulan", "origin",
+      "kapitan", "captain", "leader", "pinuno", "document", "dokumento", "clearance", "certificate",
+      "purok", "resident", "who", "what", "where", "when", "how", "sino", "ano", "paano", "kailan", "saan",
+      "first", "1st", "una", "unang", "nagawa", "accomplishment", "awards"
     ])
-  );
+  ) {
+    return false;
+  }
+
+  const EXACT_GREETINGS = new Set([
+    "hello", "hi", "hai", "hey", "hola", "helo",
+    "good morning", "goodmorning", "good afternoon", "goodafternoon",
+    "good evening", "goodevening", "good day", "goodday",
+    "kumusta", "kamusta", "musta",
+    "magandang araw", "magandang umaga", "magandang hapon", "magandang gabi", "magandang tanghali"
+  ]);
+
+  if (EXACT_GREETINGS.has(normalized)) return true;
+  return words.some((w) => ["hello", "hi", "hey", "kumusta", "kamusta"].includes(w));
 };
 
 const buildGreetingAnswer = (question, resident) => {
@@ -2233,6 +2247,27 @@ async function buildLocalAnswer(question, context = {}) {
 export async function askResidentAssistant(question, context = {}) {
   const trimmedQuestion = question?.trim();
   if (!trimmedQuestion) return "";
+
+  const normalizedQ = normalizeText(trimmedQuestion);
+  const language = isTagalogQuestion(trimmedQuestion) ? "tagalog" : "english";
+
+  // Check History / Political Leadership Intent FIRST
+  const isHistory =
+    includesAny(normalizedQ, [
+      "history", "kasaysayan", "pinagmulan", "origin", "political", "pulitika", "politika",
+      "first captain", "1st captain", "unang kapitan", "unang pinuno", "first leader",
+      "1st barangay captain", "first barangay captain", "dating kapitan", "nakaraang kapitan",
+      "previous captain", "past captain", "past leaders", "accomplishments",
+      "catenas", "bolivar", "cari", "capio", "calician", "caponpon"
+    ]) ||
+    (
+      includesAny(normalizedQ, ["captain", "kapitan", "leader", "pinuno"]) &&
+      includesAny(normalizedQ, ["first", "1st", "una", "unang", "dating", "nakaraan", "past", "previous", "all", "lahat", "who", "sino", "list", "talaan"])
+    );
+
+  if (isHistory) {
+    return buildPoliticalHistoryAnswer(trimmedQuestion, language);
+  }
 
   // Only fetch fresh stats if not already provided in context to avoid unnecessary network delay
   if (!context.residentStats?.loaded) {
