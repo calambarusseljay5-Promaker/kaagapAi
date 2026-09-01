@@ -180,8 +180,43 @@ const buildGratitudeAnswer = (question) => {
   return "You're welcome! If you need anything else about barangay services or documents, feel free to ask. Have a great day!";
 };
 
+const buildCurrentCaptainAnswer = (language = "tagalog") => {
+  if (language === "tagalog") {
+    return [
+      "🏛️ **Kasalukuyang Punong Barangay (Barangay Captain) ng Barangay Upper Mingading:**",
+      "",
+      "• **Pangalan:** **Hon. Wilson Caponpon**",
+      "• **Posisyon:** Punong Barangay (2007 hanggang Kasalukuyan / Present)",
+      "• **Mga Pangunahing Naisakatuparan at Parangal:**",
+      "  - Matagumpay na nagpatupad ng mga pambansa, panlalawigan, at pambayang programa ng pamahalaan.",
+      "  - Patuloy na nagpapanatili ng kapayapaan, kaayusan, at pagsasaayos ng mga kalsada sa barangay.",
+      "  - Ginawaran ng **Model Barangay in Solid Waste Management**, **Best Performing Barangay at Provincial Level**, at **Best Recycling Innovation Award**.",
+      "",
+      "*Kung nais ninyong makita ang iba pang opisyal ng barangay council, itanong lamang: \"Sino ang mga opisyal ng barangay?\" o para sa kasaysayan: \"Political history of barangay\".*"
+    ].join("\n");
+  }
+
+  return [
+    "🏛️ **Current Punong Barangay (Barangay Captain) of Barangay Upper Mingading:**",
+    "",
+    "• **Name:** **Hon. Wilson Caponpon**",
+    "• **Position:** Punong Barangay (2007–Present)",
+    "• **Key Accomplishments & Recognitions:**",
+    "  - Spearheaded national, provincial, and municipal government development programs.",
+    "  - Maintained peace, order, and public safety while continuously improving community roads.",
+    "  - Awarded **Model Barangay in Solid Waste Management**, **Best Performing Barangay at Provincial Level**, and **Best Recycling Innovation**.",
+    "",
+    "*To view the rest of the Barangay Council, you can ask: \"Who are the barangay officials?\" or for past leadership: \"What is the political history?\".*"
+  ].join("\n");
+};
+
 const buildPoliticalHistoryAnswer = (question, language = "tagalog") => {
   const norm = normalizeText(question);
+
+  // Check if asking about the current / present captain
+  if (includesAny(norm, ["caponpon", "wilson", "wilson caponpon", "present", "current", "kasalukuyan", "ngayon"]) && !includesAny(norm, ["history", "timeline", "all", "lahat"])) {
+    return buildCurrentCaptainAnswer(language);
+  }
 
   // Check if asking about the first leader or first captain
   if (
@@ -2446,21 +2481,38 @@ export async function askResidentAssistant(question, context = {}) {
   const normalizedQ = normalizeText(trimmedQuestion);
   const language = isTagalogQuestion(trimmedQuestion) ? "tagalog" : "english";
 
-  // Check History / Political Leadership Intent FIRST
+  // 1. Current / Present Barangay Captain Intent
+  const isCurrentCaptain =
+    (
+      includesAny(normalizedQ, [
+        "present captain", "current captain", "present barangay captain", "current barangay captain",
+        "punong barangay ngayon", "kapitan ngayon", "kasalukuyang kapitan", "kasalukuyang punong barangay",
+        "who is the captain", "who is the barangay captain", "who is our captain", "who is captain",
+        "sino ang kapitan", "sino ang punong barangay", "sino kapitan", "sino punong barangay",
+        "who is current", "who is present", "current leader", "present leader", "wilson caponpon"
+      ]) ||
+      (
+        includesAny(normalizedQ, ["captain", "kapitan", "punong barangay"]) &&
+        includesAny(normalizedQ, ["present", "current", "ngayon", "kasalukuyan", "who", "sino", "our", "natin", "aming"])
+      )
+    ) &&
+    !includesAny(normalizedQ, ["first", "1st", "una", "unang", "history", "kasaysayan", "dating", "past", "previous", "timeline", "all captains", "lahat ng kapitan", "list", "talaan"]);
+
+  // 2. Political History / Leadership Timeline Intent
   const isHistory =
     includesAny(normalizedQ, [
-      "history", "kasaysayan", "pinagmulan", "origin", "political", "pulitika", "politika",
-      "first captain", "1st captain", "unang kapitan", "unang pinuno", "first leader",
+      "political history", "kasaysayan", "pinagmulan", "origin", "pulitika", "politika",
+      "first captain", "1st captain", "unang kapitan", "unang pinuno", "first leader", "1st leader",
       "1st barangay captain", "first barangay captain", "dating kapitan", "nakaraang kapitan",
-      "previous captain", "past captain", "past leaders", "accomplishments",
-      "catenas", "bolivar", "cari", "capio", "calician", "caponpon"
+      "previous captain", "past captain", "past leaders", "leadership timeline", "timeline",
+      "all captains", "lahat ng kapitan", "catenas", "bolivar", "cari", "capio", "calician"
     ]) ||
     (
       includesAny(normalizedQ, ["captain", "kapitan", "leader", "pinuno"]) &&
-      includesAny(normalizedQ, ["first", "1st", "una", "unang", "dating", "nakaraan", "past", "previous", "all", "lahat", "who", "sino", "list", "talaan"])
+      includesAny(normalizedQ, ["first", "1st", "una", "unang", "dating", "nakaraan", "past", "previous", "all", "lahat", "list", "talaan", "timeline"])
     );
 
-  // Check Policy / Ordinance / Community Rules Intent
+  // 3. Check Policy / Ordinance / Community Rules Intent
   const isPolicy = includesAny(normalizedQ, [
     "policy", "policies", "patakaran", "polisiya", "ordinance", "ordinansa", "batas", "tuntunin",
     "curfew", "solid waste", "waste management", "segregation", "basura", "videoke", "karaoke", "ingay",
@@ -2470,7 +2522,9 @@ export async function askResidentAssistant(question, context = {}) {
   const startTime = Date.now();
   let answer = "";
 
-  if (isHistory) {
+  if (isCurrentCaptain) {
+    answer = buildCurrentCaptainAnswer(language);
+  } else if (isHistory) {
     answer = buildPoliticalHistoryAnswer(trimmedQuestion, language);
   } else if (isPolicy) {
     answer = buildBarangayPolicyAnswer(trimmedQuestion, context.knowledgeItems || [], language);
