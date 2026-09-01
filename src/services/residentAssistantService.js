@@ -1543,22 +1543,18 @@ const buildResidentStatsAnswer = (question, stats, language = "english") => {
     // Single Purok request (no other filters)
     if (targetPurok && labels.length === 1) {
       const pTotal = stats.purokCounts?.[targetPurok] ?? (totalCount > 0 ? totalCount : 0);
-      const overallTotal = stats.currentResidents || baseCount || pTotal;
       const text = language === "tagalog"
         ? `Batay sa ating opisyal na rekord ng barangay, ang **Purok ${targetPurok}** ay may kabuuang **${pTotal} residente**.`
         : `Based on our official barangay records, **Purok ${targetPurok}** currently has a total of **${pTotal} residents**.`;
 
-      const chartData = (stats.purokCounts && Object.keys(stats.purokCounts).length > 0)
-        ? stats.purokCounts
-        : { [`Purok ${targetPurok}`]: pTotal, "Other Resident Total": Math.max(0, overallTotal - pTotal) };
+      const chartData = { [`Purok ${targetPurok}`]: pTotal };
 
       return `${text}\n\n[CHART:BAR:${JSON.stringify(chartData)}]`;
     }
 
-    // Intersection request (e.g. Female in Purok) -> Compare against the local base
+    // Intersection request (e.g. Female in Purok)
     const data = {
-      [labelStr]: totalCount,
-      [otherLabel]: Math.max(0, baseCount - totalCount)
+      [labelStr]: totalCount
     };
     return `${text}\n[CHART:BAR:${JSON.stringify(data)}]`;
   }
@@ -2696,8 +2692,10 @@ FAST, CONCISE & ACCURATE RESPONSES:
 
 MANDATORY CHART RULE FOR ALL TOTAL / COUNT INQUIRIES:
 Whenever the user asks for ANY population, purok count, senior count, PWD count, or document count:
-- Provide the exact count text AND ALWAYS APPEND A VALID BAR CHART TAG at the end!
-- Example: "Based on our official barangay records, **Purok Malipayon** currently has a total of **340 residents**.\n[CHART:BAR:{\"Purok Malipayon\":340,\"Other Residents\":1200}]" (Use the real statistics from the provided data).
+- If the user asks about a SPECIFIC PUROK (e.g. "how many residents in Purok Kamonsil?"):
+  * State the total for that purok AND the chart MUST ONLY contain that specific Purok:
+  * Example: "Based on our official barangay records, **Purok Kamonsil** currently has a total of **305 residents**.\n[CHART:BAR:{\"Purok Kamonsil\":305}]"
+- ONLY include all puroks in the chart if the user explicitly asks for "all puroks", "breakdown of puroks", or "every purok". Example: "[CHART:BAR:{\"Kamonsil\":305,\"Payhod\":278,\"Muslim\":547,\"Malipayon\":339,\"Purok-3\":263,\"Buklod\":316,\"Azucena\":157}]"
 
 STRICT NO "LOG IN" STEP RULE:
 - NEVER tell the user to "Log in to your account" or "Sign in"! The resident is ALREADY LOGGED IN to their dashboard. Start step 1 directly with: "1. Click 'Request Document' on your dashboard."
