@@ -1948,7 +1948,25 @@ const Login = ({ portalMode = null }) => {
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="w-full space-y-3.5" autoComplete="off">
+            <form onSubmit={handleSubmit} className="w-full space-y-3.5" autoComplete="off" data-form-type="other">
+              {/* Offscreen decoy inputs to absorb browser password autofill */}
+              <input
+                type="text"
+                name="fake_user_trap"
+                style={{ position: "absolute", opacity: 0, height: 0, width: 0, pointerEvents: "none" }}
+                tabIndex={-1}
+                autoComplete="username"
+                readOnly
+              />
+              <input
+                type="password"
+                name="fake_pass_trap"
+                style={{ position: "absolute", opacity: 0, height: 0, width: 0, pointerEvents: "none" }}
+                tabIndex={-1}
+                autoComplete="current-password"
+                readOnly
+              />
+
               <div className="relative">
                 <User className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300" size={18} />
                 <input
@@ -1964,6 +1982,11 @@ const Login = ({ portalMode = null }) => {
                   className="w-full h-12 rounded-xl bg-black/35 border border-emerald-400/30 pl-11 pr-4 outline-none text-xs font-semibold text-white placeholder-emerald-200/60 focus:border-emerald-400 focus:bg-black/50 focus:ring-2 focus:ring-emerald-400/30 transition-all duration-200 backdrop-blur-md"
                   required
                   autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck="false"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
                 />
               </div>
 
@@ -1982,6 +2005,8 @@ const Login = ({ portalMode = null }) => {
                   className="w-full h-12 rounded-xl bg-black/35 border border-emerald-400/30 pl-11 pr-11 outline-none text-xs font-semibold text-white placeholder-emerald-200/60 focus:border-emerald-400 focus:bg-black/50 focus:ring-2 focus:ring-emerald-400/30 transition-all duration-200 backdrop-blur-md"
                   required
                   autoComplete="new-password"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
                 />
                 <button
                   type="button"
