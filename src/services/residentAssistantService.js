@@ -2367,32 +2367,44 @@ export async function askResidentAssistant(question, context = {}) {
       includesAny(normalizedQ, ["first", "1st", "una", "unang", "dating", "nakaraan", "past", "previous", "all", "lahat", "who", "sino", "list", "talaan"])
     );
 
+  const startTime = Date.now();
+  let answer = "";
+
   if (isHistory) {
-    return buildPoliticalHistoryAnswer(trimmedQuestion, language);
-  }
+    answer = buildPoliticalHistoryAnswer(trimmedQuestion, language);
+  } else {
+    // Check Policy / Ordinance / Community Rules Intent
+    const isPolicy = includesAny(normalizedQ, [
+      "policy", "policies", "patakaran", "polisiya", "ordinance", "ordinansa", "batas", "tuntunin",
+      "curfew", "solid waste", "waste management", "segregation", "basura", "videoke", "karaoke", "ingay",
+      "noise", "stray animal", "stray", "alagang hayop", "aso", "pusa", "lupon", "tagapamayapa", "reklamo"
+    ]);
 
-  // Check Policy / Ordinance / Community Rules Intent
-  const isPolicy = includesAny(normalizedQ, [
-    "policy", "policies", "patakaran", "polisiya", "ordinance", "ordinansa", "batas", "tuntunin",
-    "curfew", "solid waste", "waste management", "segregation", "basura", "videoke", "karaoke", "ingay",
-    "noise", "stray animal", "stray", "alagang hayop", "aso", "pusa", "lupon", "tagapamayapa", "reklamo"
-  ]);
+    if (isPolicy) {
+      answer = buildBarangayPolicyAnswer(trimmedQuestion, context.knowledgeItems || [], language);
+    } else {
+      // Only fetch fresh stats if not already provided in context to avoid unnecessary network delay
+      if (!context.residentStats?.loaded) {
+        try {
+          const freshStats = await fetchResidentStats();
+          context.residentStats = freshStats;
+        } catch (error) {
+          console.error("Failed to dynamically fetch fresh stats for AI prompt:", error);
+        }
+      }
 
-  if (isPolicy) {
-    return buildBarangayPolicyAnswer(trimmedQuestion, context.knowledgeItems || [], language);
-  }
-
-  // Only fetch fresh stats if not already provided in context to avoid unnecessary network delay
-  if (!context.residentStats?.loaded) {
-    try {
-      const freshStats = await fetchResidentStats();
-      context.residentStats = freshStats;
-    } catch (error) {
-      console.error("Failed to dynamically fetch fresh stats for AI prompt:", error);
+      answer = await queryGeminiWithRichContext(trimmedQuestion, context);
     }
   }
 
-  return queryGeminiWithRichContext(trimmedQuestion, context);
+  // Realistic AI Thinking & Processing Delay (3 to 4.5 seconds)
+  const elapsed = Date.now() - startTime;
+  const targetThinkingTime = Math.floor(Math.random() * 1200) + 3200; // 3.2s to 4.4s
+  if (elapsed < targetThinkingTime) {
+    await new Promise((resolve) => setTimeout(resolve, targetThinkingTime - elapsed));
+  }
+
+  return answer;
 }
 
 async function queryGeminiWithRichContext(question, context = {}) {

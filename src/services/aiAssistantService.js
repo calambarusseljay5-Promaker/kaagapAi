@@ -659,13 +659,13 @@ export async function askAIAssistant(question) {
     },
   });
 
-  const adminContext = formatAdminContext(snapshot);
+  const startTime = Date.now();
+  let finalAnswer = "";
 
   if (shouldAnswerLocally(question)) {
-    return buildLocalFallbackAnswer(question, snapshot);
-  }
-
-  const systemInstruction = `You are KaagapAI Assistant, the admin chatbot for the Upper Mingading Barangay Information and Communication System.
+    finalAnswer = buildLocalFallbackAnswer(question, snapshot);
+  } else {
+    const systemInstruction = `You are KaagapAI Assistant, the admin chatbot for the Upper Mingading Barangay Information and Communication System.
 
 Rules:
 - MANDATORY LANGUAGE MATCHING RULE (STRICT): Always reply in the exact language used by the user. If the user asks in English, reply 100% in professional English. If the user asks in Tagalog or Taglish, reply 100% in polite, fluent Tagalog.
@@ -680,7 +680,7 @@ Rules:
 - For privacy, do not expose more personal details than needed for the admin question.
 - Do not include suggested next questions or follow-up prompts.`;
 
-  const prompt = `Admin system data:
+    const prompt = `Admin system data:
 ${adminContext}
 
 Admin question:
@@ -688,17 +688,27 @@ ${question}
 
 Answer:`;
 
-  try {
-    const result = await generateText(prompt, {
-      systemInstruction,
-      temperature: 0.2,
-      maxOutputTokens: 2048,
-    });
+    try {
+      const result = await generateText(prompt, {
+        systemInstruction,
+        temperature: 0.2,
+        maxOutputTokens: 2048,
+      });
 
-    const text = extractGeminiText(result);
-    return stripSuggestedQuestions(text || buildLocalFallbackAnswer(question, snapshot));
-  } catch (error) {
-    console.warn("AI provider unavailable, using local admin summary:", error.message);
-    return buildLocalFallbackAnswer(question, snapshot);
+      const text = extractGeminiText(result);
+      finalAnswer = stripSuggestedQuestions(text || buildLocalFallbackAnswer(question, snapshot));
+    } catch (error) {
+      console.warn("AI provider unavailable, using local admin summary:", error.message);
+      finalAnswer = buildLocalFallbackAnswer(question, snapshot);
+    }
   }
+
+  // Realistic AI Thinking & Processing Delay (3 to 4.5 seconds)
+  const elapsed = Date.now() - startTime;
+  const targetThinkingTime = Math.floor(Math.random() * 1200) + 3200;
+  if (elapsed < targetThinkingTime) {
+    await new Promise((resolve) => setTimeout(resolve, targetThinkingTime - elapsed));
+  }
+
+  return finalAnswer;
 }
