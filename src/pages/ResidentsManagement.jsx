@@ -261,8 +261,9 @@ const getResidentPortalPassword = (resident) => {
   if (!resident) return "";
   return (
     resident.portal_password ||
-    resident.resident_account?.plain_password ||
     resident.plain_password ||
+    resident.resident_account?.plain_password ||
+    (Array.isArray(resident.resident_accounts) && resident.resident_accounts[0]?.plain_password) ||
     resident.password ||
     ""
   );
@@ -2853,34 +2854,57 @@ const ResidentsManagement = () => {
           const resident = params.row;
           const isPasswordVisible = Boolean(visiblePasswordMap[resident.id]);
           const passVal = getResidentPortalPassword(resident);
+          const portalUser = getPortalUsername(resident);
 
           return (
             <div className="py-2 leading-tight space-y-0.5">
               <p className="font-medium text-slate-800">{resident.phone || "-"}</p>
+              {portalUser && portalUser !== "-" && (
+                <p className="text-[11px] font-mono font-bold text-emerald-800">
+                  User: {portalUser}
+                </p>
+              )}
               {resident.email && (
                 <p className="text-xs text-slate-500 truncate max-w-[150px]" title={resident.email}>
                   {resident.email}
                 </p>
               )}
-              <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
-                <span className="font-mono text-[11px] font-bold text-slate-700">
-                  {isPasswordVisible ? (passVal || "(No pass set)") : (passVal ? "••••••••" : "-")}
-                </span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setVisiblePasswordMap((prev) => ({
-                      ...prev,
-                      [resident.id]: !prev[resident.id],
-                    }));
-                  }}
-                  className="p-0.5 rounded hover:bg-slate-200/60 text-slate-500 hover:text-slate-900 transition cursor-pointer"
-                  title={isPasswordVisible ? "Hide password" : "Show password"}
-                >
-                  {isPasswordVisible ? <EyeOff size={13} /> : <Eye size={13} />}
-                </button>
-              </div>
+              {passVal ? (
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
+                  <span className="text-[10px] font-bold text-slate-400">Pass:</span>
+                  <span className="font-mono text-[11px] font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                    {isPasswordVisible ? passVal : "••••••••"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setVisiblePasswordMap((prev) => ({
+                        ...prev,
+                        [resident.id]: !prev[resident.id],
+                      }));
+                    }}
+                    className="p-0.5 rounded hover:bg-slate-200/60 text-slate-500 hover:text-slate-900 transition cursor-pointer"
+                    title={isPasswordVisible ? "Hide password" : "Show password"}
+                  >
+                    {isPasswordVisible ? <EyeOff size={13} /> : <Eye size={13} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (passVal) {
+                        navigator.clipboard.writeText(passVal);
+                        showAdminSystemToast("Password copied to clipboard", "success");
+                      }
+                    }}
+                    className="p-0.5 rounded hover:bg-slate-200/60 text-slate-500 hover:text-emerald-700 transition cursor-pointer"
+                    title="Copy password"
+                  >
+                    <Copy size={13} />
+                  </button>
+                </div>
+              ) : null}
             </div>
           );
         },

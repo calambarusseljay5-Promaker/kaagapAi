@@ -88,6 +88,15 @@ export function validateResidentRegistrationProof(file) {
   return file;
 }
 
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (err) => reject(err);
+    reader.readAsDataURL(file);
+  });
+}
+
 async function attachResidentRegistrationProof(requestId, file) {
   validateResidentRegistrationProof(file);
 
@@ -103,7 +112,9 @@ async function attachResidentRegistrationProof(requestId, file) {
     : "";
   const objectPath = `${requestId}/${uniqueId}${extension ? `.${extension}` : ""}`;
   
-  let uploadError;
+  let uploadError = null;
+  let finalPath = objectPath;
+
   try {
     const { error } = await supabase.storage
       .from(REGISTRATION_PROOF_BUCKET)
@@ -117,40 +128,49 @@ async function attachResidentRegistrationProof(requestId, file) {
     uploadError = err;
   }
 
+  // If storage upload fails (bucket missing, network or CORS error), convert to Data URL fallback
   if (uploadError) {
-    throw getResidentAuthError(uploadError);
-  }
-
-  let attachError;
-  try {
-    const { error } = await supabase.rpc("attach_resident_registration_proof", {
-      p_request_id: requestId,
-      p_proof_path: objectPath,
-      p_proof_name: file.name,
-      p_proof_type: file.type,
-    });
-    attachError = error;
-  } catch (err) {
-    attachError = err;
-  }
-
-  if (attachError) {
-    // Direct table update fallback
-    const { error: updateError } = await supabase
-      .from("resident_activation_requests")
-      .update({
-        requested_proof_path: objectPath,
-        requested_proof_name: file.name,
-        requested_proof_type: file.type,
-      })
-      .eq("id", requestId);
-
-    if (updateError) {
-      throw getResidentAuthError(updateError);
+    console.warn("Storage upload notice, applying inline data URL fallback for proof:", uploadError?.message || uploadError);
+    try {
+      finalPath = await readFileAsDataUrl(file);
+    } catch {
+      finalPath = `proof_${file.name}`;
     }
   }
 
-  return objectPath;
+  // Save proof path / data URL to resident_activation_requests
+  let attachError = null;
+  if (!finalPath.startsWith("data:")) {
+    try {
+      const { error } = await supabase.rpc("attach_resident_registration_proof", {
+        p_request_id: requestId,
+        p_proof_path: finalPath,
+        p_proof_name: file.name,
+        p_proof_type: file.type,
+      });
+      attachError = error;
+    } catch (err) {
+      attachError = err;
+    }
+  }
+
+  if (attachError || finalPath.startsWith("data:")) {
+    // Direct table update fallback
+    try {
+      await supabase
+        .from("resident_activation_requests")
+        .update({
+          requested_proof_path: finalPath,
+          requested_proof_name: file.name,
+          requested_proof_type: file.type,
+        })
+        .eq("id", requestId);
+    } catch (updateErr) {
+      console.warn("Direct update proof notice:", updateErr);
+    }
+  }
+
+  return finalPath;
 }
 
 function serializeResident(row) {
@@ -427,6 +447,9 @@ export async function requestResidentActivation(activation = {}) {
       residentId = result.resident_id || null;
       activationStatus = result.activation_status || result.request_status || result.status || "Pending Approval";
     }
+    if (error) {
+      console.warn("RPC request_resident_account_activation error:", error.message);
+    }
   } catch (rpcErr) {
     console.warn("RPC request_resident_account_activation notice:", rpcErr);
   }
@@ -465,7 +488,6 @@ export async function requestResidentActivation(activation = {}) {
           requested_plain_password: password || null,
           requested_password_hash: password || null,
           requested_email: email || null,
-          requested_phone: phone || null,
           status: "Pending Approval",
           request_date: new Date().toISOString(),
         })

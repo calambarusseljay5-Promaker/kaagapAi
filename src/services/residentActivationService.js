@@ -44,15 +44,20 @@ export async function fetchResidentActivationRequests(statusFilter = "Pending Ap
         const requestIds = requests.map((r) => r.request_id).filter(Boolean);
         const { data: proofRows } = await supabase
           .from("resident_activation_requests")
-          .select("id,requested_proof_path,requested_proof_name,requested_proof_type,requested_username,requested_phone,requested_sex,requested_birthplace,requested_civil_status,requested_occupation,requested_educational_attainment,requested_house_no,requested_relationship_to_household_head,requested_address")
+          .select("id,requested_proof_path,requested_proof_name,requested_proof_type,requested_username,requested_plain_password,requested_phone,requested_sex,requested_birthplace,requested_civil_status,requested_occupation,requested_educational_attainment,requested_house_no,requested_relationship_to_household_head,requested_address")
           .in("id", requestIds);
 
         const proofMap = new Map((proofRows || []).map((row) => [row.id, row]));
-        return requests.map((r) => ({
-          ...r,
-          ...(proofMap.get(r.request_id) || {}),
-          proof_review_available: Boolean(proofMap.get(r.request_id)?.requested_proof_path),
-        }));
+        return requests.map((r) => {
+          const proofInfo = proofMap.get(r.request_id) || {};
+          return {
+            ...r,
+            ...proofInfo,
+            plain_password: proofInfo.requested_plain_password || r.requested_plain_password || "",
+            requested_plain_password: proofInfo.requested_plain_password || r.requested_plain_password || "",
+            proof_review_available: Boolean(proofInfo.requested_proof_path || r.requested_proof_path),
+          };
+        });
       }
 
       return requests;
@@ -100,7 +105,7 @@ export async function fetchResidentActivationRequests(statusFilter = "Pending Ap
 
         const { data: accData } = await supabase
           .from("resident_accounts")
-          .select("resident_id, username, account_status")
+          .select("resident_id, username, plain_password, account_status")
           .in("resident_id", residentIds);
 
         if (accData) {
@@ -125,6 +130,8 @@ export async function fetchResidentActivationRequests(statusFilter = "Pending Ap
         purok: row.requested_purok || res.purok || "",
         address: row.requested_address || res.address || "",
         username: row.requested_username || acc.username || "N/A",
+        plain_password: row.requested_plain_password || acc.plain_password || "",
+        requested_plain_password: row.requested_plain_password || acc.plain_password || "",
         account_status: acc.account_status || (row.status === "Approved" ? "Active" : "Pending"),
         proof_review_available: Boolean(row.requested_proof_path),
       };
@@ -365,6 +372,17 @@ export async function approveResidentActivationRequest(request) {
           account_status: "Active",
           must_change_credentials: false,
         });
+    }
+
+    if (username && finalPlainPassword) {
+      try {
+        await supabase.rpc("sync_resident_plain_password", {
+          p_username: username,
+          p_password: finalPlainPassword,
+        });
+      } catch {
+        // Non-blocking
+      }
     }
 
     // Safely determine admin UUID (only send UUID string or null)

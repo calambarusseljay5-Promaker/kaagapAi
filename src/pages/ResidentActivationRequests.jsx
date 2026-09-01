@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  Check,
   CheckCircle2,
   Clock3,
+  Copy,
   ExternalLink,
+  Eye,
+  EyeOff,
   FileCheck2,
   FileImage,
+  KeyRound,
   Loader2,
   RefreshCw,
   Search,
@@ -67,8 +72,29 @@ const ResidentActivationRequests = () => {
   const [proofLoadingId, setProofLoadingId] = useState("");
   const [proofPreview, setProofPreview] = useState(null);
   const [viewedProofIds, setViewedProofIds] = useState(() => new Set());
+  const [visiblePasswordMap, setVisiblePasswordMap] = useState({});
+  const [copiedKey, setCopiedKey] = useState("");
+  const [showModalPassword, setShowModalPassword] = useState(false);
   const [message, setMessage] = useState(null);
   const [error, setError] = useState("");
+
+  const togglePasswordVisibility = (id) => {
+    setVisiblePasswordMap((prev) => ({
+      ...prev,
+      [id]: !prev[id],
+    }));
+  };
+
+  const handleCopyText = async (text, key) => {
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(""), 2000);
+    } catch {
+      // Non-blocking
+    }
+  };
 
   const loadRequests = async (filter = statusFilter) => {
     setLoading(true);
@@ -125,6 +151,8 @@ const ResidentActivationRequests = () => {
         request.requested_household_no,
         request.phone,
         request.requested_phone,
+        request.requested_username,
+        request.username,
         request.request_status,
         request.resident_status,
       ]
@@ -142,26 +170,30 @@ const ResidentActivationRequests = () => {
   const handleViewProof = async (request) => {
     setProofLoadingId(request.request_id);
     setError("");
+    setShowModalPassword(false);
 
     try {
-      const url = await createResidentRegistrationProofUrl(request);
+      let url = "";
+      if (request.requested_proof_path) {
+        url = await createResidentRegistrationProofUrl(request);
+      }
       setViewedProofIds((prev) => new Set(prev).add(request.request_id));
       setProofPreview({ request, url });
     } catch (proofError) {
       setError(proofError.message || "Unable to open the submitted verification proof.");
+      // Still allow viewing modal info even if proof storage URL failed
+      setViewedProofIds((prev) => new Set(prev).add(request.request_id));
+      setProofPreview({ request, url: "" });
     } finally {
       setProofLoadingId("");
     }
   };
 
   const handleApprove = async (request) => {
-    if (!request.requested_proof_path) {
-      setError("Review requires a valid ID or proof of residency before approval.");
-      return;
-    }
+    const hasProof = Boolean(request.requested_proof_path);
 
-    if (!viewedProofIds.has(request.request_id)) {
-      // Must review proof first before approving
+    if (hasProof && !viewedProofIds.has(request.request_id)) {
+      // Open review modal first so admin inspects ID
       await handleViewProof(request);
       return;
     }
@@ -196,7 +228,7 @@ const ResidentActivationRequests = () => {
             "----------------------------------------",
             `🏛️ Magandang araw, ${residentName}!`,
             "Ang inyong Barangay resident portal registration ay OPISYAL NANG APPROVED at VERIFIED ng Barangay Admin.",
-            "Maaari na kayong mag-login sa KaagapAI Citizen Portal gamit ang inyong registered account.",
+            "Maaari na kayong mag-login sa KaagapAI Citizen Portal gamit ang inyong registered username at password.",
             "----------------------------------------",
             "⚠️ PAALALA: Ingatan ang inyong account. Ang Barangay ay HINDI kailanman hihingi ng password o pera via text.",
           ].join("\n");
@@ -248,12 +280,12 @@ const ResidentActivationRequests = () => {
       await rejectResidentActivationRequest(request, "Rejected by admin");
       setMessage({
         type: "warning",
-        title: "Registration request rejected",
-        text: `The registration request for ${request.full_name || request.requested_full_name || "the resident"} has been rejected.`,
+        title: "Registration Rejected",
+        text: "The resident registration request has been marked as rejected.",
       });
       await loadRequests();
-    } catch (rejectError) {
-      setError(rejectError.message || "Unable to reject registration request.");
+    } catch (rejectErr) {
+      setError(rejectErr.message || "Unable to reject registration request.");
     } finally {
       setActionId("");
     }
@@ -269,14 +301,43 @@ const ResidentActivationRequests = () => {
         const request = params.row;
         const displayUsername = request.requested_username || request.username || "-";
         const displayEmail = request.requested_email || request.gmail || request.email || "-";
+        const plainPass = request.requested_plain_password || request.plain_password || "";
+        const isPassVisible = Boolean(visiblePasswordMap[request.request_id]);
+        const copyKey = `pass_${request.request_id}`;
+        const isCopied = copiedKey === copyKey;
+
         return (
           <div className="py-2 leading-tight">
             <p className="font-bold text-[#17233c] text-sm truncate">{request.full_name || request.requested_full_name || "-"}</p>
-            <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-xs mt-0.5 text-slate-500 font-semibold">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs mt-0.5 text-slate-500 font-semibold">
               <span>Household: {request.household_no || request.requested_household_no || "-"}</span>
               <span>•</span>
               <span className="text-emerald-700 font-bold font-mono">User: {displayUsername}</span>
             </div>
+            {plainPass ? (
+              <div className="flex items-center gap-1.5 mt-1">
+                <span className="text-[11px] font-bold text-slate-500">Pass:</span>
+                <span className="text-xs font-mono font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                  {isPassVisible ? plainPass : "••••••••"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => togglePasswordVisibility(request.request_id)}
+                  className="text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer"
+                  title={isPassVisible ? "Hide password" : "Show password"}
+                >
+                  {isPassVisible ? <EyeOff size={13} /> : <Eye size={13} />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCopyText(plainPass, copyKey)}
+                  className="text-slate-400 hover:text-emerald-700 p-0.5 cursor-pointer"
+                  title="Copy password"
+                >
+                  {isCopied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                </button>
+              </div>
+            ) : null}
             <p className="text-xs text-slate-400 mt-0.5 font-medium truncate">{displayEmail}</p>
             <p className="text-[10px] font-bold text-blue-600 mt-1 uppercase tracking-wider">
               {request.registration_type || (request.resident_id ? "Existing Access" : "New Registration")}
@@ -334,35 +395,25 @@ const ResidentActivationRequests = () => {
         const isBusy = actionId === request.request_id || proofLoadingId === request.request_id;
         const hasProof = Boolean(request.requested_proof_path);
 
-        if (!hasProof) {
-          return (
-            <div className="flex justify-end items-center">
-              <span className="inline-block rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
-                No proof
-              </span>
-            </div>
-          );
-        }
-
         return (
-          <div className="flex justify-end items-center">
+          <div className="flex justify-end items-center gap-1.5">
             <button
               type="button"
               onClick={() => handleViewProof(request)}
               disabled={isBusy}
-              className={`px-3 py-1.5 text-xs font-bold transition rounded-xl inline-flex items-center gap-1.5 shadow-sm ${
+              className={`px-3 py-1.5 text-xs font-bold transition rounded-xl inline-flex items-center gap-1.5 shadow-sm cursor-pointer ${
                 isPending
                   ? "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-emerald-700/20"
                   : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
-              title="Click to view submitted proof and review registration"
+              title="Click to view details and review registration"
             >
               {proofLoadingId === request.request_id ? (
                 <Loader2 size={13} className="animate-spin" />
               ) : (
                 <FileImage size={13} />
               )}
-              <span>{isPending ? "View Proof" : "View Proof"}</span>
+              <span>{hasProof ? "View Proof" : "Review"}</span>
             </button>
           </div>
         );
@@ -555,20 +606,73 @@ const ResidentActivationRequests = () => {
               </div>
             </div>
 
+            {/* Portal Credentials Summary Card */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-black text-emerald-900 uppercase">Username:</span>
+                <span className="font-mono font-black text-emerald-950 bg-white px-2 py-0.5 rounded border border-emerald-300">
+                  {proofPreview.request.requested_username || proofPreview.request.username || "-"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleCopyText(proofPreview.request.requested_username || proofPreview.request.username, "modal_user")}
+                  className="text-emerald-700 hover:text-emerald-950 p-1 cursor-pointer"
+                  title="Copy Username"
+                >
+                  {copiedKey === "modal_user" ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                </button>
+              </div>
+
+              {proofPreview.request.requested_plain_password || proofPreview.request.plain_password ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black text-emerald-900 uppercase">Password:</span>
+                  <span className="font-mono font-black text-emerald-950 bg-white px-2 py-0.5 rounded border border-emerald-300">
+                    {showModalPassword
+                      ? (proofPreview.request.requested_plain_password || proofPreview.request.plain_password)
+                      : "••••••••"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowModalPassword(!showModalPassword)}
+                    className="text-emerald-700 hover:text-emerald-950 p-1 cursor-pointer"
+                    title={showModalPassword ? "Hide password" : "Show password"}
+                  >
+                    {showModalPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyText(proofPreview.request.requested_plain_password || proofPreview.request.plain_password, "modal_pass")}
+                    className="text-emerald-700 hover:text-emerald-950 p-1 cursor-pointer"
+                    title="Copy Password"
+                  >
+                    {copiedKey === "modal_pass" ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
             {/* Proof Image / Document Container */}
             <div className="min-h-0 flex-1 overflow-auto bg-slate-900/5 p-4 rounded-xl border border-slate-200 flex items-center justify-center">
-              {proofPreview.request.requested_proof_type === "application/pdf" ? (
-                <iframe
-                  src={proofPreview.url}
-                  title="Resident registration proof PDF"
-                  className="h-[55vh] w-full rounded-lg border border-slate-300 bg-white"
-                />
+              {proofPreview.url ? (
+                proofPreview.request.requested_proof_type === "application/pdf" ? (
+                  <iframe
+                    src={proofPreview.url}
+                    title="Resident registration proof PDF"
+                    className="h-[55vh] w-full rounded-lg border border-slate-300 bg-white"
+                  />
+                ) : (
+                  <img
+                    src={proofPreview.url}
+                    alt="Submitted resident verification proof"
+                    className="mx-auto max-h-[55vh] max-w-full rounded-lg border border-slate-300 bg-white object-contain shadow-md"
+                  />
+                )
               ) : (
-                <img
-                  src={proofPreview.url}
-                  alt="Submitted resident verification proof"
-                  className="mx-auto max-h-[55vh] max-w-full rounded-lg border border-slate-300 bg-white object-contain shadow-md"
-                />
+                <div className="py-12 text-center text-slate-500">
+                  <FileImage size={40} className="mx-auto text-slate-400 mb-2" />
+                  <p className="text-xs font-semibold">No image preview available for this registration.</p>
+                  <p className="text-[11px] text-slate-400 mt-1">You may still approve or reject using the buttons below.</p>
+                </div>
               )}
             </div>
           </div>
