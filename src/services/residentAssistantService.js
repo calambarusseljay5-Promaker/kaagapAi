@@ -2525,38 +2525,21 @@ export async function askResidentAssistant(question, context = {}) {
   const normalizedQ = normalizeText(trimmedQuestion);
   const language = isTagalogQuestion(trimmedQuestion) ? "tagalog" : "english";
 
-  // 1. Current / Present Barangay Captain Intent
-  const isCurrentCaptain =
-    (
-      includesAny(normalizedQ, [
-        "present captain", "current captain", "present barangay captain", "current barangay captain",
-        "punong barangay ngayon", "kapitan ngayon", "kasalukuyang kapitan", "kasalukuyang punong barangay",
-        "who is the captain", "who is the barangay captain", "who is our captain", "who is captain",
-        "sino ang kapitan", "sino ang punong barangay", "sino kapitan", "sino punong barangay",
-        "who is current", "who is present", "current leader", "present leader", "wilson caponpon"
-      ]) ||
-      (
-        includesAny(normalizedQ, ["captain", "kapitan", "punong barangay"]) &&
-        includesAny(normalizedQ, ["present", "current", "ngayon", "kasalukuyan", "who", "sino", "our", "natin", "aming"])
-      )
-    ) &&
-    !includesAny(normalizedQ, ["first", "1st", "una", "unang", "history", "kasaysayan", "dating", "past", "previous", "timeline", "all captains", "lahat ng kapitan", "list", "talaan"]);
-
-  // 2. Political History / Leadership Timeline Intent
+  // 1. Political History / Leadership Timeline Intent (Only when asking for past history / past leaders)
   const isHistory =
     includesAny(normalizedQ, [
       "political history", "kasaysayan", "pinagmulan", "origin", "pulitika", "politika",
       "first captain", "1st captain", "unang kapitan", "unang pinuno", "first leader", "1st leader",
       "1st barangay captain", "first barangay captain", "dating kapitan", "nakaraang kapitan",
       "previous captain", "past captain", "past leaders", "leadership timeline", "timeline",
-      "all captains", "lahat ng kapitan", "catenas", "bolivar", "cari", "capio", "calician"
+      "all past captains", "lahat ng dating kapitan", "catenas", "bolivar", "cari", "capio", "calician"
     ]) ||
     (
       includesAny(normalizedQ, ["captain", "kapitan", "leader", "pinuno"]) &&
-      includesAny(normalizedQ, ["first", "1st", "una", "unang", "dating", "nakaraan", "past", "previous", "all", "lahat", "list", "talaan", "timeline"])
+      includesAny(normalizedQ, ["first", "1st", "una", "unang", "dating", "nakaraan", "past", "previous", "timeline", "history", "kasaysayan"])
     );
 
-  // 3. Check Policy / Ordinance / Community Rules Intent
+  // 2. Check Policy / Ordinance / Community Rules Intent
   const isPolicy = includesAny(normalizedQ, [
     "policy", "policies", "patakaran", "polisiya", "ordinance", "ordinansa", "batas", "tuntunin",
     "curfew", "solid waste", "waste management", "segregation", "basura", "videoke", "karaoke", "ingay",
@@ -2566,9 +2549,7 @@ export async function askResidentAssistant(question, context = {}) {
   const startTime = Date.now();
   let answer = "";
 
-  if (isCurrentCaptain) {
-    answer = buildCurrentCaptainAnswer(language);
-  } else if (isAdminPortalQuestion(normalizedQ)) {
+  if (isAdminPortalQuestion(normalizedQ)) {
     answer = buildAdminPortalAnswer(language);
   } else if (isHistory) {
     answer = buildPoliticalHistoryAnswer(trimmedQuestion, language);
@@ -2587,6 +2568,15 @@ export async function askResidentAssistant(question, context = {}) {
   } else if (isDefiniteOutOfScope(normalizedQ)) {
     answer = buildOutOfScopeLimitationAnswer(language);
   } else {
+    // Ensure organization officials are loaded
+    if (!context.organizationOfficials || !context.organizationOfficials.length) {
+      try {
+        context.organizationOfficials = getOrganizationOfficials();
+      } catch (e) {
+        console.warn("Could not load organization officials for AI prompt:", e);
+      }
+    }
+
     // Only fetch fresh stats if not already provided in context to avoid unnecessary network delay
     if (!context.residentStats?.loaded) {
       try {
@@ -2617,7 +2607,7 @@ async function queryGeminiWithRichContext(question, context = {}) {
       documentTemplates = [],
       knowledgeItems = [],
       opportunities = [],
-      organizationOfficials = [],
+      organizationOfficials = getOrganizationOfficials(),
       requests = [],
       resident,
       residentStats,
@@ -2632,9 +2622,11 @@ Female: ${residentStats.femaleResidents}
 By Purok: ${formatCounts(residentStats.purokCounts)}`
       : "Not Loaded";
 
-    const activeOfficials = getActiveOrganizationOfficials(organizationOfficials);
+    const activeOfficials = getActiveOrganizationOfficials(
+      organizationOfficials?.length ? organizationOfficials : getOrganizationOfficials()
+    );
     const officialsStr = activeOfficials
-      .map(o => `- Name: ${o.name}, Position: ${o.position}, Committee: ${o.committee || 'None'}`)
+      .map(o => `- Name: ${o.name}, Position: ${o.position}, Committee: ${o.committee || 'None'}, Contact: ${o.contact || 'N/A'}`)
       .join("\n") || "No officials loaded.";
 
     const templatesStr = dedupeDocumentTemplates(documentTemplates)
@@ -2688,6 +2680,11 @@ CRITICAL DATA PRIVACY CONSTRAINT (DATA PRIVACY ACT OF 2012 / RA 10173):
 - If asked for someone else's personal info or phone number: Politely explain that under the Data Privacy Act of 2012, personal resident information is strictly confidential, and advise them to contact the Barangay Office at 09306259795.
 - If the logged-in resident asks for their OWN profile/information, summarize their own profile details clearly.
 
+ORGANIZATIONAL CHART & CURRENT BARANGAY OFFICIALS:
+- When asked about the current Barangay Captain / Punong Barangay, Kagawads, Secretary, Treasurer, SK Chairperson, or the Barangay Council:
+  * ALWAYS base your answer on the "Barangay Officials (from Official Organizational Chart)" section provided below.
+  * Do NOT use historical figures from past decades when answering about current leadership. State their exact name, position, and committee nicely.
+
 CRITICAL OUT-OF-SCOPE & UNKNOWN INQUIRY LIMITATION:
 - If the user asks about an unknown person, an unrelated non-barangay topic, or something outside Barangay Upper Mingading:
   * DO NOT guess or dump random unrelated announcements, Q&A numbers (e.g. Q1, Q2), or raw database markers.
@@ -2721,7 +2718,7 @@ Current Resident Profile:
 Barangay Statistics:
 ${statsStr}
 
-Barangay Officials:
+Barangay Officials (from Official Organizational Chart):
 ${officialsStr}
 
 Available Document Templates:
