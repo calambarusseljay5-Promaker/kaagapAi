@@ -656,59 +656,10 @@ RESIDENT QUESTION:
         open={showModal}
         onClose={closeModal}
         title={editingItem ? "Edit AI Knowledge Record" : "Add AI Knowledge to Chatbot"}
-        subtitle="Ingest documents or enter guidelines to train the resident virtual assistant"
+        subtitle="Enter barangay guidelines, policies, or information to train the resident virtual assistant"
         maxWidth="max-w-3xl"
       >
         <div className="space-y-5">
-          {/* Upload File Inside Modal */}
-          <div className="p-4 rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50/50 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0 shadow-xs">
-                <FileUp size={22} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-black text-slate-800">
-                  {uploadedFileInfo ? `Uploaded: ${uploadedFileInfo.name} (${uploadedFileInfo.sizeKb} KB)` : "Upload Document / Word / PDF / Image"}
-                </p>
-                <p className="text-[11px] text-slate-500 font-medium">
-                  {isProcessingFile ? "AI is reading and structuring the document..." : "AI will automatically extract titles, categories, policies, and sample resident questions."}
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isProcessingFile}
-              className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs shadow-xs transition shrink-0 cursor-pointer disabled:opacity-60 flex items-center gap-1.5"
-            >
-              {isProcessingFile ? <Loader size={14} className="animate-spin" /> : <Upload size={14} />}
-              <span>{uploadedFileInfo ? "Change File" : "Choose File"}</span>
-            </button>
-          </div>
-
-          {/* AI Structured Notification Box */}
-          {aiSuggestions && (
-            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 space-y-1.5 animate-fadeIn">
-              <div className="flex items-center gap-1.5 font-black text-amber-800">
-                <Sparkles size={14} />
-                <span>AI Ingestion Summary:</span>
-              </div>
-              <p className="text-[11.5px] leading-relaxed font-medium">{aiSuggestions.summary}</p>
-              {aiSuggestions.sampleQuestions?.length > 0 && (
-                <div className="pt-1.5 border-t border-amber-200/60">
-                  <p className="text-[10px] font-black uppercase text-amber-800 tracking-wider mb-1">
-                    Sample questions residents can now ask the chatbot:
-                  </p>
-                  <ul className="list-disc pl-4 space-y-0.5 text-[11px] font-semibold text-amber-900/90">
-                    {aiSuggestions.sampleQuestions.map((q, qIdx) => (
-                      <li key={qIdx}>{q}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Inputs */}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2 space-y-1">

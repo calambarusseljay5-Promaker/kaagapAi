@@ -20,6 +20,7 @@ import { fetchAnnouncements } from "../services/announcementService";
 import { fetchLivelihoodPosts } from "../services/livelihoodService";
 import { fetchAuditActivity } from "../services/adminActivityService";
 import { formatPurok } from "../utils/residentProfile";
+import { useRealtimeSync } from "../services/realtimeSyncService";
 
 const SEARCH_LIMIT = 5;
 
@@ -146,62 +147,67 @@ const Dashboard = () => {
     }
   }, [searchQuery]);
 
-  useEffect(() => {
-    const loadCounts = async () => {
-      const [residentResult, residentListResult, requestResult, announcementResult, livelihoodResult, activityResult] =
-        await Promise.allSettled([
-          getResidentsCount({ excludeArchived: true }),
-          fetchResidents("", "", { excludeArchived: true, withAccounts: false }),
-          fetchDocumentRequests({ limit: 200 }),
-          fetchAnnouncements({ status: "Published", limit: 100 }),
-          fetchLivelihoodPosts({ status: "Open", limit: 100 }),
-          fetchAuditActivity(8),
-        ]);
-
-      if (residentResult.status === "rejected") {
-        console.error("Unable to load resident count:", residentResult.reason?.message);
-      }
-
-      const totalResidents = residentResult.status === "fulfilled" ? residentResult.value : 0;
-      const residents = residentListResult.status === "fulfilled" ? (Array.isArray(residentListResult.value) ? residentListResult.value : []) : [];
-      const rawRequests = requestResult.status === "fulfilled" ? requestResult.value : [];
-      const requests = Array.isArray(rawRequests) ? rawRequests : (rawRequests?.data || []);
-      const totalRequests = Array.isArray(rawRequests) ? rawRequests.length : (rawRequests?.count || requests.length);
-      const pendingRequests = requests.filter((request) => request.status === "Pending").length;
-      const documentsIssued = requests.filter((request) =>
-        ["Completed", "Released"].includes(request.status)
-      ).length;
-      const publishedAnnouncements =
-        announcementResult.status === "fulfilled" ? (Array.isArray(announcementResult.value) ? announcementResult.value.length : 0) : 0;
-      const openLivelihood =
-        livelihoodResult.status === "fulfilled" ? (Array.isArray(livelihoodResult.value) ? livelihoodResult.value.length : 0) : 0;
-      const rawActivities = activityResult.status === "fulfilled" ? activityResult.value : [];
-      const activities = Array.isArray(rawActivities) ? rawActivities : (rawActivities?.activities || []);
-
-      setOverview({
-        totalRequests,
-        pendingRequests,
-        documentsIssued,
-        publishedAnnouncements,
-        openLivelihood,
-      });
-      setChartResidents(residents);
-      setRecentRequests(requests);
-      setPublishedAnnouncements(
-        announcementResult.status === "fulfilled" ? announcementResult.value || [] : []
-      );
-      setRecentActivities(activities);
-
-      setStats([
-        { label: "Total Residents", value: totalResidents, icon: "Users", accent: "blue", caption: "Current records", trend: "Live" },
-        { label: "Documents Issued", value: documentsIssued, icon: "FileText", accent: "green", caption: "Completed/released", trend: "Updated" },
-        { label: "Pending Requests", value: pendingRequests, icon: "Clock", accent: "amber", caption: "For approval", trend: pendingRequests ? "Needs review" : "Clear" },
-        { label: "Livelihood Programs", value: openLivelihood, icon: "Briefcase", accent: "cyan", caption: "Open posts", trend: "Active" },
+  const loadCounts = useCallback(async () => {
+    const [residentResult, residentListResult, requestResult, announcementResult, livelihoodResult, activityResult] =
+      await Promise.allSettled([
+        getResidentsCount({ excludeArchived: true }),
+        fetchResidents("", "", { excludeArchived: true, withAccounts: false }),
+        fetchDocumentRequests({ limit: 200 }),
+        fetchAnnouncements({ status: "Published", limit: 100 }),
+        fetchLivelihoodPosts({ status: "Open", limit: 100 }),
+        fetchAuditActivity(8),
       ]);
-    };
 
-    loadCounts();
+    if (residentResult.status === "rejected") {
+      console.error("Unable to load resident count:", residentResult.reason?.message);
+    }
+
+    const totalResidents = residentResult.status === "fulfilled" ? residentResult.value : 0;
+    const residents = residentListResult.status === "fulfilled" ? (Array.isArray(residentListResult.value) ? residentListResult.value : []) : [];
+    const rawRequests = requestResult.status === "fulfilled" ? requestResult.value : [];
+    const requests = Array.isArray(rawRequests) ? rawRequests : (rawRequests?.data || []);
+    const totalRequests = Array.isArray(rawRequests) ? rawRequests.length : (rawRequests?.count || requests.length);
+    const pendingRequests = requests.filter((request) => request.status === "Pending").length;
+    const documentsIssued = requests.filter((request) =>
+      ["Completed", "Released"].includes(request.status)
+    ).length;
+    const publishedAnnouncements =
+      announcementResult.status === "fulfilled" ? (Array.isArray(announcementResult.value) ? announcementResult.value.length : 0) : 0;
+    const openLivelihood =
+      livelihoodResult.status === "fulfilled" ? (Array.isArray(livelihoodResult.value) ? livelihoodResult.value.length : 0) : 0;
+    const rawActivities = activityResult.status === "fulfilled" ? activityResult.value : [];
+    const activities = Array.isArray(rawActivities) ? rawActivities : (rawActivities?.activities || []);
+
+    setOverview({
+      totalRequests,
+      pendingRequests,
+      documentsIssued,
+      publishedAnnouncements,
+      openLivelihood,
+    });
+    setChartResidents(residents);
+    setRecentRequests(requests);
+    setPublishedAnnouncements(
+      announcementResult.status === "fulfilled" ? announcementResult.value || [] : []
+    );
+    setRecentActivities(activities);
+
+    setStats([
+      { label: "Total Residents", value: totalResidents, icon: "Users", accent: "blue", caption: "Current records", trend: "Live" },
+      { label: "Documents Issued", value: documentsIssued, icon: "FileText", accent: "green", caption: "Completed/released", trend: "Updated" },
+      { label: "Pending Requests", value: pendingRequests, icon: "Clock", accent: "amber", caption: "For approval", trend: pendingRequests ? "Needs review" : "Clear" },
+      { label: "Livelihood Programs", value: openLivelihood, icon: "Briefcase", accent: "cyan", caption: "Open posts", trend: "Active" },
+    ]);
   }, []);
+
+  useEffect(() => {
+    loadCounts();
+  }, [loadCounts]);
+
+  // Realtime multi-tab & cross-device auto-refresh for Admin Dashboard
+  useRealtimeSync("all", () => {
+    loadCounts();
+  });
 
   useEffect(() => {
     if (trimmedSearch.length < 2) {

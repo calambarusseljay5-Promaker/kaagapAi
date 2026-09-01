@@ -4,6 +4,7 @@ import {
   syncKnowledgeFromAnnouncement,
 } from "./knowledgeService";
 import { moveToRecycleBin } from "./recycleBinService";
+import { broadcastSyncEvent } from "./realtimeSyncService";
 
 const TABLE = "announcements";
 const SETUP_MESSAGE =
@@ -178,6 +179,7 @@ export async function createAnnouncement(announcementData) {
   syncKnowledgeFromAnnouncement(data).catch((syncError) => {
     console.warn("Unable to sync announcement into AI knowledge:", syncError.message);
   });
+  broadcastSyncEvent("announcements", data);
   return data;
 }
 
@@ -198,6 +200,7 @@ export async function updateAnnouncement(id, updates) {
   syncKnowledgeFromAnnouncement(data).catch((syncError) => {
     console.warn("Unable to sync announcement into AI knowledge:", syncError.message);
   });
+  broadcastSyncEvent("announcements", data);
   return data;
 }
 
@@ -221,5 +224,6 @@ export async function deleteAnnouncement(id) {
   deleteKnowledgeForSource("announcement", id).catch((syncError) => {
     console.warn("Unable to delete announcement AI knowledge:", syncError.message);
   });
+  broadcastSyncEvent("announcements", { id });
   return true;
 }

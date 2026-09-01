@@ -26,6 +26,7 @@ import {
   updateAnnouncement,
   isAnnouncementExpired,
 } from "../services/announcementService";
+import { useRealtimeSync } from "../services/realtimeSyncService";
 import { showAdminSystemToast } from "../utils/toast";
 import { fetchResidents } from "../services/adminService";
 import {
@@ -589,6 +590,11 @@ const Announcements = () => {
     const timer = window.setTimeout(loadAnnouncements, 0);
     return () => window.clearTimeout(timer);
   }, [loadAnnouncements]);
+
+  // Realtime multi-tab & cross-device auto-refresh
+  useRealtimeSync(["announcements"], () => {
+    loadAnnouncements();
+  });
 
   useEffect(() => {
     let isMounted = true;

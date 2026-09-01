@@ -2,6 +2,7 @@ import { supabase } from "../lib/supabaseClient";
 import { getSystemSettings } from "./adminActivityService";
 import { mergeRealDocumentTemplates } from "../utils/realDocumentTemplates";
 import { moveToRecycleBin } from "./recycleBinService";
+import { broadcastSyncEvent } from "./realtimeSyncService";
 
 const DOCUMENT_REQUESTS_TABLE = "document_requests";
 const RESIDENTS_TABLE = "residents";
@@ -368,6 +369,8 @@ export async function updateDocumentRequestStatus(id, status) {
     }
   }
 
+  broadcastSyncEvent("documents", updatedRow);
+  broadcastSyncEvent("notifications", { resident_id: updatedRow.resident_id });
   return updatedRow;
 }
 
@@ -381,7 +384,10 @@ export async function createDocumentRequest({ resident_id, document_type, status
     .select();
 
   if (error) throw error;
-  return Array.isArray(data) ? data[0] : data;
+  const created = Array.isArray(data) ? data[0] : data;
+  broadcastSyncEvent("documents", created);
+  broadcastSyncEvent("notifications", { resident_id });
+  return created;
 }
 
 /**
@@ -410,6 +416,8 @@ export async function cancelDocumentRequest(id) {
     }
   }
 
+  broadcastSyncEvent("documents", item);
+  broadcastSyncEvent("notifications", { resident_id: item?.resident_id });
   return item;
 }
 
@@ -439,6 +447,8 @@ export async function updateDocumentRequestType(id, document_type) {
     }
   }
 
+  broadcastSyncEvent("documents", item);
+  broadcastSyncEvent("notifications", { resident_id: item?.resident_id });
   return item;
 }
 

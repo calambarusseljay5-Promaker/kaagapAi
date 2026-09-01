@@ -22,6 +22,7 @@ import {
 import MyAccountModal from "./modals/MyAccountModal";
 import AccountSecurityModal from "./modals/AccountSecurityModal";
 import SystemSettingsModal from "./modals/SystemSettingsModal";
+import { useRealtimeSync } from "../services/realtimeSyncService";
 
 const getDisplayName = (user, account) =>
   account?.profile?.full_name ||
@@ -239,6 +240,10 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
       unsubscribe();
     };
   }, [loadNotifications]);
+
+  useRealtimeSync("all", () => {
+    loadNotifications({ silent: true });
+  });
 
   const toggleNotifications = () => {
     const nextState = !showNotifications;

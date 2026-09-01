@@ -28,6 +28,7 @@ import {
   fetchResidentActivationRequests,
   rejectResidentActivationRequest,
 } from "../services/residentActivationService";
+import { useRealtimeSync } from "../services/realtimeSyncService";
 import {
   isValidSmsPhone,
   normalizeSmsPhone,
@@ -137,6 +138,11 @@ const ResidentActivationRequests = () => {
       isMounted = false;
     };
   }, []);
+
+  // Realtime multi-tab & cross-device auto-refresh
+  useRealtimeSync(["activations", "residents"], () => {
+    loadRequests(statusFilter);
+  });
 
   const filteredRequests = useMemo(() => {
     const query = search.trim().toLowerCase();

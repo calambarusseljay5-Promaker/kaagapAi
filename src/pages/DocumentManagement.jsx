@@ -13,6 +13,7 @@ import {
 } from "../services/documentRequestService";
 import { getCurrentUserWithProfile } from "../services/authService";
 import { fetchResidents } from "../services/adminService";
+import { useRealtimeSync } from "../services/realtimeSyncService";
 import { supabase } from "../lib/supabaseClient";
 import { sendSmsNotification, isValidSmsPhone } from "../services/smsService";
 import {
@@ -645,6 +646,11 @@ const DocumentManagement = () => {
       window.removeEventListener("organization_officials_updated", handleOfficialsUpdate);
     };
   }, [loadData]);
+
+  // Realtime multi-tab & cross-device auto-refresh
+  useRealtimeSync(["documents", "residents"], () => {
+    loadData({ showLoading: false });
+  });
 
   const openRequest = (request) => {
     if (isRequestExpired(request)) {

@@ -103,6 +103,7 @@ import {
 import { fetchLivelihoodPosts, applyForLivelihood, fetchResidentLivelihoodApplications } from "../services/livelihoodService";
 import { fetchResidentKnowledge } from "../services/knowledgeService";
 import { askResidentAssistant } from "../services/residentAssistantService";
+import { useRealtimeSync } from "../services/realtimeSyncService";
 import {
   DEFAULT_ORGANIZATION_OFFICIALS,
   getOrganizationOfficials,
@@ -2386,6 +2387,14 @@ const UserDashboard = () => {
       setResidentStats(statsResult.value);
     }
   }, []);
+
+  // Realtime multi-tab & cross-device automatic synchronization (zero manual refresh needed!)
+  useRealtimeSync(["announcements", "documents", "notifications", "livelihood"], () => {
+    refreshResidentBroadcasts();
+    if (resident?.id) {
+      refreshResidentActivity(resident.id);
+    }
+  });
 
   // Mounting load logic
   useEffect(() => {
