@@ -2735,7 +2735,7 @@ const ResidentsManagement = () => {
                     setIsSelectMode(false);
                   } else {
                     setIsSelectMode(true);
-                    setSelectedResidentIds(displayedResidentsRef.current.map((r) => r.id));
+                    setSelectedResidentIds((displayedResidents || []).map((r) => r.id).filter(Boolean));
                   }
                 }}
                 className="h-4 w-4 rounded border-slate-300 text-[#00552E] focus:ring-[#00552E] cursor-pointer accent-[#00552E] transition"
@@ -2745,7 +2745,7 @@ const ResidentsManagement = () => {
           );
         },
         renderCell: (params) => {
-          const isSelected = selectedResidentIdsSet.has(params.row.id);
+          const isSelected = selectedResidentIdsSet.has(params?.row?.id);
           return (
             <div className="flex items-center justify-center w-full h-full" onClick={(e) => e.stopPropagation()}>
               <input
@@ -2753,12 +2753,14 @@ const ResidentsManagement = () => {
                 checked={isSelected}
                 onChange={(e) => {
                   e.stopPropagation();
+                  const rowId = params?.row?.id;
+                  if (!rowId) return;
                   if (e.target.checked) {
                     setIsSelectMode(true);
-                    setSelectedResidentIds((prev) => [...prev, params.row.id]);
+                    setSelectedResidentIds((prev) => [...prev.filter((id) => id !== rowId), rowId]);
                   } else {
                     setSelectedResidentIds((prev) => {
-                      const next = prev.filter((id) => id !== params.row.id);
+                      const next = prev.filter((id) => id !== rowId);
                       if (next.length === 0) setIsSelectMode(false);
                       return next;
                     });
@@ -3653,9 +3655,9 @@ const ResidentsManagement = () => {
             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
               <span>Show:</span>
               <select
-                value={paginationModel.pageSize}
+                value={Math.min(Math.max(Number(paginationModel.pageSize) || 10, 1), 100)}
                 onChange={(e) => {
-                  const size = Number(e.target.value);
+                  const size = Math.min(Math.max(Number(e.target.value) || 10, 1), 100);
                   setPaginationModel((prev) => ({ ...prev, pageSize: size, page: 0 }));
                 }}
                 className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-bold text-slate-800 outline-none transition focus:border-[#00552E] cursor-pointer"
@@ -3664,7 +3666,6 @@ const ResidentsManagement = () => {
                 <option value={20}>20</option>
                 <option value={50}>50</option>
                 <option value={100}>100</option>
-                <option value={1000}>All</option>
               </select>
               <span className="text-slate-400 font-normal">per page</span>
             </div>
@@ -3674,15 +3675,23 @@ const ResidentsManagement = () => {
         {/* ─── Resident DataGrid ─── */}
         <div className="gov-datagrid-container overflow-hidden mt-4" style={{ height: 650, width: '100%' }}>
           <DataGrid
-            rows={displayedResidents}
+            rows={displayedResidents || []}
             columns={columns}
-            paginationModel={paginationModel}
-            onPaginationModelChange={setPaginationModel}
+            paginationModel={{
+              page: Math.max(Number(paginationModel.page) || 0, 0),
+              pageSize: Math.min(Math.max(Number(paginationModel.pageSize) || 10, 1), 100),
+            }}
+            onPaginationModelChange={(newModel) => {
+              setPaginationModel({
+                page: Math.max(Number(newModel?.page) || 0, 0),
+                pageSize: Math.min(Math.max(Number(newModel?.pageSize) || 10, 1), 100),
+              });
+            }}
             pageSizeOptions={[10, 20, 50, 100]}
             disableRowSelectionOnClick
             loading={delayedLoading}
             rowHeight={85}
-            getRowId={(row) => row.id}
+            getRowId={(row) => row?.id || `${Math.random()}`}
           />
         </div>
       </PageWrapper>
