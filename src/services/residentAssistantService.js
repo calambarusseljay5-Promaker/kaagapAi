@@ -1648,9 +1648,9 @@ const getRelevantKnowledge = (question, knowledgeItems = []) =>
         !item?.content?.includes("Audience: Selected Residents:")
     )
     .map((item) => ({ item, score: scoreKnowledgeMatch(question, item) }))
-    .filter(({ score }) => score >= 3)
+    .filter(({ score }) => score >= 1)
     .sort((first, second) => second.score - first.score)
-    .slice(0, 5)
+    .slice(0, 8)
     .map(({ item }) => item);
 
 const getTemplateLabel = (template) => template?.template_name || template?.document_type || "Document";
@@ -3031,17 +3031,18 @@ export async function askResidentAssistant(question, context = {}) {
     ? context.organizationOfficials
     : getOrganizationOfficials();
 
-  // Automatically load AI Knowledge Items from database if missing with 2s timeout
-  if (!context.knowledgeItems || !context.knowledgeItems.length) {
-    try {
-      const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve([]), 2000));
-      context.knowledgeItems = await Promise.race([
-        fetchKnowledgeItems({ residentVisible: true, limit: 100 }),
-        timeoutPromise
-      ]);
-    } catch (e) {
-      console.warn("Could not load knowledge items for assistant:", e);
+  // Automatically load or refresh AI Knowledge Items from database so any newly added item is instantly known
+  try {
+    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 1500));
+    const freshKnowledge = await Promise.race([
+      fetchKnowledgeItems({ residentVisible: true, limit: 100 }),
+      timeoutPromise,
+    ]);
+    if (freshKnowledge && Array.isArray(freshKnowledge) && freshKnowledge.length > 0) {
+      context.knowledgeItems = freshKnowledge;
     }
+  } catch (e) {
+    console.warn("Could not load fresh knowledge items for assistant:", e);
   }
 
   context.organizationOfficials = resolvedOfficials;

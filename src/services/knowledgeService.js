@@ -102,9 +102,7 @@ export async function fetchKnowledgeItems({
   if (residentVisible) {
     query = query
       .eq("status", "Active")
-      .neq("audience", "Admin Only")
-      .or(`effective_date.is.null,effective_date.lte.${today}`)
-      .or(`expires_at.is.null,expires_at.gte.${today}`);
+      .neq("audience", "Admin Only");
   } else {
     if (status) query = query.eq("status", status);
     if (category) query = query.eq("category", category);
@@ -118,7 +116,19 @@ export async function fetchKnowledgeItems({
 
   const { data, error } = await query;
   if (error) throw normalizeKnowledgeError(error);
-  return data || [];
+  if (!data) return [];
+
+  if (residentVisible) {
+    return data.filter((item) => {
+      if (item.status && item.status !== "Active") return false;
+      if (item.audience === "Admin Only") return false;
+      if (item.effective_date && String(item.effective_date).slice(0, 10) > today) return false;
+      if (item.expires_at && String(item.expires_at).slice(0, 10) < today) return false;
+      return true;
+    });
+  }
+
+  return data;
 }
 
 export async function fetchResidentKnowledge(limit = 30) {
