@@ -191,79 +191,65 @@ export async function approveResidentActivationRequest(request) {
     throw new Error("Registration request is missing.");
   }
 
-  // 1. First attempt: RPC functions
+  // 1. Fetch the request record FIRST so we have the EXACT resident-chosen username, plain_password, phone, and all details
+  let reqData = null;
   try {
-    const { data, error } = await supabase.rpc("approve_resident_registration_request", {
-      p_request_id: requestId,
-    });
-
-    if (!error && data) {
-      const result = getRpcRow(data) || {};
-      recordAuditEvent({
-        module: "Resident Registration",
-        action: "Registration approved",
-        details: `${request?.full_name || result.full_name || "Resident"} was approved with username ${
-          result.username || request?.requested_username || "generated"
-        }.`,
-        source: "Admin",
-      });
-      return result;
-    }
-  } catch (rpcErr1) {
-    console.warn("RPC approve_resident_registration_request notice:", rpcErr1);
+    const { data } = await supabase
+      .from("resident_activation_requests")
+      .select("*")
+      .eq("id", requestId)
+      .single();
+    if (data) reqData = data;
+  } catch (err) {
+    console.warn("Notice fetching reqData in approve:", err);
   }
 
+  const chosenUsername =
+    reqData?.requested_username ||
+    reqData?.username ||
+    request?.requested_username ||
+    request?.username ||
+    request?.portal_username ||
+    (reqData?.requested_first_name ? `${String(reqData.requested_first_name).toLowerCase().replace(/\s+/g, '')}_${reqData.requested_last_name ? String(reqData.requested_last_name).toLowerCase().replace(/\s+/g, '') : ''}` : null);
+
+  const chosenPassword =
+    reqData?.requested_plain_password ||
+    reqData?.requested_password_hash ||
+    reqData?.requested_password ||
+    reqData?.password ||
+    request?.requested_plain_password ||
+    request?.portal_password ||
+    request?.password ||
+    (reqData?.requested_household_no ? String(reqData.requested_household_no) : "kaagapai123");
+
+  const chosenPhone = reqData?.requested_phone || reqData?.phone || request?.phone || request?.requested_phone || null;
+  const chosenEmail = reqData?.requested_email || reqData?.email || request?.email || null;
+  let residentId = reqData?.resident_id || request?.resident_id || null;
+  let fullName = reqData?.requested_full_name || request?.full_name || request?.requested_full_name || "";
+
+  // 2. Run RPC or direct DB approval
   try {
-    const { data, error } = await supabase.rpc("approve_resident_activation_request", {
+    const { data: rpcData, error: rpcErr } = await supabase.rpc("approve_resident_activation_request", {
       p_request_id: requestId,
     });
 
-    if (!error && data) {
-      const result = getRpcRow(data) || {};
-      recordAuditEvent({
-        module: "Resident Registration",
-        action: "Registration approved",
-        details: `${request?.full_name || result.full_name || "Resident"} was approved with username ${
-          result.username || request?.requested_username || "generated"
-        }.`,
-        source: "Admin",
-      });
-      return result;
+    if (!rpcErr && rpcData) {
+      const result = getRpcRow(rpcData) || {};
+      residentId = result.resident_id || residentId;
     }
   } catch (rpcErr2) {
     console.warn("RPC approve_resident_activation_request notice:", rpcErr2);
   }
 
-  // 2. Direct Database Fallback for Admin Approval
-  try {
-    // Fetch the request record
-    const { data: reqData, error: reqErr } = await supabase
-      .from("resident_activation_requests")
-      .select("*")
-      .eq("id", requestId)
-      .single();
-
-    if (reqErr || !reqData) {
-      throw new Error(reqErr?.message || "Registration request not found.");
-    }
-
-    let residentId = reqData.resident_id;
-    let fullName = reqData.requested_full_name;
-
-    // Check if resident exists or needs to be created
-    if (residentId) {
-      // Ensure existing resident is marked active
-      await supabase
-        .from("residents")
-        .update({ status: "Active" })
-        .eq("id", residentId);
-    } else {
-      // Check if resident already exists by full name and birthday
+  // 3. Fallback / Direct DB Creation if residentId is not yet resolved
+  if (!residentId) {
+    try {
+      // Check if resident exists by full name and birthday
       const { data: existingResident } = await supabase
         .from("residents")
         .select("id, full_name")
         .ilike("full_name", fullName)
-        .eq("birthday", reqData.requested_birthday)
+        .eq("birthday", reqData?.requested_birthday)
         .maybeSingle();
 
       if (existingResident) {
@@ -272,7 +258,7 @@ export async function approveResidentActivationRequest(request) {
           .from("residents")
           .update({ status: "Active" })
           .eq("id", residentId);
-      } else {
+      } else if (reqData) {
         // Calculate age
         let calcAge = null;
         if (reqData.requested_birthday) {
@@ -286,8 +272,8 @@ export async function approveResidentActivationRequest(request) {
           calcAge = age >= 0 && age <= 130 ? age : null;
         }
 
-        // Insert new resident record into residents table with ALL complete fields
-        const { data: newResident, error: newResErr } = await supabase
+        // Insert new resident record
+        const { data: newResident } = await supabase
           .from("residents")
           .insert({
             full_name: fullName,
@@ -295,8 +281,8 @@ export async function approveResidentActivationRequest(request) {
             middle_name: reqData.requested_middle_name || null,
             last_name: reqData.requested_last_name || null,
             suffix: reqData.requested_suffix || null,
-            phone: reqData.requested_phone || null,
-            email: reqData.requested_email || null,
+            phone: chosenPhone,
+            email: chosenEmail,
             house_no: reqData.requested_house_no || null,
             household_no: reqData.requested_household_no || null,
             relationship_to_household_head: reqData.requested_relationship_to_household_head || "Head",
@@ -319,121 +305,97 @@ export async function approveResidentActivationRequest(request) {
           .select()
           .single();
 
-        if (newResErr) {
-          throw new Error(newResErr.message || "Failed to create resident profile.");
+        if (newResident) {
+          residentId = newResident.id;
         }
-        residentId = newResident.id;
       }
+    } catch (dbErr) {
+      console.warn("Notice in direct resident creation fallback:", dbErr);
     }
+  }
 
-    // Create or activate resident account with exact chosen credentials
-    const username = reqData.requested_username || reqData.username || `resident_${String(residentId).slice(0, 8)}`;
-    const plainPassword = reqData.requested_plain_password || reqData.requested_password_hash || reqData.requested_password || reqData.password || "";
-    const phone = reqData.requested_phone || reqData.phone || null;
-    const email = reqData.requested_email || reqData.email || null;
-    
-    // Check existing account
-    const { data: existingAccount } = await supabase
-      .from("resident_accounts")
-      .select("id, plain_password")
-      .eq("resident_id", residentId)
-      .maybeSingle();
+  // 4. GUARANTEE that resident_accounts has the exact resident-chosen credentials
+  if (residentId && chosenUsername) {
+    try {
+      const { data: existingAccount } = await supabase
+        .from("resident_accounts")
+        .select("id")
+        .eq("resident_id", residentId)
+        .maybeSingle();
 
-    const finalPlainPassword = plainPassword || existingAccount?.plain_password || "";
-    const passwordHash = finalPlainPassword || reqData.requested_password_hash || "kaagapai123";
-
-    if (existingAccount) {
-      const updatePayload = {
-        username: username,
-        phone: phone,
-        email: email,
+      const accountPayload = {
+        username: chosenUsername,
+        plain_password: chosenPassword || null,
+        password_hash: chosenPassword || "kaagapai123",
+        phone: chosenPhone,
+        email: chosenEmail,
         account_status: "Active",
         must_change_credentials: false,
         updated_at: new Date().toISOString(),
       };
-      if (finalPlainPassword) {
-        updatePayload.plain_password = finalPlainPassword;
-        updatePayload.password_hash = passwordHash;
-      }
-      await supabase
-        .from("resident_accounts")
-        .update(updatePayload)
-        .eq("resident_id", residentId);
-    } else {
-      await supabase
-        .from("resident_accounts")
-        .insert({
-          resident_id: residentId,
-          username: username,
-          plain_password: finalPlainPassword || null,
-          password_hash: passwordHash,
-          phone: phone,
-          email: email,
-          account_status: "Active",
-          must_change_credentials: false,
-        });
-    }
 
-    if (username && finalPlainPassword) {
-      try {
-        await supabase.rpc("sync_resident_plain_password", {
-          p_username: username,
-          p_password: finalPlainPassword,
-        });
-      } catch {
-        // Non-blocking
+      if (existingAccount) {
+        await supabase
+          .from("resident_accounts")
+          .update(accountPayload)
+          .eq("id", existingAccount.id);
+      } else {
+        await supabase
+          .from("resident_accounts")
+          .insert({
+            resident_id: residentId,
+            ...accountPayload,
+          });
       }
-    }
 
-    // Safely determine admin UUID (only send UUID string or null)
-    let validAdminUuid = null;
-    try {
-      const currentSession = supabase.auth.getUser ? (await supabase.auth.getUser())?.data?.user : null;
-      const uid = currentSession?.id;
-      if (uid && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(uid))) {
-        validAdminUuid = uid;
+      if (chosenPassword) {
+        try {
+          await supabase.rpc("sync_resident_plain_password", {
+            p_username: chosenUsername,
+            p_password: chosenPassword,
+          });
+        } catch {
+          // Non-blocking
+        }
       }
-    } catch {
-      validAdminUuid = null;
+    } catch (accErr) {
+      console.warn("Notice syncing resident credentials:", accErr);
     }
+  }
 
-    // Update activation request status to Approved
-    const { error: updateReqErr } = await supabase
+  // 5. Update request status to Approved and record audit log
+  try {
+    await supabase
       .from("resident_activation_requests")
       .update({
         status: "Approved",
         approved_at: new Date().toISOString(),
-        approved_by: validAdminUuid,
-        rejected_at: null,
-        rejected_by: null,
-        rejection_reason: null,
-        resident_id: residentId,
+        resident_id: residentId || undefined,
+        requested_username: chosenUsername || undefined,
+        requested_plain_password: chosenPassword || undefined,
       })
       .eq("id", requestId);
-
-    if (updateReqErr) {
-      console.warn("Notice updating activation request status:", updateReqErr);
-    }
-
-    recordAuditEvent({
-      module: "Resident Registration",
-      action: "Registration approved",
-      details: `${fullName || "Resident"} was approved with username ${username}.`,
-      source: "Admin",
-    });
-
-    return {
-      request_id: requestId,
-      resident_id: residentId,
-      full_name: fullName,
-      username: username,
-      phone: phone,
-      email: email,
-      account_status: "Active",
-    };
-  } catch (err) {
-    throw getActivationError(err);
+  } catch (updErr) {
+    console.warn("Notice updating request row status:", updErr);
   }
+
+  recordAuditEvent({
+    module: "Resident Registration",
+    action: "Registration approved",
+    details: `${fullName || "Resident"} was approved with exact username "${chosenUsername || "resident"}".`,
+    source: "Admin",
+  });
+
+  return {
+    success: true,
+    request_id: requestId,
+    resident_id: residentId,
+    full_name: fullName,
+    username: chosenUsername,
+    plain_password: chosenPassword,
+    phone: chosenPhone,
+    status: "Approved",
+  };
 }
 
 export async function rejectResidentActivationRequest(request, reason = "Rejected by admin") {

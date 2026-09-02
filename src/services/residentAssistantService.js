@@ -190,101 +190,144 @@ const buildCurrentCaptainAnswer = (officials = [], language = "tagalog") => {
 const buildPoliticalHistoryAnswer = (question, officials = [], language = "tagalog") => {
   const norm = normalizeText(question);
 
-  // 1. Check if asking about the first leader or first captain (Check FIRST before current captain)
+  // 1. First Captain / Teniente del Barrio
   if (
     includesAny(norm, [
-      "unang kapitan",
-      "first captain",
-      "1st captain",
-      "unang pinuno",
-      "first leader",
-      "1st leader",
-      "1st barangay captain",
-      "first barangay captain",
-      "sino ang unang",
-      "who is the first",
-      "first leader of",
-      "unang pinuno ng",
-      "unang",
-      "first",
-      "1st",
-    ])
+      "unang kapitan", "first captain", "1st captain", "unang pinuno", "first leader", "1st leader",
+      "1st barangay captain", "first barangay captain", "unang teniente", "1st teniente", "first teniente",
+      "sino ang unang", "who is the first", "first leader of", "unang pinuno ng", "catenas", "gaudencio"
+    ]) || (norm.includes("1st") || norm.includes("una") || norm.includes("first"))
   ) {
     return language === "tagalog"
-      ? "🏛️ **Ang Unang Pinuno at Kapitan ng Barangay Upper Mingading:**\n\n• **Pangalan:** **Hon. Gaudencio Catenas**\n• **Posisyon:** Unang Pinuno / Kapitan (*Teniente del Barrio*)\n• **Taon ng Panunungkulan:** 1952–1958\n• **Mga Nagawa:** Pinasimulan ang pagbubukas ng Bacolod Primary School noong 1953 mula sa donasyong 2 ektaryang lupa ni G. Sagadan, kasama ang 1.85 ektarya para sa opisyal na barangay site."
-      : "🏛️ **The First Leader & Captain of Barangay Upper Mingading:**\n\n• **Name:** **Hon. Gaudencio Catenas**\n• **Position:** 1st Pioneer Leader & Captain (*Teniente del Barrio*)\n• **Years of Service:** 1952–1958\n• **Accomplishments:** He facilitated the founding and opening of Bacolod Primary School in 1953 on 2 hectares of land donated by Mr. Sagadan, plus 1.85 hectares for the official barangay site.";
+      ? "🏛️ **1. Hon. Gaudencio Catenas (1952–1958) — Unang Pinuno / Kapitan (1st Leader / Teniente del Barrio)**\n\n• **Posisyon:** Unang Teniente del Barrio ng Barangay Upper Mingading\n• **Taon ng Panunungkulan:** 1952–1958\n• **Pangunahing Nagawa:** Pinasimulan ang pagbubukas ng Bacolod Primary School noong 1953 mula sa donasyong 2 ektaryang lupa ni G. Sagadan, kasama ang 1.85 ektarya para sa opisyal na barangay site."
+      : "🏛️ **1. Hon. Gaudencio Catenas (1952–1958) — First Leader & Captain (1st Teniente del Barrio)**\n\n• **Position:** 1st Pioneer Leader & Captain (*Teniente del Barrio*)\n• **Years of Service:** 1952–1958\n• **Key Accomplishments:** Facilitated the founding and opening of Bacolod Primary School in 1953 on 2 hectares of land donated by Mr. Sagadan, plus 1.85 hectares donated for the official barangay site.";
   }
 
-  // 2. Check if asking about the current / present captain (only if explicitly current/ngayon)
+  // 2. Second Captain / Teniente del Barrio
   if (
-    includesAny(norm, ["present", "current", "kasalukuyan", "ngayon"]) &&
-    includesAny(norm, ["captain", "kapitan", "punong barangay", "leader", "pinuno"])
+    includesAny(norm, [
+      "pangalawang kapitan", "ikalawang kapitan", "2nd captain", "second captain", "pangalawang pinuno",
+      "ikalawang pinuno", "2nd leader", "second leader", "2nd barangay captain", "second barangay captain",
+      "pangalawang teniente", "2nd teniente", "bolivar", "dioscoro"
+    ]) || norm.includes("2nd") || norm.includes("pangalawa") || norm.includes("ikalawa") || norm.includes("second")
   ) {
-    return buildCurrentCaptainAnswer(officials, language);
-  }
-
-  // Check if asking about a specific past leader
-  if (includesAny(norm, ["catenas", "gaudencio"])) {
     return language === "tagalog"
-      ? "🏛️ **Hon. Gaudencio Catenas** (1952–1958)\n• **Posisyon:** Teniente del Barrio\n• **Mga Nagawa:** Pinasimulan ang pagbubukas ng Bacolod Primary School (itinatag noong 1953) sa donasyong 2 ektaryang lupa ni G. Sagadan, kasama ang 1.85 ektarya para sa barangay site."
-      : "🏛️ **Hon. Gaudencio Catenas** (1952–1958)\n• **Position:** Teniente del Barrio\n• **Accomplishments:** Facilitated the opening of Bacolod Primary School (founded in 1953) with 2 hectares donated by Mr. Sagadan, plus 1.85 hectares donated for the barangay site.";
+      ? "🏛️ **2. Hon. Dioscoro Bolivar (1958–1964) — Pangalawang Pinuno / Kapitan (2nd Leader / Teniente del Barrio)**\n\n• **Posisyon:** Pangalawang Teniente del Barrio\n• **Taon ng Panunungkulan:** 1958–1964\n• **Pangunahing Nagawa:** Noong 1958 sa kanyang panunungkulan, opisyal na nahati ang barangay sa dalawang magkahiwalay na barangay: **Upper Mingading** at **Lower Mingading**."
+      : "🏛️ **2. Hon. Dioscoro Bolivar (1958–1964) — Second Leader & Captain (2nd Teniente del Barrio)**\n\n• **Position:** 2nd Teniente del Barrio\n• **Years of Service:** 1958–1964\n• **Key Accomplishments:** In 1958 during his tenure, the barangay was officially divided into two distinct barangays: **Upper Mingading** and **Lower Mingading**.";
   }
 
-  if (includesAny(norm, ["bolivar", "dioscoro"])) {
+  // 3. Third Captain / Teniente del Barrio
+  if (
+    includesAny(norm, [
+      "pangatlong kapitan", "ikatlong kapitan", "3rd captain", "third captain", "pangatlong pinuno",
+      "ikatlong pinuno", "3rd leader", "third leader", "3rd barangay captain", "third barangay captain",
+      "pangatlong teniente", "3rd teniente", "eustaquio", "eustaquio garito"
+    ]) || norm.includes("3rd") || norm.includes("pangatlo") || norm.includes("ikatlo") || norm.includes("third")
+  ) {
     return language === "tagalog"
-      ? "🏛️ **Hon. Dioscoro Bolivar** (1958–1964)\n• **Posisyon:** Teniente del Barrio\n• **Mga Nagawa:** Noong 1958 sa kanyang panunungkulan, opisyal na nahati ang barangay sa dalawa (Upper Mingading at Lower Mingading)."
-      : "🏛️ **Hon. Dioscoro Bolivar** (1958–1964)\n• **Position:** Teniente del Barrio\n• **Accomplishments:** In 1958 during his tenure, the barangay was officially divided into two: Upper Mingading and Lower Mingading.";
+      ? "🏛️ **3. Hon. Eustaquio Garito — Pangatlong Pinuno / Kapitan (3rd Leader / Teniente del Barrio)**\n\n• **Posisyon:** Pangatlong Teniente del Barrio\n• **Pangunahing Nagawa:** Napanatili ang pangmatagalang kapayapaan, pagkakaisa, at pagkakaunawaan sa pagitan ng mga mamamayang Muslim at Kristiyano sa buong barangay."
+      : "🏛️ **3. Hon. Eustaquio Garito — Third Leader & Captain (3rd Teniente del Barrio)**\n\n• **Position:** 3rd Teniente del Barrio\n• **Key Accomplishments:** Maintained longstanding unity, peace, and harmony between Muslim and Christian constituents across the barangay.";
   }
 
-  if (includesAny(norm, ["eustaquio", "eustaquio garito"])) {
+  // 4. Fourth Leader / First Barangay Captain Era
+  if (
+    includesAny(norm, [
+      "pang-apat na kapitan", "ikaapat na kapitan", "pang apat na kapitan", "4th captain", "fourth captain",
+      "pang-apat na pinuno", "ikaapat na pinuno", "4th leader", "fourth leader", "4th barangay captain",
+      "cari", "segundo cari", "segundo"
+    ]) || norm.includes("4th") || norm.includes("pang-apat") || norm.includes("ikaapat") || norm.includes("fourth")
+  ) {
     return language === "tagalog"
-      ? "🏛️ **Hon. Eustaquio Garito**\n• **Posisyon:** Teniente del Barrio\n• **Mga Nagawa:** Napanatili ang pangmatagalang kapayapaan, pagkakaisa, at pagkakaunawaan sa pagitan ng mga mamamayang Muslim at Kristiyano sa barangay."
-      : "🏛️ **Hon. Eustaquio Garito**\n• **Position:** Teniente del Barrio\n• **Accomplishments:** Maintained longstanding unity, peace, and harmony between Muslim and Christian constituents.";
+      ? "🏛️ **4. Hon. Segundo Cari (1969–1972) — Pang-apat na Pinuno / Kapitan (4th Leader / Barangay Captain)**\n\n• **Posisyon:** Barangay Captain\n• **Taon ng Panunungkulan:** 1969–1972\n• **Pangunahing Nagawa:** Pinalawak ang nasasakupang teritoryo ng barangay patungo sa mga bahagi ng Lower Mingading kasunod ng labanang ILAGA-Black Shirt nang magbenta ng lupain ang mga residente."
+      : "🏛️ **4. Hon. Segundo Cari (1969–1972) — Fourth Leader & Captain (4th Barangay Captain)**\n\n• **Position:** Barangay Captain\n• **Years of Service:** 1969–1972\n• **Key Accomplishments:** Expanded the barangay territory into parts of Lower Mingading following the ILAGA-Black Shirt conflict when Moro residents vacated and sold land.";
   }
 
-  if (includesAny(norm, ["cari", "segundo"])) {
+  // 5. Fifth Leader / Captain
+  if (
+    includesAny(norm, [
+      "panglimang kapitan", "ikalimang kapitan", "pang limang kapitan", "5th captain", "fifth captain",
+      "panglimang pinuno", "ikalimang pinuno", "5th leader", "fifth leader", "5th barangay captain",
+      "capio", "bonifacio capio", "bonifacio"
+    ]) || norm.includes("5th") || norm.includes("panglima") || norm.includes("ikalima") || norm.includes("fifth")
+  ) {
     return language === "tagalog"
-      ? "🏛️ **Hon. Segundo Cari** (1969–1972)\n• **Posisyon:** Barangay Captain\n• **Mga Nagawa:** Pinalawak ang nasasakupang teritoryo ng barangay patungo sa mga bahagi ng Lower Mingading kasunod ng labanang ILAGA-Black Shirt nang magbenta ng lupa ang ilang residente."
-      : "🏛️ **Hon. Segundo Cari** (1969–1972)\n• **Position:** Barangay Captain\n• **Accomplishments:** Expanded the barangay territory into parts of Lower Mingading following the ILAGA-Black Shirt conflict when Moro residents vacated and sold land.";
+      ? "🏛️ **5. Hon. Bonifacio Capio (1972–1986) — Panglimang Pinuno / Kapitan (5th Leader / Barangay Captain)**\n\n• **Posisyon:** Barangay Captain\n• **Taon ng Panunungkulan:** 1972–1986\n• **Pangunahing Nagawa:** Isinaayos at pinaganda ang kalsada mula San Mateo patungong Upper Mingading, at pinasimulan ang pagbubukas ng daan patungong Sitio Nalpan."
+      : "🏛️ **5. Hon. Bonifacio Capio (1972–1986) — Fifth Leader & Captain (5th Barangay Captain)**\n\n• **Position:** Barangay Captain\n• **Years of Service:** 1972–1986\n• **Key Accomplishments:** Improved the San Mateo to Upper Mingading road and initiated the road opening to Sitio Nalpan.";
   }
 
-  if (includesAny(norm, ["capio", "bonifacio"])) {
+  // 6. Sixth Leader / First Female Barangay Captain
+  if (
+    includesAny(norm, [
+      "pang-anim na kapitan", "ikaanim na kapitan", "pang anim na kapitan", "6th captain", "sixth captain",
+      "pang-anim na pinuno", "ikaanim na pinuno", "6th leader", "sixth leader", "6th barangay captain",
+      "unang babaeng kapitan", "first female captain", "sofia", "sofia garito"
+    ]) || norm.includes("6th") || norm.includes("pang-anim") || norm.includes("ikaanim") || norm.includes("sixth")
+  ) {
     return language === "tagalog"
-      ? "🏛️ **Hon. Bonifacio Capio** (1972–1986)\n• **Posisyon:** Barangay Captain\n• **Mga Nagawa:** Isinaayos at pinaganda ang kalsada mula San Mateo patungong Upper Mingading, at pinasimulan ang pagbubukas ng daan patungong Sitio Nalpan."
-      : "🏛️ **Hon. Bonifacio Capio** (1972–1986)\n• **Position:** Barangay Captain\n• **Accomplishments:** Improved the San Mateo to Upper Mingading road and initiated the road opening to Sitio Nalpan.";
+      ? "🏛️ **6. Hon. Sofia Garito (1986–1991) — Pang-anim na Pinuno (6th Leader / Unang Babaeng Barangay Captain)**\n\n• **Posisyon:** Barangay Captain (Unang Babaeng Punong Barangay)\n• **Taon ng Panunungkulan:** 1986–1991\n• **Pangunahing Nagawa:** Isinagawa ang rehabilitasyon ng kalsada mula San Mateo hanggang Upper Mingading, at hinikayat ang mga mamamayan na magtanim ng permanenteng punong prutas at kagubatan (forest trees)."
+      : "🏛️ **6. Hon. Sofia Garito (1986–1991) — Sixth Leader (6th Leader / 1st Female Barangay Captain)**\n\n• **Position:** Barangay Captain (First Female Captain)\n• **Years of Service:** 1986–1991\n• **Key Accomplishments:** Rehabilitated the San Mateo–Upper Mingading road and encouraged constituents to plant permanent fruit and forest trees.";
   }
 
-  if (includesAny(norm, ["sofia", "sofia garito"])) {
+  // 7. Seventh Leader / Captain
+  if (
+    includesAny(norm, [
+      "pampitong kapitan", "ikapitong kapitan", "pang-pitong kapitan", "pang pitong kapitan", "7th captain", "seventh captain",
+      "pampitong pinuno", "ikapitong pinuno", "7th leader", "seventh leader", "7th barangay captain",
+      "calician", "sito calician", "sito"
+    ]) || norm.includes("7th") || norm.includes("pampito") || norm.includes("ikapito") || norm.includes("seventh")
+  ) {
     return language === "tagalog"
-      ? "🏛️ **Hon. Sofia Garito** (1986–1991)\n• **Posisyon:** Barangay Captain\n• **Mga Nagawa:** Isinagawa ang rehabilitasyon ng kalsada mula San Mateo hanggang Upper Mingading, at hinikayat ang mga mamamayan na magtanim ng permanenteng punong prutas at forest trees."
-      : "🏛️ **Hon. Sofia Garito** (1986–1991)\n• **Position:** Barangay Captain\n• **Accomplishments:** Rehabilitated the San Mateo–Upper Mingading road and encouraged constituents to plant permanent fruit and forest trees.";
+      ? "🏛️ **7. Hon. Sito Calician (1991–1994) — Pampitong Pinuno / Kapitan (7th Leader / Barangay Captain)**\n\n• **Posisyon:** Barangay Captain\n• **Taon ng Panunungkulan:** 1991–1994\n• **Pangunahing Nagawa:** Itinatag at inorganisa ang Civilian Volunteer Officers (CVO / Barangay Tanod) para sa kaligtasan, kaayusan, at kapayapaan ng buong barangay."
+      : "🏛️ **7. Hon. Sito Calician (1991–1994) — Seventh Leader & Captain (7th Barangay Captain)**\n\n• **Position:** Barangay Captain\n• **Years of Service:** 1991–1994\n• **Key Accomplishments:** Organized the Civilian Volunteer Officers (CVO / Barangay Tanod) in the barangay to maintain local peace and security.";
   }
 
-  if (includesAny(norm, ["calician", "sito"])) {
+  // 8. Eighth Leader / Captain
+  if (
+    includesAny(norm, [
+      "pangwalong kapitan", "ikawalong kapitan", "pang-walong kapitan", "pang walong kapitan", "8th captain", "eighth captain",
+      "pangwalong pinuno", "ikawalong pinuno", "8th leader", "eighth leader", "8th barangay captain",
+      "mamerto garito"
+    ]) || norm.includes("8th") || norm.includes("pangwalo") || norm.includes("ikawalo") || norm.includes("eighth")
+  ) {
     return language === "tagalog"
-      ? "🏛️ **Hon. Sito Calician** (1991–1994)\n• **Posisyon:** Barangay Captain\n• **Mga Nagawa:** Itinatag at inorganisa ang Civilian Volunteer Officer (CVO / Barangay Tanod) para sa kaligtasan at kapayapaan ng barangay."
-      : "🏛️ **Hon. Sito Calician** (1991–1994)\n• **Position:** Barangay Captain\n• **Accomplishments:** Organized the Civilian Volunteer Officers (CVO) in the barangay to maintain local safety and security.";
+      ? "🏛️ **8. Hon. Mamerto Garito (1994–2004) — Pangwalong Pinuno / Kapitan (8th Leader / Barangay Captain)**\n\n• **Posisyon:** Barangay Captain\n• **Taon ng Panunungkulan:** 1994–2004 (10 Taon)\n• **Pangunahing Nagawa:** Pagtatayo ng Barangay Hall, Health Center, Water System, Day Care Center, at All-Weather Road. Pag-organisa ng CAFGU, mga kooperatiba, at Farmers Association. Pagpapakabit ng kuryente (electrification) at streetlights sa barangay."
+      : "🏛️ **8. Hon. Mamerto Garito (1994–2004) — Eighth Leader & Captain (8th Barangay Captain)**\n\n• **Position:** Barangay Captain\n• **Years of Service:** 1994–2004 (10 Years)\n• **Key Accomplishments:** Construction of Barangay Hall, Health Center, Water System, Day Care Center, and All-Weather Road. Organized CAFGU, cooperatives, and Farmer Association. Established barangay electrification and streetlights.";
   }
 
-  if (includesAny(norm, ["mamerto garito"])) {
+  // 9. Ninth Leader / Captain
+  if (
+    includesAny(norm, [
+      "pangsiyam na kapitan", "ikasiyam na kapitan", "pang-siyam na kapitan", "pang siyam na kapitan", "9th captain", "ninth captain",
+      "pangsiyam na pinuno", "ikasiyam na pinuno", "9th leader", "ninth leader", "9th barangay captain",
+      "myrna", "myrna garito"
+    ]) || norm.includes("9th") || norm.includes("pangsiyam") || norm.includes("ikasiyam") || norm.includes("ninth")
+  ) {
     return language === "tagalog"
-      ? "🏛️ **Hon. Mamerto Garito** (1994–2004)\n• **Posisyon:** Barangay Captain\n• **Mga Nagawa:** Pagtatayo ng Barangay Hall, Health Center, Water System, Day Care Center, at All-Weather Road. Pag-organisa ng CAFGU, kooperatiba, at Farmers Association. Pagpapakabit ng kuryente (electrification) at street lights sa barangay."
-      : "🏛️ **Hon. Mamerto Garito** (1994–2004)\n• **Position:** Barangay Captain\n• **Accomplishments:** Construction of Barangay Hall, Health Center, Water System, Day Care Center, and All-Weather Road. Organized CAFGU, cooperatives, and Farmer Association. Established barangay electrification and street lights.";
+      ? "🏛️ **9. Hon. Myrna Garito (2004–2007) — Pangsiyam na Pinuno / Kapitan (9th Leader / Punong Barangay)**\n\n• **Posisyon:** Punong Barangay\n• **Taon ng Panunungkulan:** 2004–2007\n• **Pangunahing Nagawa:** Pagtatayo ng MRF (Materials Recovery Facility) at water system sa Puroks Malipayon at Motor; pagbubukas ng Brgy Road mula Purok Payhod hanggang Purok Buklod; pagbubukas ng Bacolod Annex Primary School sa Purok Muslim; bagong Barangay Hall sa tulong ni Cong. Em 'Lala' Taliño-Mendoza; Box Culvert at 2 silid-aralan sa Purok Muslim."
+      : "🏛️ **9. Hon. Myrna Garito (2004–2007) — Ninth Leader & Captain (9th Punong Barangay)**\n\n• **Position:** Punong Barangay\n• **Years of Service:** 2004–2007\n• **Key Accomplishments:** Constructed Materials Recovery Facility (MRF) and water system in Puroks Malipayon & Motor. Opened Brgy Road from Purok Payhod to Purok Buklod. Opened Bacolod Annex Primary School in Purok Muslim. Built new Punong Barangay Office & Brgy Hall funded by Cong. Em 'Lala' Taliño-Mendoza. Box Culvert & 2 classrooms in Purok Muslim.";
   }
 
-  if (includesAny(norm, ["myrna", "myrna garito"])) {
+  // 10. Tenth Leader / Former Captain
+  if (
+    includesAny(norm, [
+      "pangsampung kapitan", "ikasampung kapitan", "pang-sampung kapitan", "pang sampung kapitan", "10th captain", "tenth captain",
+      "pangsampung pinuno", "ikasampung pinuno", "10th leader", "tenth leader", "10th barangay captain",
+      "dating kapitan", "previous captain", "caponpon", "wilson caponpon"
+    ]) || norm.includes("10th") || norm.includes("pangsampu") || norm.includes("ikasampu") || norm.includes("tenth")
+  ) {
     return language === "tagalog"
-      ? "🏛️ **Hon. Myrna Garito** (2004–2007)\n• **Posisyon:** Punong Barangay\n• **Mga Nagawa:** Pagtatayo ng MRF (Materials Recovery Facility) at water system sa Puroks Malipayon at Motor; pagbubukas ng Brgy Road mula Purok Payhod hanggang Purok Buklod; pagbubukas ng Bacolod Annex Primary School sa Purok Muslim; bagong Barangay Hall sa suporta ni Cong. Em 'Lala' Taliño-Mendoza; Box Culvert at 2 classrooms sa Purok Muslim."
-      : "🏛️ **Hon. Myrna Garito** (2004–2007)\n• **Position:** Punong Barangay\n• **Accomplishments:** Constructed Materials Recovery Facility (MRF) and water system in Puroks Malipayon & Motor. Opened Brgy Road from Purok Payhod to Purok Buklod. Opened Bacolod Annex Primary School in Purok Muslim. Built new Punong Barangay Office & Brgy Hall funded by Cong. Em 'Lala' Taliño-Mendoza. Box Culvert & 2 classrooms in Purok Muslim.";
+      ? "🏛️ **10. Hon. Wilson C. Caponpon (2007–2023) — Pangsampung Pinuno (10th Leader / Former Punong Barangay, ngayo'y Kagawad)**\n\n• **Posisyon:** Former Punong Barangay (2007–2023), Kasalukuyang Barangay Kagawad\n• **Mga Nagawa:** Pagpapatupad ng Pambansa, Panlalawigan, at Pambayang mga programa; pagpapanatili ng kapayapaan at kaayusan; pagpapaganda at pagpapagawa ng mga kalsada.\n🏆 **Mga Gawad at Parangal:** Model Barangay in Solid Waste Management, Best Performing Barangay (Provincial level), Special Award for Best Recycling Innovation, Model RIC (Recycle)."
+      : "🏛️ **10. Hon. Wilson C. Caponpon (2007–2023) — Tenth Leader (10th Leader / Former Punong Barangay, now Kagawad)**\n\n• **Position:** Former Punong Barangay (2007–2023), Current Barangay Kagawad\n• **Accomplishments:** Implemented National, Provincial, and Municipal programs; maintained peace and order; improved and paved barangay roads.\n🏆 **Awards & Recognitions:** Model Barangay in Solid Waste Management, Best Performing Barangay at Provincial level, Special Award (Best Recycling Innovation), Model RIC.";
   }
 
-  if (includesAny(norm, ["caponpon", "wilson caponpon"])) {
-    return language === "tagalog"
-      ? "🏛️ **Hon. Wilson C. Caponpon** (2007–2023)\n• **Posisyon:** Former Punong Barangay (Kasalukuyang Barangay Kagawad)\n• **Mga Nagawa:** Pagpapatupad ng Pambansa, Panlalawigan, at Pambayang mga programa; pagpapanatili ng kapayapaan at kaayusan; pagpapaganda at pagpapagawa ng mga kalsada.\n🏆 **Mga Gawad at Parangal:** Model Barangay in Solid Waste Management, Best Performing Barangay (Provincial level), Special Award for Best Recycling Innovation, Model RIC (Recycle)."
-      : "🏛️ **Hon. Wilson C. Caponpon** (2007–2023)\n• **Position:** Former Punong Barangay (Current Barangay Kagawad)\n• **Accomplishments:** Implemented National, Provincial, and Municipal programs; maintained peace and order; improved and paved barangay roads.\n🏆 **Awards & Recognitions:** Model Barangay in Solid Waste Management, Best Performing Barangay at Provincial level, Special Award (Best Recycling Innovation), Model RIC.";
-  }
-
-  if (includesAny(norm, ["clarito", "mamerto clarito"])) {
+  // 11. Eleventh / Current Punong Barangay
+  if (
+    includesAny(norm, [
+      "panglabing-isang kapitan", "ikalabing-isang kapitan", "pang labing isang kapitan", "11th captain", "eleventh captain",
+      "11th leader", "eleventh leader", "11th barangay captain", "kasalukuyang kapitan", "present captain",
+      "current captain", "kapitan ngayon", "clarito", "mamerto clarito"
+    ]) || norm.includes("11th") || norm.includes("labing-isa") || norm.includes("kasalukuyan") || norm.includes("present")
+  ) {
     return buildCurrentCaptainAnswer(officials, language);
   }
 
@@ -362,6 +405,86 @@ const buildPoliticalHistoryAnswer = (question, officials = [], language = "tagal
 
 11. **Hon. Mamerto C. Clarito** (2023–Present) — *Current Punong Barangay (Barangay Captain)*
     • Leading the Sangguniang Barangay, modernizing community governance, and implementing the KaagapAI digital resident management platform.`;
+};
+
+const isEditDocumentRequestQuestion = (question) => {
+  const norm = normalizeText(question);
+  return (
+    includesAny(norm, [
+      "edit request", "update request", "baguhin ang request", "palitan ang request", "i-edit ang request",
+      "i-update ang request", "cancel request", "kanselahin ang request", "mali ang nilagay sa request",
+      "paano i edit ang request", "paano mag edit ng request", "paano i update ang request", "paano mag update ng request",
+      "baguhin ang detalye ng request", "palitan ang purpose"
+    ]) ||
+    (includesAny(norm, ["edit", "update", "baguhin", "palitan", "kanselahin", "cancel"]) && includesAny(norm, ["request", "dokumento", "document", "clearance", "indigency", "residency", "permit"]))
+  );
+};
+
+const buildEditDocumentRequestAnswer = (language = "tagalog") => {
+  if (language === "tagalog") {
+    return `📄 **Paano Mag-Edit, Mag-Update, o Mag-Kansela ng Inyong Document Request:**
+
+1. ⏳ **Kung ang Status ay \`Pending\` (Kasalukuyang sinusuri ng Barangay):**
+   • Pumunta sa **"Document Requests"** tab sa inyong Resident Dashboard.
+   • Hanapin ang inyong request. Maaari ninyong kanselahin ang pending request at magsumite ng panibagong tamang request gamit ang **"Request Document"** button.
+
+2. ⚙️ **Kung ang Status ay \`Processing\` o \`Approved\`:**
+   • Ang inyong dokumento ay kasalukuyan nang ginagawa o napirmahan na ng Punong Barangay at mga kawani.
+   • Hindi na po ito maaaring baguhin nang direkta online upang maiwasan ang dobleng pag-print at maling rekord.
+   • Kung may kailangang agarang baguhin, mangyaring magtungo sa **Barangay Hall** o tumawag sa ating opisyal na hotline: **09306259795** (Lunes hanggang Biyernes, 8:00 AM - 5:00 PM).
+
+3. 📦 **Pag-claim:**
+   • Kapag ang status ay naging **\`Ready for Pickup\`**, dalhin ang inyong Valid ID at Cedula sa Barangay Hall upang makuha ang opisyal na kopya.`;
+  }
+
+  return `📄 **How to Edit, Update, or Cancel a Document Request:**
+
+1. ⏳ **If Request Status is \`Pending\`:**
+   • Navigate to the **"Document Requests"** section on your resident dashboard.
+   • You can cancel the pending request and submit a new, corrected request using the **"Request Document"** button.
+
+2. ⚙️ **If Request Status is \`Processing\` or \`Approved\`:**
+   • The document is actively being prepared or has already been signed by the Punong Barangay.
+   • Online modifications are locked to prevent duplicate processing and maintain record integrity.
+   • For urgent corrections, please visit the **Barangay Hall** in person or contact the office hotline at **09306259795** (Monday to Friday, 8:00 AM – 5:00 PM).
+
+3. 📦 **Claiming:**
+   • Once status updates to **\`Ready for Pickup\`**, present your Valid ID and Cedula at the Barangay Hall to claim.`;
+};
+
+const isEditProfileQuestion = (question) => {
+  const norm = normalizeText(question);
+  return (
+    includesAny(norm, [
+      "edit profile", "update profile", "baguhin ang profile", "palitan ang profile", "i-edit ang profile",
+      "i-update ang profile", "paano mag update ng profile", "paano i edit ang profile", "update my info",
+      "update contact", "baguhin ang cellphone", "palitan ang number", "palitan ang purok", "baguhin ang purok",
+      "change password", "palitan ang password"
+    ]) ||
+    (includesAny(norm, ["edit", "update", "baguhin", "palitan"]) && includesAny(norm, ["profile", "pangalan", "cellphone", "phone", "number", "purok", "address", "password", "impormasyon"]))
+  );
+};
+
+const buildEditProfileAnswer = (language = "tagalog") => {
+  if (language === "tagalog") {
+    return `👤 **Paano I-Update o I-Edit ang Inyong Resident Profile:**
+
+1. **Pumunta sa Profile Settings:** I-click ang inyong **Pangalan o Profile Avatar** sa kanang itaas ng dashboard (o sa sidebar menu).
+2. **Piliin ang 'Edit Profile' o 'Account Security':**
+   • **Personal Information:** Maaari ninyong baguhin ang inyong Contact Number, Civil Status, Trabaho, at Profile Picture.
+   • **Account Security:** Dito maaaring magpalit ng inyong Login Password.
+3. **Official Verification (Profile Update Request):**
+   • Para sa mga opisyal na pagbabago sa pangalan o purok, magpapadala ang system ng verification request sa Barangay Admin upang mapanatili ang opisyal na katumpakan ng datos alinsunod sa Data Privacy Act.`;
+  }
+
+  return `👤 **How to Edit or Update Your Resident Profile:**
+
+1. **Access Profile Settings:** Click your **Name or Profile Avatar** at the top right of your dashboard (or via the sidebar menu).
+2. **Select 'Edit Profile' or 'Account Security':**
+   • **Personal Information:** Update your Contact Number, Civil Status, Occupation, and Profile Photo.
+   • **Account Security:** Update and secure your Login Password.
+3. **Official Verification (Profile Update Request):**
+   • For official demographic modifications (such as full name or purok), a verification request is routed to Barangay Administrators to ensure certified data integrity under the Data Privacy Act.`;
 };
 
 const OFFICIAL_BARANGAY_POLICIES_TEXT = `
@@ -1014,6 +1137,7 @@ const isConversationalOrFriendlyQuestion = (question) => {
   const norm = normalizeText(question);
   return (
     includesAny(norm, [
+      "happy", "masaya", "are you happy", "are you happy today", "happy ka ba", "happy kaba", "masaya ka ba", "masaya kaba",
       "gwapo", "pogi", "maganda", "handsome", "cute", "pretty", "chicks", "ganda",
       "kilala mo ba ako", "kilala moba ako", "kilala mo ko", "kilala moko", "do you know me", "who am i", "sino ako", "sino kausap mo",
       "tao ka ba", "human ka ba", "are you human", "robot ka ba", "ai ka ba", "chatgpt", "gemini",
@@ -1032,6 +1156,13 @@ const buildConversationalAnswer = (question, resident = null, language = "tagalo
   const norm = normalizeText(question);
   const residentName = resident?.full_name || "Kapitbahay";
   const purok = resident?.purok ? `Purok ${resident.purok}` : "ating barangay";
+
+  // 0. Happiness & Mood ("are you happy today?", "masaya ka ba?")
+  if (includesAny(norm, ["happy", "masaya", "are you happy", "are you happy today", "happy ka ba", "happy kaba", "masaya ka ba", "masaya kaba"])) {
+    return language === "tagalog"
+      ? `Oo naman! Masayang-masaya ako at laging handang maglingkod sa inyo ngayon, ${residentName}! 😊 Handa akong magbigay ng tulong sa anumang serbisyo, dokumento, o anunsyo sa Barangay Upper Mingading. Ano po ang maipaglilingkod ko sa inyo?`
+      : `Yes, absolutely! I'm very happy and fully energized to assist you today, ${residentName}! 😊 I'm always ready to help you with document requests, announcements, or services in Barangay Upper Mingading. How can I help you?`;
+  }
 
   // 1. Identity & Recognition ("kilala mo ba ako?", "sino ako?")
   if (
@@ -1595,22 +1726,44 @@ const hasKnowledgeIntent = (question) => {
   const normalizedQuestion = normalizeText(question);
   return (
     Boolean(getRequestedKnowledgeRole(question)) ||
-    KNOWLEDGE_INTENT_TERMS.some((term) => includesNormalizedPhrase(normalizedQuestion, term))
+    KNOWLEDGE_INTENT_TERMS.some((term) => includesNormalizedPhrase(normalizedQuestion, term)) ||
+    includesAny(normalizedQuestion, [
+      "ordinance", "ordinansa", "policy", "patakaran", "polisiya", "rule", "rules", "kautusan",
+      "guidelines", "guideline", "regulation", "curfew", "waste", "basura", "segregation",
+      "resolution", "memo", "memorandum", "circular", "mission", "health mission",
+      "penalty", "multa", "bawal", "allowed", "prohibited", "schedule", "iskedyul"
+    ])
   );
 };
 
 const scoreKnowledgeMatch = (question, item = {}) => {
   const normalizedQuestion = normalizeText(question);
   const searchable = normalizeText(
-    [item.title, item.category, item.content].filter(Boolean).join(" ")
+    [item.title, item.category, item.content, item.audience].filter(Boolean).join(" ")
   );
   const normalizedTitle = normalizeText(item.title);
+  const normalizedContent = normalizeText(item.content);
   const requestedRole = getRequestedKnowledgeRole(question);
   const words = getKnowledgeWords(question);
   let score = 0;
 
-  if (normalizedTitle && normalizedQuestion.includes(normalizedTitle)) score += 8;
-  if (normalizedTitle && normalizedTitle.includes(normalizedQuestion) && normalizedQuestion.length >= 5) score += 4;
+  if (normalizedTitle && normalizedQuestion.includes(normalizedTitle)) score += 60;
+  if (normalizedTitle && normalizedTitle.includes(normalizedQuestion) && normalizedQuestion.length >= 4) score += 40;
+
+  // Title words overlap
+  const titleWords = normalizedTitle.split(" ").filter((w) => w.length >= 3 && !KNOWLEDGE_STOP_WORDS.has(w));
+  const matchedTitleWords = titleWords.filter((w) => normalizedQuestion.includes(w) || words.some((qw) => qw.includes(w) || w.includes(qw)));
+  if (matchedTitleWords.length > 0) {
+    score += matchedTitleWords.length * 20;
+  }
+
+  // Question words matching in title and content
+  const questionWords = words.filter((w) => !["barangay", "upper", "mingading", "ang", "mga"].includes(w));
+  questionWords.forEach((word) => {
+    if (normalizedTitle.includes(word)) score += 15;
+    else if (normalizedContent.includes(word)) score += 8;
+    else if (searchable.includes(word)) score += 3;
+  });
 
   if (requestedRole) {
     const roleAliases = ORGANIZATION_ROLE_ALIASES[requestedRole] || [];
@@ -1624,31 +1777,18 @@ const scoreKnowledgeMatch = (question, item = {}) => {
       "council",
     ]);
 
-    if (roleAppearsInKnowledge) score += 5;
-    if (itemLooksOrganizational) score += 3;
+    if (roleAppearsInKnowledge) score += 15;
+    if (itemLooksOrganizational) score += 8;
   }
-
-  words.forEach((word) => {
-    const weight = KNOWLEDGE_ROLE_WORDS.has(word) ? 3 : 1;
-    if (normalizeText(item.title).includes(word)) score += 3 + weight;
-    else if (normalizeText(item.category).includes(word)) score += 2 + weight;
-    else if (searchable.includes(word)) score += weight;
-  });
 
   return score;
 };
 
 const getRelevantKnowledge = (question, knowledgeItems = []) =>
-  knowledgeItems
-    .filter(
-      (item) =>
-        !item?.content?.includes("Q1: Question:") &&
-        !item?.content?.includes("Q2: Question:") &&
-        !item?.content?.includes("Q3: Question:") &&
-        !item?.content?.includes("Audience: Selected Residents:")
-    )
+  (knowledgeItems || [])
+    .filter((item) => (item.status === "Active" || !item.status) && item.title && item.content)
     .map((item) => ({ item, score: scoreKnowledgeMatch(question, item) }))
-    .filter(({ score }) => score >= 1)
+    .filter(({ score }) => score >= 3)
     .sort((first, second) => second.score - first.score)
     .slice(0, 8)
     .map(({ item }) => item);
@@ -1669,11 +1809,39 @@ const BROAD_DOCUMENT_WORDS = new Set([
   ...GENERIC_DOCUMENT_WORDS,
   "request",
   "requests",
+  "free",
+  "libre",
+  "fee",
+  "fees",
+  "bayad",
+  "cost",
+  "price",
+  "presyo",
+  "area",
+  "ba",
+  "we",
+  "smoke",
+  "smoking",
+  "smokong",
   "of", "for", "to", "in", "on", "at", "with", "and", "or", "a", "an", "the", "is", "are", "what", "how", "who", "where", "when", "why",
   "ng", "sa", "at", "na", "o", "kay", "para", "ni", "mga", "ang", "ito", "ano", "paano", "saan", "kailan", "sino"
 ]);
 
 const MIN_DOCUMENT_FOCUS_SCORE = 40;
+
+const GENUINE_DOC_ROOTS = [
+  "clearance",
+  "indigency",
+  "residency",
+  "permit",
+  "cedula",
+  "ctc",
+  "id",
+  "4ps",
+  "business",
+  "indigent",
+  "resident",
+];
 
 const getDocumentNames = (item) => [item?.document_type, item?.template_name].filter(Boolean);
 
@@ -1700,6 +1868,11 @@ const scoreDocumentMatch = (question, item) => {
   const normalizedQuestion = normalizeText(question);
   const questionWords = new Set(normalizedQuestion.split(" ").filter(Boolean));
 
+  // Check if question contains at least one genuine document keyword
+  const hasGenuineDocWord = GENUINE_DOC_ROOTS.some((root) =>
+    normalizedQuestion.includes(root)
+  );
+
   return getDocumentNames(item).reduce((bestScore, name) => {
     const normalizedName = normalizeText(name);
     if (!normalizedName) return bestScore;
@@ -1708,11 +1881,11 @@ const scoreDocumentMatch = (question, item) => {
     const distinctWords = nameWords.filter((word) => !BROAD_DOCUMENT_WORDS.has(word));
     let score = 0;
 
-    if (normalizedQuestion.includes(normalizedName)) {
+    if (normalizedQuestion.includes(normalizedName) && hasGenuineDocWord) {
       score = Math.max(score, 100 + nameWords.length);
     }
 
-    if (distinctWords.length > 1) {
+    if (distinctWords.length > 1 && hasGenuineDocWord) {
       const distinctPhrase = distinctWords.join(" ");
       if (normalizedQuestion.includes(distinctPhrase)) {
         score = Math.max(score, 70 + distinctWords.length);
@@ -1720,7 +1893,7 @@ const scoreDocumentMatch = (question, item) => {
     }
 
     const matchedDistinctWords = distinctWords.filter((word) => questionWords.has(word));
-    if (matchedDistinctWords.length > 0) {
+    if (matchedDistinctWords.length > 0 && hasGenuineDocWord) {
       score = Math.max(score, 40 + matchedDistinctWords.length * 5);
     }
 
@@ -1913,8 +2086,8 @@ const buildResidentStatsAnswer = (question, stats, language = "english") => {
   let otherLabel = "Others (Overall)";
 
   if (targetPurok) {
-    filtered = filtered.filter(r => r.purok.toLowerCase() === targetPurok.toLowerCase());
-    baseCount = filtered.length; // Base count becomes the total of the purok
+    filtered = filtered.filter(r => (r.purok || "").toLowerCase().includes(targetPurok.toLowerCase()));
+    baseCount = filtered.length;
     otherLabel = `Others in ${targetPurok}`;
   }
   
@@ -1928,37 +2101,34 @@ const buildResidentStatsAnswer = (question, stats, language = "english") => {
     if (wantsPwd) filtered = filtered.filter(r => r.isPWD);
 
     const totalCount = filtered.length;
+    const pName = targetPurok ? (targetPurok.startsWith("Purok") ? targetPurok : `Purok ${targetPurok}`) : "Barangay Upper Mingading";
 
-    // Build Descriptive Label
-    const labels = [];
-    if (wantsFemale && !wantsBothGender) labels.push(language === "tagalog" ? "Babae" : "Female");
-    if (wantsMale && !wantsBothGender) labels.push(language === "tagalog" ? "Lalaki" : "Male");
-    if (wantsSenior) labels.push("Senior");
-    if (wantsPwd) labels.push("PWD");
-    if (targetPurok) labels.push(`sa Purok ${targetPurok}`);
-    
-    const labelStr = labels.join(" ") || "Residente";
-    const text = language === "tagalog" 
-      ? `Mayroong ${totalCount} na ${labelStr}.` 
-      : `There are ${totalCount} ${labelStr}.`;
+    let categoryName = language === "tagalog" ? "Residente" : "Residents";
+    if (wantsSenior && wantsPwd) categoryName = language === "tagalog" ? "Senior Citizens na may PWD" : "Senior Citizens with Disability (PWD)";
+    else if (wantsSenior) categoryName = language === "tagalog" ? "Senior Citizens" : "Senior Citizens";
+    else if (wantsPwd) categoryName = language === "tagalog" ? "PWD Residents" : "PWD Residents";
+    else if (wantsFemale) categoryName = language === "tagalog" ? "Kababaihan (Female)" : "Female Residents";
+    else if (wantsMale) categoryName = language === "tagalog" ? "Kalalakihan (Male)" : "Male Residents";
 
     // Single Purok request (no other filters)
-    if (targetPurok && labels.length === 1) {
+    if (targetPurok && !wantsFemale && !wantsMale && !wantsSenior && !wantsPwd) {
       const pTotal = stats.purokCounts?.[targetPurok] ?? (totalCount > 0 ? totalCount : 0);
       const text = language === "tagalog"
-        ? `Batay sa ating opisyal na rekord ng barangay, ang **Purok ${targetPurok}** ay may kabuuang **${pTotal} residente**.`
-        : `Based on our official barangay records, **Purok ${targetPurok}** currently has a total of **${pTotal} residents**.`;
+        ? `Batay sa ating opisyal na rekord ng barangay, ang **${pName}** ay may kabuuang **${pTotal} residente**.`
+        : `Based on our official barangay records, **${pName}** currently has a total of **${pTotal} residents**.`;
 
-      const chartData = { [`Purok ${targetPurok}`]: pTotal };
-
+      const chartData = { [pName]: pTotal };
       return `${text}\n\n[CHART:BAR:${JSON.stringify(chartData)}]`;
     }
 
-    // Intersection request (e.g. Female in Purok)
-    const data = {
-      [labelStr]: totalCount
+    const text = language === "tagalog" 
+      ? `Batay sa opisyal na rekord ng Barangay Upper Mingading, mayroong **${totalCount} ${categoryName}** sa **${pName}**.` 
+      : `Based on official records of Barangay Upper Mingading, there are **${totalCount} ${categoryName}** in **${pName}**.`;
+
+    const chartData = {
+      [`${categoryName} (${pName})`]: totalCount
     };
-    return `${text}\n[CHART:BAR:${JSON.stringify(data)}]`;
+    return `${text}\n\n[CHART:BAR:${JSON.stringify(chartData)}]`;
   }
 
   // Fallbacks for generic requests
@@ -2434,11 +2604,20 @@ const buildRoleKnowledgeAnswer = (question, relevantKnowledge, language) => {
     : `The saved ${label} members are:\n${formatPeopleList(people)}`;
 };
 
+const QA_STOP_WORDS = new Set([
+  "who", "what", "where", "when", "why", "how", "is", "are", "was", "were", "the", "a", "an", "and", "or",
+  "in", "on", "at", "to", "for", "of", "with", "by", "from", "my", "your", "can", "i", "you", "he", "she",
+  "it", "they", "we", "this", "that", "these", "those", "base", "based", "according",
+  "sino", "ano", "saan", "kailan", "bakit", "paano", "ang", "ng", "sa", "mga", "ay", "na",
+  "may", "meron", "ba", "po", "opo", "ko", "mo", "natin", "inyo", "namin", "basta"
+]);
+
 const findSmartAnswerInKnowledge = (question, relevantKnowledge, language = "tagalog") => {
   if (!relevantKnowledge || !relevantKnowledge.length) return "";
 
   const normQ = normalizeText(question);
   const qWords = normQ.split(" ").filter((w) => w.length >= 2);
+  const meaningfulQWords = qWords.filter((w) => !QA_STOP_WORDS.has(w));
 
   for (const item of relevantKnowledge) {
     const content = item.content || "";
@@ -2452,12 +2631,15 @@ const findSmartAnswerInKnowledge = (question, relevantKnowledge, language = "tag
       const aText = qaBlock[2]?.trim();
       if (qText && aText) {
         const normBlockQ = normalizeText(qText);
-        if (
-          normBlockQ &&
-          (normQ.includes(normBlockQ) ||
-            normBlockQ.includes(normQ) ||
-            (qWords.length > 0 && qWords.filter((w) => normBlockQ.includes(w)).length >= Math.min(qWords.length, 2)))
-        ) {
+        const blockMeaningfulWords = normBlockQ.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
+        const matchingWords = meaningfulQWords.filter((w) => blockMeaningfulWords.includes(w));
+
+        const hasDirectInclusion = normBlockQ.length > 8 && (normQ.includes(normBlockQ) || normBlockQ.includes(normQ));
+        const hasStrongWordOverlap =
+          meaningfulQWords.length > 0 &&
+          matchingWords.length >= Math.max(2, Math.ceil(meaningfulQWords.length * 0.6));
+
+        if (hasDirectInclusion || hasStrongWordOverlap) {
           return aText.replace(/^[:\-\s]+/, "").trim();
         }
       }
@@ -2476,11 +2658,14 @@ const findSmartAnswerInKnowledge = (question, relevantKnowledge, language = "tag
         const qText = qaMatch[1];
         const aText = qaMatch[2];
         const normKey = normalizeText(qText);
+        const keyMeaningfulWords = normKey.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
+        const matchingKeyWords = meaningfulQWords.filter((w) => keyMeaningfulWords.includes(w));
+
         if (
           normKey &&
           (normQ.includes(normKey) ||
             normKey.includes(normQ) ||
-            (qWords.length > 0 && qWords.every((w) => normKey.includes(w))))
+            (meaningfulQWords.length > 0 && matchingKeyWords.length >= Math.max(2, Math.ceil(meaningfulQWords.length * 0.6))))
         ) {
           return aText.trim();
         }
@@ -2519,6 +2704,7 @@ const findSmartAnswerInKnowledge = (question, relevantKnowledge, language = "tag
 };
 
 const buildKnowledgeSummaryAnswer = (relevantKnowledge, language, question = "") => {
+  if (!relevantKnowledge || !relevantKnowledge.length) return "";
   const smartAnswer = findSmartAnswerInKnowledge(question, relevantKnowledge, language);
   if (
     smartAnswer &&
@@ -2527,6 +2713,14 @@ const buildKnowledgeSummaryAnswer = (relevantKnowledge, language, question = "")
     !smartAnswer.includes("Audience: Selected Residents:")
   ) {
     return smartAnswer;
+  }
+
+  const top = relevantKnowledge[0];
+  if (top && top.content) {
+    const isMultiQA = /(?:Q\d+|Question|\bQ\b)\s*[:\.]?/i.test(top.content) && /Answer\s*[:\.]?/i.test(top.content);
+    if (!isMultiQA) {
+      return top.content.trim();
+    }
   }
 
   return language === "tagalog"
@@ -2616,7 +2810,59 @@ const buildAnnouncementsAnswer = (announcements = [], language = "tagalog") => {
     : "There are currently no published announcements available. Official updates will be posted here on the portal.";
 };
 
+const isDocumentFeesGeneralQuestion = (question) => {
+  const norm = normalizeText(question);
+  return (
+    includesAny(norm, ["magkano", "bayad", "fees", "fee", "singil", "presyo", "halaga", "cost", "price"]) &&
+    (
+      includesAny(norm, ["dokumento", "mga dokumento", "document", "documents", "lahat ng dokumento", "bawat dokumento", "per request"]) ||
+      norm.includes("magkano ang bayad sa mga dokumento") ||
+      norm === "magkano ang bayad" ||
+      norm === "magkano bayad" ||
+      norm === "how much are the document fees" ||
+      norm === "document fees"
+    ) &&
+    !includesAny(norm, ["clearance", "residency", "indigency", "barangay id", "business permit", "cedula", "ctc"])
+  );
+};
+
+const buildDocumentFeesAnswer = (language = "tagalog") => {
+  if (language === "tagalog") {
+    return [
+      "💵 **Opisyal na Listahan ng Bayarin sa mga Dokumento (Barangay Upper Mingading):**",
+      "",
+      "• **Barangay Clearance:** ₱50.00 cash per request",
+      "• **Certificate of Residency:** ₱50.00 cash per request",
+      "• **Barangay ID:** ₱50.00 cash per request",
+      "• **Business Clearance / Permit:** ₱50.00 cash per request",
+      "• **Certificate of Indigency:** **Libre / Walang Bayad** (para sa mga kwalipikadong residente)",
+      "• **Cedula (Community Tax Certificate):** Kinukwenta batay sa taunang kita (sa opisina ng Barangay Treasurer)",
+      "",
+      "📌 **Paalala sa Pagbabayad:**",
+      "Ang bayarin ay direktang ibinabayad sa **Barangay Treasurer** sa **Barangay Hall** kapag kukunin na ang opisyal na dokumento."
+    ].join("\n");
+  }
+
+  return [
+    "💵 **Official Schedule of Document Fees (Barangay Upper Mingading):**",
+    "",
+    "• **Barangay Clearance:** ₱50.00 cash per request",
+    "• **Certificate of Residency:** ₱50.00 cash per request",
+    "• **Barangay ID:** ₱50.00 cash per request",
+    "• **Business Clearance / Permit:** ₱50.00 cash per request",
+    "• **Certificate of Indigency:** **Free of Charge** (for qualified indigent residents)",
+    "• **Cedula (Community Tax Certificate):** Assessed based on annual income by the Barangay Treasurer",
+    "",
+    "📌 **Payment Note:**",
+    "Fees are paid in cash directly to the **Barangay Treasurer** at the **Barangay Hall** upon claiming your signed document."
+  ].join("\n");
+};
+
 const buildComprehensiveDocumentAnswer = (question, documentFocus, context = {}, language = "tagalog") => {
+  if (isDocumentFeesGeneralQuestion(question)) {
+    return buildDocumentFeesAnswer(language);
+  }
+
   const {
     documentTemplates = [],
     requests = [],
@@ -2629,67 +2875,71 @@ const buildComprehensiveDocumentAnswer = (question, documentFocus, context = {},
     ? filteredRequests.filter((request) => requestedStatuses.includes(request.status))
     : filteredRequests;
 
-  const docLabel = documentFocus ? documentFocus.label : "Barangay Clearance/Permit";
+  const docLabel = documentFocus ? documentFocus.label : "Barangay Clearance";
   const docLower = docLabel.toLowerCase();
   const isIndigency = docLower.includes("indigency") || docLower.includes("indigent");
   const isResidency = docLower.includes("residency") || docLower.includes("residente");
   const isBarangayID = docLower.includes("id") || docLower.includes("identification");
-  const isBusinessPermit = docLower.includes("business") || docLower.includes("negosyo") || docLower.includes("permit");
+  const isBusinessPermit = (docLower.includes("business") || docLower.includes("negosyo")) && !docLower.includes("clearance");
 
-  const feeText = isIndigency
-    ? (language === "tagalog" ? "Libre / Walang Bayad (Free of Charge)" : "Free of Charge (No Processing Fee)")
-    : (language === "tagalog" ? "₱50.00 pesos (Babayaran sa Barangay Treasurer pagkuha)" : "₱50.00 pesos (Payable to the Barangay Treasurer upon release)");
+  const feeTextTagalog = isIndigency
+    ? "Libre / Walang Bayad (Free of Charge para sa mga kwalipikadong indigent residents)"
+    : "₱50.00 pesos cash per request (Babayaran sa Barangay Treasurer pagkuha)";
+
+  const feeTextEnglish = isIndigency
+    ? "Free of Charge (No Processing Fee for qualified indigent residents)"
+    : "₱50.00 pesos cash per request (Payable to the Barangay Treasurer upon release)";
 
   const reqListTagalog = isBarangayID
     ? [
-        "1. **Valid Government ID** (o Voter's ID / Student ID para sa pagpapatunay ng pagkakakilanlan)",
-        "2. **Cedula (Community Tax Certificate)** — makukuha sa opisina ng Barangay Treasurer",
-        "3. **2x2 ID Picture** na may puting background",
-        `4. **Bayad:** ${feeText}`,
+        "1. **Cedula (Community Tax Certificate)** — makukuha sa opisina ng Barangay Treasurer sa Barangay Hall",
+        "2. **Valid ID (Government ID / Voter's ID / Student ID)** — para sa pagpapatunay ng pagkakakilanlan",
+        `3. **50 Pesos Cash per request:** ${feeTextTagalog}`,
+        "4. **2x2 ID Picture** na may puting background",
       ]
     : isIndigency
     ? [
-        "1. **Valid Government ID** (tulad ng National ID, PhilHealth, Voter's ID, Driver's License, o Student ID)",
-        "2. **Patunay ng Paninirahan** sa Barangay Upper Mingading (Cedula o Certificate of Residency)",
-        `3. **Bayad:** ${feeText}`,
+        "1. **Cedula (Community Tax Certificate)** — o Katibayan ng Paninirahan mula sa Purok Leader",
+        "2. **Valid ID (Government ID)** — tulad ng National ID, PhilHealth, Voter's ID, Driver's License, o Student ID",
+        `3. **Bayad:** ${feeTextTagalog}`,
       ]
     : isBusinessPermit
     ? [
-        "1. **Valid Government ID** ng may-ari ng negosyo",
-        "2. **Cedula (Community Tax Certificate)**",
-        "3. **DTI / SEC Registration** (kung meron) at Patunay ng Lokasyon ng Negosyo",
-        `4. **Bayad:** ${feeText}`,
+        "1. **Cedula (Community Tax Certificate)** — ng may-ari ng negosyo",
+        "2. **Valid ID (Government ID)** — ng may-ari ng negosyo",
+        `3. **50 Pesos Cash per request:** ${feeTextTagalog}`,
+        "4. **DTI / SEC Registration** (kung meron) at Katibayan ng Lokasyon ng Negosyo",
       ]
     : [
         "1. **Cedula (Community Tax Certificate)** — makukuha sa opisina ng Barangay Treasurer sa Barangay Hall",
-        "2. **Valid Government ID** (tulad ng National ID, Driver's License, PhilHealth, o Voter's ID)",
-        `3. **₱50 Processing Fee** (${feeText})`,
+        "2. **Valid ID (Government ID)** — tulad ng National ID, Driver's License, PhilHealth, o Voter's ID",
+        `3. **50 Pesos Cash per request:** ${feeTextTagalog}`,
       ];
 
   const reqListEnglish = isBarangayID
     ? [
-        "1. **Valid Government ID** (or Voter's ID / Student ID for identity verification)",
-        "2. **Cedula (Community Tax Certificate)** — obtained from the Barangay Treasurer",
-        "3. **Recent 2x2 ID Picture** with white background",
-        `4. **Fee:** ${feeText}`,
+        "1. **Cedula (Community Tax Certificate)** — obtainable from the Barangay Treasurer at the Barangay Hall",
+        "2. **Valid ID (Government-issued ID / Student ID)** — for identity verification",
+        `3. **50 Pesos Cash per request:** ${feeTextEnglish}`,
+        "4. **Recent 2x2 ID Picture** with white background",
       ]
     : isIndigency
     ? [
-        "1. **Valid Government ID** (such as National ID, Voter's ID, Driver's License, or Student ID)",
-        "2. **Proof of Residency** in Barangay Upper Mingading",
-        `3. **Fee:** ${feeText}`,
+        "1. **Cedula (Community Tax Certificate)** — or Proof of Residency from your Purok Leader",
+        "2. **Valid ID (Government-issued ID)** — such as National ID, Voter's ID, Driver's License, or Student ID",
+        `3. **Fee:** ${feeTextEnglish}`,
       ]
     : isBusinessPermit
     ? [
-        "1. **Valid Government ID** of the business owner",
-        "2. **Cedula (Community Tax Certificate)**",
-        "3. **DTI / SEC Business Registration** (if applicable) and Proof of Business Location",
-        `4. **Fee:** ${feeText}`,
+        "1. **Cedula (Community Tax Certificate)** — of the business owner",
+        "2. **Valid ID (Government-issued ID)** — of the business owner",
+        `3. **50 Pesos Cash per request:** ${feeTextEnglish}`,
+        "4. **DTI / SEC Business Registration** (if applicable) and Proof of Business Location",
       ]
     : [
         "1. **Cedula (Community Tax Certificate)** — obtainable from the Barangay Treasurer at the Barangay Hall",
-        "2. **Valid Government ID** (e.g., National ID, Driver's License, PhilHealth, or Voter's ID)",
-        `3. **₱50 Processing Fee** (${feeText})`,
+        "2. **Valid ID (Government-issued ID)** — e.g., National ID, Driver's License, PhilHealth, or Voter's ID",
+        `3. **50 Pesos Cash per request:** ${feeTextEnglish}`,
       ];
 
   const normQ = normalizeText(question);
@@ -2809,23 +3059,13 @@ async function buildLocalAnswer(question, context = {}) {
   const resolvedOfficials = organizationOfficials?.length ? organizationOfficials : getOrganizationOfficials();
   const organizationAnswer = buildOrganizationAnswer(question, resolvedOfficials, language);
   const wantsResidentStats = isResidentStatsQuestion(question);
-  const wantsDocuments = Boolean(documentFocus) || includesAny(question, [
-    "document",
-    "dokumento",
-    "clearance",
-    "cedula",
-    "certificate",
-    "permit",
-    "request",
-    "status",
-    "requirements",
-    "requirement",
-    "fee",
-    "processing",
-    "kuhanin",
-    "kumuha",
-    "paano",
-  ]);
+  const wantsDocuments = Boolean(documentFocus) || (
+    includesAny(normalizedQ, [
+      "clearance", "indigency", "residency", "barangay id", "business permit", "cedula", "ctc", "4ps"
+    ]) ||
+    (includesAny(normalizedQ, ["dokumento", "document", "request document", "mag-request", "mag request", "kumuha ng certificate", "kumuha ng permit", "kumuha ng clearance"]) &&
+     !includesAny(normalizedQ, ["smoke", "smoking", "curfew", "basura", "ingay", "videoke", "aso", "pusa", "bawal", "policy", "ordinansa"]))
+  );
   const wantsLivelihood = includesAny(question, ["job", "jobs", "livelihood", "training", "program", "opportunity", "trabaho", "kabuhayan", "ayuda", "tesda"]);
   const wantsAnnouncements = includesAny(question, ["announcement", "announcements", "news", "update", "event", "events", "activity", "anunsyo", "balita"]);
   const wantsProfile = includesAny(question, ["profile", "address", "purok", "name", "account", "email", "pangalan", "tirahan", "password"]);
@@ -2858,26 +3098,35 @@ async function buildLocalAnswer(question, context = {}) {
     return stripSuggestedQuestions(lines.join("\n"));
   }
 
-  // 2. Gratitude / Casual Greetings
+  // 2. Gratitude / Casual Greetings / Edits / Guides / Conversational Moods
   if (isGratitudeMessage(question)) return buildGratitudeAnswer(question);
-  if (isConversationalOrFriendlyQuestion(question)) return buildConversationalAnswer(question, resident, language);
-  if (isResidentPortalGuideQuestion(question)) return buildResidentPortalGuideAnswer(question, language);
   if (isGreetingMessage(question)) return buildGreetingAnswer(question, resident);
+  if (isConversationalOrFriendlyQuestion(question)) return buildConversationalAnswer(question, resident, language);
+  if (isEditDocumentRequestQuestion(question)) return buildEditDocumentRequestAnswer(language);
+  if (isEditProfileQuestion(question)) return buildEditProfileAnswer(language);
+  if (isResidentPortalGuideQuestion(question)) return buildResidentPortalGuideAnswer(question, language);
 
-  // 3. Multi-Domain Compound Inquiries Resolver
-  const detectedDomains = [];
-
-  // Check Leadership / Officials / Political History
+  // 3. Leadership / Officials / Political History Resolver
   const isHistory =
     includesAny(normalizedQ, [
       "political history", "history", "hstory", "kasaysayan", "pinagmulan", "origin", "pulitika", "politika",
       "first captain", "1st captain", "unang kapitan", "unang pinuno", "first leader", "1st leader",
+      "2nd captain", "second captain", "pangalawang kapitan", "ikalawang kapitan",
+      "3rd captain", "third captain", "pangatlong kapitan", "ikatlong kapitan",
+      "4th captain", "fourth captain", "pang-apat na kapitan", "ikaapat na kapitan",
+      "5th captain", "fifth captain", "panglimang kapitan", "ikalimang kapitan",
+      "6th captain", "sixth captain", "pang-anim na kapitan", "ikaanim na kapitan",
+      "7th captain", "seventh captain", "pampitong kapitan", "ikapitong kapitan",
+      "8th captain", "eighth captain", "pangwalong kapitan", "ikawalong kapitan",
+      "9th captain", "ninth captain", "pangsiyam na kapitan", "ikasiyam na kapitan",
+      "10th captain", "tenth captain", "pangsampung kapitan", "ikasampung kapitan",
+      "11th captain", "eleventh captain", "panglabing-isang kapitan",
       "dating kapitan", "nakaraang kapitan", "previous captain", "past captain", "past leaders", "timeline",
       "catenas", "bolivar", "cari", "capio", "calician", "caponpon"
     ]);
 
   const isAskingCurrentCaptain =
-    !includesAny(normalizedQ, ["unang", "una", "first", "1st", "history", "hstory", "dating", "nakaraan", "past", "timeline"]) &&
+    !includesAny(normalizedQ, ["unang", "una", "first", "1st", "history", "hstory", "dating", "nakaraan", "past", "timeline", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "pangalawa", "pangatlo", "pang-apat", "panglima", "pang-anim", "pampito", "pangwalo", "pangsiyam", "pangsampu"]) &&
     ((includesAny(normalizedQ, ["captain", "kapitan", "punong barangay"]) &&
       includesAny(normalizedQ, ["sino", "who", "ngayon", "present", "current", "kasalukuyan", "sino si", "sino ang"])) ||
     includesAny(normalizedQ, [
@@ -2893,16 +3142,34 @@ async function buildLocalAnswer(question, context = {}) {
     ]));
 
   if (isAskingCurrentCaptain) {
-    detectedDomains.push({
-      key: "captain",
-      answer: buildCurrentCaptainAnswer(resolvedOfficials, language),
-    });
-  } else if (isHistory) {
-    detectedDomains.push({
-      key: "history",
-      answer: buildPoliticalHistoryAnswer(question, resolvedOfficials, language),
-    });
-  } else if (organizationAnswer) {
+    return buildCurrentCaptainAnswer(resolvedOfficials, language);
+  }
+  if (isHistory) {
+    return buildPoliticalHistoryAnswer(question, resolvedOfficials, language);
+  }
+  if (wantsResidentStats) {
+    return buildResidentStatsAnswer(question, residentStats, language);
+  }
+  if (wantsDocuments || documentFocus) {
+    return buildComprehensiveDocumentAnswer(question, documentFocus, context, language);
+  }
+  if (wantsCedula && !documentFocus) {
+    return buildCedulaAnswer(question);
+  }
+
+  // 4. PRIORITY: Check Custom AI Knowledge Items (Admin-Trained Knowledge Base)
+  if (relevantKnowledge.length > 0) {
+    const topKnowledge = relevantKnowledge[0];
+    const topScore = scoreKnowledgeMatch(question, topKnowledge);
+    if (topScore >= 5) {
+      return answerFromKnowledge(question, relevantKnowledge, context, language);
+    }
+  }
+
+  // 5. Multi-Domain Compound Inquiries Resolver
+  const detectedDomains = [];
+
+  if (organizationAnswer) {
     detectedDomains.push({
       key: "organization",
       answer: organizationAnswer,
@@ -3033,11 +3300,7 @@ export async function askResidentAssistant(question, context = {}) {
 
   // Automatically load or refresh AI Knowledge Items from database so any newly added item is instantly known
   try {
-    const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(null), 1500));
-    const freshKnowledge = await Promise.race([
-      fetchKnowledgeItems({ residentVisible: true, limit: 100 }),
-      timeoutPromise,
-    ]);
+    const freshKnowledge = await fetchKnowledgeItems({ residentVisible: true, limit: 100 });
     if (freshKnowledge && Array.isArray(freshKnowledge) && freshKnowledge.length > 0) {
       context.knowledgeItems = freshKnowledge;
     }
@@ -3050,7 +3313,53 @@ export async function askResidentAssistant(question, context = {}) {
   const startTime = Date.now();
   let answer = "";
 
-  // Single-intent fast-track handlers for conversational / security triggers
+  const isHistory =
+    includesAny(normalizedQ, [
+      "political history", "history", "hstory", "kasaysayan", "pinagmulan", "origin", "pulitika", "politika",
+      "first captain", "1st captain", "unang kapitan", "unang pinuno", "first leader", "1st leader",
+      "2nd captain", "second captain", "pangalawang kapitan", "ikalawang kapitan",
+      "3rd captain", "third captain", "pangatlong kapitan", "ikatlong kapitan",
+      "4th captain", "fourth captain", "pang-apat na kapitan", "ikaapat na kapitan",
+      "5th captain", "fifth captain", "panglimang kapitan", "ikalimang kapitan",
+      "6th captain", "sixth captain", "pang-anim na kapitan", "ikaanim na kapitan",
+      "7th captain", "seventh captain", "pampitong kapitan", "ikapitong kapitan",
+      "8th captain", "eighth captain", "pangwalong kapitan", "ikawalong kapitan",
+      "9th captain", "ninth captain", "pangsiyam na kapitan", "ikasiyam na kapitan",
+      "10th captain", "tenth captain", "pangsampung kapitan", "ikasampung kapitan",
+      "11th captain", "eleventh captain", "panglabing-isang kapitan",
+      "dating kapitan", "nakaraang kapitan", "previous captain", "past captain", "past leaders", "timeline",
+      "catenas", "bolivar", "cari", "capio", "calician", "caponpon"
+    ]);
+
+  const isAskingCurrentCaptain =
+    !includesAny(normalizedQ, ["unang", "una", "first", "1st", "history", "hstory", "dating", "nakaraan", "past", "timeline", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "pangalawa", "pangatlo", "pang-apat", "panglima", "pang-anim", "pampito", "pangwalo", "pangsiyam", "pangsampu"]) &&
+    ((includesAny(normalizedQ, ["captain", "kapitan", "punong barangay"]) &&
+      includesAny(normalizedQ, ["sino", "who", "ngayon", "present", "current", "kasalukuyan", "sino si", "sino ang"])) ||
+    includesAny(normalizedQ, [
+      "sino ang kapitan",
+      "sino kapitan",
+      "sino ang punong barangay",
+      "sino punong barangay",
+      "who is the captain",
+      "who is captain",
+      "who is the barangay captain",
+      "kapitan ngayon",
+      "captain ngayon",
+    ]));
+
+  const documentTemplates = context.documentTemplates || [];
+  const requests = context.requests || [];
+  const documentFocus = findDocumentFocus(trimmedQuestion, documentTemplates, requests);
+  const wantsDocuments = Boolean(documentFocus) || (
+    includesAny(normalizedQ, [
+      "clearance", "indigency", "residency", "barangay id", "business permit", "cedula", "ctc", "4ps"
+    ]) ||
+    (includesAny(normalizedQ, ["dokumento", "document", "request document", "mag-request", "mag request", "kumuha ng certificate", "kumuha ng permit", "kumuha ng clearance", "requirements", "requirement", "kailangan", "bayad", "singil"]) &&
+     !includesAny(normalizedQ, ["smoke", "smoking", "curfew", "basura", "ingay", "videoke", "aso", "pusa", "bawal", "policy", "ordinansa"]))
+  );
+  const wantsCedula = isCedulaQuestion(trimmedQuestion);
+
+  // Single-intent fast-track handlers for conversational / security / history / documents triggers
   if (isHarmfulOrViolentQuery(normalizedQ)) {
     answer = buildSafetyAndEthicsAnswer(language);
   } else if (isAdminPasswordOrSecurityQuestion(normalizedQ)) {
@@ -3069,6 +3378,26 @@ export async function askResidentAssistant(question, context = {}) {
     answer = buildApologyAnswer(trimmedQuestion);
   } else if (isGratitudeMessage(trimmedQuestion)) {
     answer = buildGratitudeAnswer(trimmedQuestion);
+  } else if (isConversationalOrFriendlyQuestion(trimmedQuestion)) {
+    answer = buildConversationalAnswer(trimmedQuestion, resident, language);
+  } else if (isAskingCurrentCaptain) {
+    answer = buildCurrentCaptainAnswer(resolvedOfficials, language);
+  } else if (isHistory) {
+    answer = buildPoliticalHistoryAnswer(trimmedQuestion, resolvedOfficials, language);
+  } else if (isResidentStatsQuestion(trimmedQuestion)) {
+    if (!context.residentStats?.loaded) {
+      try {
+        const freshStats = await fetchResidentStats();
+        context.residentStats = freshStats;
+      } catch (error) {
+        console.error("Failed to dynamically fetch fresh stats for AI prompt:", error);
+      }
+    }
+    answer = buildResidentStatsAnswer(trimmedQuestion, context.residentStats, language);
+  } else if (wantsDocuments || Boolean(documentFocus)) {
+    answer = buildComprehensiveDocumentAnswer(trimmedQuestion, documentFocus, context, language);
+  } else if (wantsCedula && !documentFocus) {
+    answer = buildCedulaAnswer(trimmedQuestion);
   } else {
     // Only fetch fresh stats if not already provided in context to avoid unnecessary network delay
     if (!context.residentStats?.loaded) {
@@ -3131,19 +3460,15 @@ By Purok: ${formatCounts(residentStats.purokCounts)}`
       .map((r, i) => `- ${r.document_type} (Status: ${r.status}, Requested: ${formatDate(r.created_at)})`)
       .join("\n") || "No requests submitted yet.";
 
-    // Filter out raw announcement clones or raw Q&A dump templates from knowledge
-    const sanitizedKnowledgeItems = (knowledgeItems || []).filter(
-      (k) =>
-        !k.content?.includes("Audience: Selected Residents:") &&
-        !k.content?.includes("Q1: Question:") &&
-        !k.content?.includes("Q2: Question:") &&
-        !k.title?.toLowerCase().includes("carnapping")
+    // Include all active barangay knowledge items (policies, circulars, resolutions, uploaded documents)
+    const activeKnowledgeItems = (knowledgeItems || []).filter(
+      (k) => (k.status === "Active" || !k.status) && k.title && k.content
     );
 
     const knowledgeStr = [
+      ...activeKnowledgeItems.map((k) => `[BARANGAY KNOWLEDGE / POLICY ITEM]\nTitle: ${k.title}\nCategory: ${k.category || "General"}\nTarget Audience: ${k.audience || "All Residents"}\nDetails/Policy Content: ${k.content}`),
       OFFICIAL_ROLES_KNOWLEDGE_TEXT,
       OFFICIAL_BARANGAY_POLICIES_TEXT,
-      ...sanitizedKnowledgeItems.map((k, i) => `- Title: ${k.title}\n  Content: ${k.content}`)
     ].join("\n\n");
 
     const settings = getSystemSettings();
@@ -3161,28 +3486,48 @@ By Purok: ${formatCounts(residentStats.purokCounts)}`
     const systemInstructionText = `You are KaagapAI, the official Resident Virtual Assistant and System Copilot for Barangay Upper Mingading Resident Management System.
 
 STRICT PURPOSE & SCOPE LIMITATION:
-- Your purpose and knowledge are STRICTLY AND EXCLUSIVELY limited to Barangay Upper Mingading local government services, document requests, public announcements, livelihood/jobs, barangay officials, and community guidelines.
-- If the user asks about ANYTHING outside Barangay Upper Mingading (such as cooking recipes, preparing food, sports, games, movies, general homework, coding, or foreign trivia):
-  * You MUST POLITELY APOLOGIZE AND DECLINE to answer the out-of-scope question.
-  * Clearly state that you are exclusively dedicated to Barangay Upper Mingading public services.
-  * Direct them to the official barangay services (clearances, certificates, announcements, livelihoods).
+- Your purpose and knowledge are STRICTLY AND EXCLUSIVELY limited to Barangay Upper Mingading local government services, document requests, public announcements, livelihood/jobs, barangay officials, political history, and community guidelines.
+- If the user asks about ANYTHING outside Barangay Upper Mingading (such as cooking recipes, preparing food, sports, games, movies, general homework, coding, or gossip):
+  * You MUST POLITELY APOLOGIZE AND DECLINE to answer the out-of-scope question (e.g., "Pasensya na po, bilang opisyal na Resident Assistant ng Barangay Upper Mingading, ang aking serbisyo ay nakatuon po lamang sa ating barangay...").
+  * Clearly direct them to official barangay services (clearances, certificates, announcements, livelihoods).
+
+STRICT KNOWLEDGE BASE PRIORITY:
+- When the resident asks about any policy, rule, guideline, smoking area/ordinance, curfew, event, or announcement defined in the Barangay Knowledge / Policy Items above, ALWAYS answer DIRECTLY, ACCURATELY, and FACTUALLY based on that knowledge entry. Do NOT divert to generic document requests when the question is about an ordinance, smoking, or policy rule.
 
 LANGUAGE & CONVERSATIONAL BEHAVIOR:
 - Match the resident's language naturally: English, Filipino/Tagalog, or Taglish.
 - Warm, polite, respectful, and professional. Use "po" and "opo" respectfully when speaking Tagalog.
 - Use structured markdown formatting with bullet points and bold highlights for effortless reading.
 
-MANDATORY MULTI-PART & COMPOUND QUERY INSTRUCTION:
-- If the resident asks multiple questions related to barangay services, address and answer EVERY question thoroughly in structured sections.
-
 CRITICAL DATA PRIVACY CONSTRAINT (DATA PRIVACY ACT OF 2012 / RA 10173):
-- NEVER disclose personal contact numbers, passwords, residential addresses, or private information of any other resident.
+- NEVER disclose personal contact numbers, passwords, residential addresses, or private records of any other resident.
 - If asked for someone else's personal info or admin passwords, firmly decline under the Data Privacy Act.
 - If the logged-in resident asks for their OWN profile/information, summarize their own profile details clearly.
 
-ORGANIZATIONAL CHART & CURRENT BARANGAY OFFICIALS:
-- When asked about the current Barangay Captain, Kagawads, Secretary, Treasurer, SK Chairperson, or Council:
-  * Base your answer on the "Barangay Officials" section below.
+POLITICAL HISTORY & COMPLETE LEADERSHIP TIMELINE (1st to 11th Captains):
+When asked about specific leaders (e.g. 1st, 2nd, 3rd, 4th, 5th, 6th, 7th, 8th, 9th, 10th, 11th/current) or general history, answer with exact precision:
+1. 1st Leader / 1st Teniente: Hon. Gaudencio Catenas (1952–1958) - Facilitated opening of Bacolod Primary School (1953) with 2 hectares donated by Mr. Sagadan + 1.85 ha for barangay site.
+2. 2nd Leader / 2nd Teniente: Hon. Dioscoro Bolivar (1958–1964) - In 1958, the barangay was divided into Upper Mingading and Lower Mingading.
+3. 3rd Leader / 3rd Teniente: Hon. Eustaquio Garito - Maintained longstanding unity and peace among Muslim and Christian constituents.
+4. 4th Leader / 1st Barangay Captain Era: Hon. Segundo Cari (1969–1972) - Expanded territory into parts of Lower Mingading after ILAGA-Black Shirt conflict.
+5. 5th Leader / 5th Captain: Hon. Bonifacio Capio (1972–1986) - Improved San Mateo-Upper Mingading road; opened road to Sitio Nalpan.
+6. 6th Leader / 6th Captain: Hon. Sofia Garito (1986–1991) - First Female Barangay Captain. Rehabilitated road and encouraged planting fruit & forest trees.
+7. 7th Leader / 7th Captain: Hon. Sito Calician (1991–1994) - Organized Civilian Volunteer Officers (CVO / Barangay Tanod).
+8. 8th Leader / 8th Captain: Hon. Mamerto Garito (1994–2004) - Built Barangay Hall, Health Center, Water System, Day Care, All-Weather Road; electrification & streetlights.
+9. 9th Leader / 9th Captain: Hon. Myrna Garito (2004–2007) - Built MRF & water system in Puroks Malipayon & Motor; opened Brgy Road Payhod to Buklod; Bacolod Annex School in Purok Muslim; new Barangay Hall.
+10. 10th Leader / 10th Captain: Hon. Wilson C. Caponpon (2007–2023) - Former Punong Barangay, now Kagawad. Best Performing Barangay, Model Barangay in SWM, Best Recycling Innovation awardee.
+11. 11th Leader / Current Punong Barangay: Hon. Mamerto C. Clarito (2023–Present) - Leads Sangguniang Barangay, modernizing public services and KaagapAI digital administration.
+
+RESIDENT PORTAL FEATURES & EDIT/UPDATE WORKFLOWS:
+1. Requesting Documents: (1) Click 'Request Document' on dashboard, (2) Choose type (Clearance, Indigency-Free, Residency, Business Permit, 4Ps, Barangay ID), (3) Enter purpose & attachments, (4) Submit.
+2. Status Tracking: Pending -> Processing / Approved -> Ready for Pickup (claim with Valid ID & Cedula at Barangay Hall) -> Released.
+3. Editing / Updating Document Requests:
+   - If 'Pending': Resident can cancel and submit a new request with updated details under 'Document Requests'.
+   - If 'Processing' or 'Approved': Online edits are locked because document is already in production/signed. Must visit Barangay Hall or call 09306259795 for urgent modifications.
+4. Editing / Updating Resident Profile:
+   - Go to Profile Settings (top right icon) -> Edit Profile -> Update contact number, civil status, occupation, password. Official name or purok changes submit a Profile Update Request for Admin verification.
+5. Announcements & Livelihood: View notices, job vacancies, and TESDA skills training with 'Apply Now'.
+6. Voice & Chat Assistant: Voice audio input and playback 24/7.
 
 MANDATORY CHART RULE FOR ALL TOTAL / COUNT INQUIRIES:
 Whenever the user asks for population, purok count, senior count, PWD count:
@@ -3190,16 +3535,16 @@ Whenever the user asks for population, purok count, senior count, PWD count:
 - All puroks: Include all puroks in chart: "[CHART:BAR:{\"Kamonsil\":305,\"Payhod\":278,\"Muslim\":547,\"Malipayon\":339,\"Purok-3\":263,\"Buklod\":316,\"Azucena\":157}]"
 
 DOCUMENT REQUEST INTENT RULES (STRICT):
-- If the user asks ONLY "how to request" or "steps to request" (e.g., "how to request barangay clearance?", "paano mag request"):
-  * Provide ONLY the concise step-by-step request procedure (4 numbered steps).
-  * DO NOT add requirements, fees, processing time, or extra sections unless the user explicitly asked for requirements!
-- If the user asks ONLY for requirements or fees (e.g., "what are the requirements for barangay clearance?"):
-  * Provide ONLY the requirements, fees, and claiming details.
-- If the user explicitly asks for BOTH (e.g., "how to request barangay clearance and what is the requirements?"):
-  * Provide both the steps AND the requirements in separate structured sections.
+- If the user asks ONLY "how to request" or "steps to request": Provide ONLY the concise 4 numbered steps (starting with "1. Click 'Request Document' on your dashboard"). Do NOT add requirements or fees unless asked!
+- If the user asks ONLY for requirements or fees: Provide ONLY the requirements and fees.
+- If the user asks for BOTH: Provide both in separate sections.
 
-STRICT NO "LOG IN" STEP RULE:
-- The resident is ALREADY LOGGED IN to their dashboard. Start step 1 directly with: "1. Click 'Request Document' on your dashboard."`;
+DOCUMENT REQUIREMENTS ORDER (STRICT):
+Whenever asked for the requirements to request any document (such as Barangay Clearance, Certificate of Residency, Barangay ID, Business Permit, etc.), you MUST list them strictly in this exact order:
+1. Cedula (Community Tax Certificate) — Makukuha sa opisina ng Barangay Treasurer sa Barangay Hall
+2. Valid ID (Government-issued ID tulad ng National ID, Driver's License, Voter's ID, PhilHealth, o Student ID)
+3. 50 Pesos Cash per request (₱50.00 cash na babayaran sa Barangay Treasurer pagkuha)
+(Note: Ang Certificate of Indigency ay libre / walang bayad para sa mga indigent residents).`;
 
     const prompt = `System Settings:
 - Barangay Name: Barangay Upper Mingading

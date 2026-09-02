@@ -392,13 +392,20 @@ const cleanTextForSpeech = (str = "", isTagalog = false, isNativeVoice = false) 
     .replace(/\bPWDs\b/g, "P.W.D.s")
     .replace(/\bPWED\b/g, "P.W.D.")
     .replace(/\bIDs\b/g, "I.D.s")
+    .replace(/\bValid\.?\s*id\b/gi, "Valid I.D.")
     .replace(/\bID\b/g, "I.D.")
+    .replace(/\b4Ps\b/gi, "Four P's")
+    .replace(/\b2x2\b/gi, "two by two")
+    .replace(/\bCedula\b/gi, "Sedula")
+    .replace(/\bChrystophyr\b/gi, "Christopher")
     .replace(/\bRef\.?\s*No\.?\b/gi, "Reference Number")
     .replace(/\bNo\.\b/gi, "Number")
     .replace(/\be\.g\.?,?\b/gi, isTagalog ? "halimbawa," : "for example,")
     .replace(/\bi\.e\.?,?\b/gi, isTagalog ? "ibig sabihin," : "that is,")
     .replace(/\bvs\.?\b/gi, "versus")
     .replace(/\bapprox\.?\b/gi, isTagalog ? "tinatayang" : "approximately")
+    .replace(/\b₱\s*50(\.00)?\b/gi, isTagalog ? "singkuwenta pesos" : "50 pesos")
+    .replace(/\b50\s*pesos\s*cash\b/gi, isTagalog ? "singkuwenta pesos cash" : "50 pesos cash")
     .replace(/\b₱\s*(\d+)/g, "$1 pesos")
     .replace(/\bPhp\s*(\d+)/gi, "$1 pesos")
     .replace(/\bGovt\.?\b/gi, "Government")
@@ -7816,7 +7823,7 @@ const UserDashboard = () => {
             />
             {/* Floating Chat Container */}
             <motion.div
-              className="relative z-10 flex h-[min(650px,calc(100dvh-4.5rem))] max-h-[calc(100dvh-4.5rem)] w-full sm:w-[430px] flex-col overflow-hidden rounded-3xl border border-emerald-500/30 bg-[#042015]/95 shadow-2xl backdrop-blur-2xl pointer-events-auto ring-1 ring-emerald-500/20 mb-14 sm:mb-0"
+              className="relative z-10 flex h-[min(780px,calc(100dvh-2.5rem))] max-h-[calc(100dvh-2.5rem)] w-full sm:w-[420px] md:w-[430px] flex-col overflow-hidden rounded-3xl border border-emerald-500/30 bg-[#042015]/95 shadow-2xl backdrop-blur-2xl pointer-events-auto ring-1 ring-emerald-500/20 mb-14 sm:mb-0"
               initial={{ opacity: 0, scale: 0.92, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.92, y: 20 }}
@@ -8038,21 +8045,21 @@ const UserDashboard = () => {
                         </p>
                         <div className="flex flex-col gap-2">
                           {[
-                            { text: "Paano kumuha ng Clearance?", icon: FileText },
-                            { text: "Magkano ang bayad sa Residency?", icon: CreditCard },
-                            { text: "Sino ang Barangay Kapitan?", icon: UserCheck },
+                            { text: "Ano ang requirements sa Barangay Clearance?", icon: FileText },
+                            { text: "Magkano ang bayad sa mga dokumento?", icon: CreditCard },
+                            { text: "Sino ang kasalukuyang Barangay Kapitan?", icon: UserCheck },
+                            { text: "What is the political history of barangay upper mingading?", icon: History },
+                            { text: "How many total seniors citizen in purok kamonsil?", icon: UserCheck },
+                            { text: "May bukas bang livelihood programs o trabaho?", icon: Briefcase },
+                            { text: "Ano ang mga bagong anunsyo sa barangay?", icon: Megaphone },
                             { text: "Anong oras bukas ang Barangay Hall?", icon: Clock },
-                            { text: "May livelihood programs ba?", icon: Briefcase },
-                            { text: "Paano mag-reklamo ng maingay?", icon: Megaphone },
-                            { text: "Where is the evacuation center?", icon: Shield },
-                            { text: "Can I change my password?", icon: KeyRound },
-                            { text: "Who approves my account?", icon: UserCheck },
+                            { text: "Free to smoke ba sa barangay upper mingading?", icon: Shield },
                           ].map((item) => (
                             <button
                               key={item.text}
                               type="button"
                               onClick={() => handlePrompt(item.text)}
-                              className="group flex items-center justify-between w-full rounded-xl border border-emerald-500/20 bg-[#031d13]/85 backdrop-blur-md p-2.5 px-3 text-left text-xs font-bold text-slate-100 transition hover:bg-[#14532D] hover:text-white hover:border-[#14532D] shadow-2xs active:scale-[0.98]"
+                              className="group flex items-center justify-between w-full rounded-xl border border-emerald-500/20 bg-[#031d13]/85 backdrop-blur-md p-2.5 px-3 text-left text-xs font-bold text-slate-100 transition hover:bg-[#14532D] hover:text-white hover:border-[#14532D] shadow-2xs active:scale-[0.98] cursor-pointer"
                             >
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#14532D]/40 group-hover:bg-white/20 text-emerald-300 group-hover:text-white transition">
@@ -8173,6 +8180,37 @@ const UserDashboard = () => {
                     </motion.div>
                   )}
                   <div ref={assistantMessagesEndRef} />
+                </div>
+
+                {/* ── QUICK QUESTIONS (2-COL CLEAN GRID - NO SCROLL) ── */}
+                <div className="shrink-0 border-t border-emerald-500/20 bg-[#02180f]/95 px-3 py-2 backdrop-blur-md">
+                  <div className="flex items-center justify-between mb-1.5 px-0.5">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400/90 flex items-center gap-1">
+                      <Sparkles size={11} className="text-amber-400" />
+                      Quick Questions:
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-medium">I-click para magtanong</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { label: "📄 Clearance Requirements", prompt: "Ano ang requirements sa Barangay Clearance?" },
+                      { label: "💵 Magkano ang Bayad?", prompt: "Magkano ang bayad sa mga dokumento?" },
+                      { label: "🏛️ Sino ang Kapitan?", prompt: "Sino ang kasalukuyang Barangay Kapitan?" },
+                      { label: "📜 Political History", prompt: "What is the political history of barangay upper mingading?" },
+                      { label: "👴 Seniors sa Kamonsil", prompt: "How many total seniors citizen in purok kamonsil?" },
+                      { label: "💼 Trabaho at Livelihood", prompt: "May bukas bang livelihood programs o trabaho?" },
+                    ].map((chip) => (
+                      <button
+                        key={chip.label}
+                        type="button"
+                        onClick={() => handlePrompt(chip.prompt)}
+                        disabled={assistantLoading}
+                        className="flex items-center justify-start gap-1.5 rounded-xl border border-emerald-500/25 bg-[#032517]/90 hover:bg-[#0e4b30] hover:border-emerald-400 text-emerald-100 hover:text-white px-2.5 py-1.5 text-[11px] font-bold shadow-2xs transition active:scale-[0.98] disabled:opacity-50 cursor-pointer text-left truncate"
+                      >
+                        <span className="truncate">{chip.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* Input form */}

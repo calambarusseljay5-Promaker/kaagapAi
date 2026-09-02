@@ -6,6 +6,7 @@ import {
   Brain,
   BrainCircuit,
   Briefcase,
+  CheckCircle,
   CheckCircle2,
   ChevronRight,
   Copy,
@@ -57,7 +58,6 @@ import {
   parseFileToKnowledgeText,
   analyzeAndStructureKnowledgeWithAi,
 } from "../utils/fileKnowledgeParser";
-import { generateText } from "../services/geminiService";
 import { askResidentAssistant } from "../services/residentAssistantService";
 import { showAdminSystemToast } from "../utils/toast";
 
@@ -100,7 +100,7 @@ const statusClass = (status) => {
 
 const sourceMeta = {
   manual: { label: "Manual Input", icon: FileText, color: "bg-blue-50 text-blue-700 border-blue-200" },
-  document_upload: { label: "Doc Upload / OCR", icon: FileUp, color: "bg-purple-50 text-purple-700 border-purple-200" },
+  document_upload: { label: "Doc Upload / AI Ingest", icon: FileUp, color: "bg-purple-50 text-purple-700 border-purple-200" },
   announcement: { label: "Announcement", icon: Megaphone, color: "bg-rose-50 text-rose-700 border-rose-200" },
   livelihood: { label: "Livelihood & Jobs", icon: Briefcase, color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
 };
@@ -139,12 +139,6 @@ const AIKnowledge = () => {
   const [editingItem, setEditingItem] = useState(null);
   const [formData, setFormData] = useState(initialForm);
 
-  // File Ingestion & AI Processing State
-  const [isProcessingFile, setIsProcessingFile] = useState(false);
-  const [uploadedFileInfo, setUploadedFileInfo] = useState(null);
-  const [aiSuggestions, setAiSuggestions] = useState(null);
-  const fileInputRef = useRef(null);
-
   // Interactive Chatbot Testing Simulator
   const [showSimulator, setShowSimulator] = useState(false);
   const [simQuestion, setSimQuestion] = useState("");
@@ -152,7 +146,7 @@ const AIKnowledge = () => {
   const [simHistory, setSimHistory] = useState([
     {
       role: "bot",
-      text: "Magandang araw! Ako si KaagapAI. Subukan mo akong tanungin tungkol sa mga ordinansa, requirements, curfew, o mga bagong upload na dokumento sa ating barangay knowledge base.",
+      text: "Magandang araw! Ako si KaagapAI. Handa akong sumagot base sa lahat ng mga patakaran, ordinansa, at gabay na nakatala sa ating AI Knowledge Base!",
       matchedSource: "System Initialization",
     },
   ]);
@@ -172,7 +166,7 @@ const AIKnowledge = () => {
     } finally {
       setLoading(false);
     }
-  }, [categoryFilter, search, sourceFilter, statusFilter]);
+  }, [categoryFilter, search, sourceFilter, statusFilter, setMessage]);
 
   useEffect(() => {
     const timer = window.setTimeout(loadKnowledge, 150);
@@ -192,9 +186,6 @@ const AIKnowledge = () => {
   const openCreate = () => {
     setEditingItem(null);
     setFormData(initialForm);
-    setUploadedFileInfo(null);
-    setAiSuggestions(null);
-    setMessage(null);
     setShowModal(true);
   };
 
@@ -209,9 +200,6 @@ const AIKnowledge = () => {
       effective_date: item.effective_date || "",
       expires_at: item.expires_at || "",
     });
-    setUploadedFileInfo(null);
-    setAiSuggestions(null);
-    setMessage(null);
     setShowModal(true);
   };
 
@@ -224,59 +212,11 @@ const AIKnowledge = () => {
     setShowModal(false);
     setEditingItem(null);
     setFormData(initialForm);
-    setUploadedFileInfo(null);
-    setAiSuggestions(null);
   };
 
   const handleInput = (event) => {
     const { name, value } = event.target;
     setFormData((current) => ({ ...current, [name]: value }));
-  };
-
-  // Upload & Ingest File (Word, PDF, TXT, MD, Image)
-  const handleFileUpload = async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setIsProcessingFile(true);
-    setMessage(null);
-
-    try {
-      // 1. Extract raw text / base64 from file
-      const parsed = await parseFileToKnowledgeText(file);
-      setUploadedFileInfo({
-        name: parsed.fileName || file.name,
-        sizeKb: parsed.sizeKb || Math.round(file.size / 1024),
-        type: file.type || "Document",
-      });
-
-      // 2. Pass to Gemini AI Auto-Structure Engine
-      const aiResult = await analyzeAndStructureKnowledgeWithAi(parsed);
-      setAiSuggestions(aiResult);
-
-      // 3. Populate form with structured data
-      setFormData((prev) => ({
-        ...prev,
-        title: aiResult.title || parsed.title || prev.title,
-        category: aiResult.category || prev.category,
-        audience: aiResult.audience || prev.audience,
-        content: aiResult.content || parsed.text || prev.content,
-      }));
-
-      setMessage({
-        type: "success",
-        text: `✨ Successfully analyzed "${file.name}" with AI! Knowledge structured & ready to save into Chatbot.`,
-      });
-    } catch (err) {
-      console.error("File ingestion error:", err);
-      setMessage({
-        type: "error",
-        text: `File processing notice: ${err.message || "Failed to process document."}`,
-      });
-    } finally {
-      setIsProcessingFile(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
   };
 
   const handleSave = async () => {
@@ -290,10 +230,9 @@ const AIKnowledge = () => {
     }
 
     setSaving(true);
-    setMessage(null);
 
     try {
-      const sourceType = uploadedFileInfo ? "document_upload" : editingItem?.source_type || "manual";
+      const sourceType = editingItem?.source_type || "manual";
 
       if (editingItem) {
         await updateKnowledgeItem(editingItem.id, {
@@ -305,18 +244,15 @@ const AIKnowledge = () => {
       } else {
         await createKnowledgeItem({
           ...formData,
-          source_type: sourceType,
+          source_type: "manual",
         });
-        setMessage({
-          type: "success",
-          text: `🎉 New Knowledge "${formData.title}" saved! Resident Chatbot is now trained on this data.`,
-        });
+        setMessage({ type: "success", text: "New barangay knowledge created & trained into chatbot." });
       }
 
       closeModal();
-      await loadKnowledge();
+      loadKnowledge();
     } catch (error) {
-      setMessage({ type: "error", text: error.message || "Failed to save knowledge record." });
+      setMessage({ type: "error", text: error.message || "Failed to save knowledge." });
     } finally {
       setSaving(false);
     }
@@ -336,7 +272,6 @@ const AIKnowledge = () => {
 
   const syncPublishedContent = async () => {
     setSyncing(true);
-    setMessage(null);
 
     try {
       const [announcements, livelihoodPosts] = await Promise.all([
@@ -367,9 +302,9 @@ const AIKnowledge = () => {
   };
 
   // Test Chatbot Playground
-  const handleTestChatbot = async (e) => {
-    e.preventDefault();
-    const q = simQuestion.trim();
+  const handleTestChatbot = async (e, customQuery = null) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const q = (customQuery || simQuestion).trim();
     if (!q) return;
 
     setSimHistory((prev) => [...prev, { role: "user", text: q }]);
@@ -396,7 +331,7 @@ const AIKnowledge = () => {
 
       const matchedSource = topMatches.length > 0
         ? topMatches.map((m) => m.title).join(", ")
-        : "Barangay Knowledge Base";
+        : "KaagapAI Knowledge Base";
 
       setSimHistory((prev) => [
         ...prev,
@@ -418,6 +353,15 @@ const AIKnowledge = () => {
     }
   };
 
+  const handleTestSampleQuestion = (questionText) => {
+    closeModal();
+    setShowSimulator(true);
+    setSimQuestion(questionText);
+    setTimeout(() => {
+      handleTestChatbot(null, questionText);
+    }, 200);
+  };
+
   return (
     <div className="min-h-screen bg-[#F0FDF4]/30 pb-20">
       <Header
@@ -427,60 +371,86 @@ const AIKnowledge = () => {
 
       <main className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 lg:px-8 space-y-6">
 
-        {/* CLEAN TOP ACTION BAR */}
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-emerald-400/40 bg-gradient-to-r from-[#023B28] via-[#035237] to-[#023B28] p-4 sm:p-5 text-white shadow-xl">
-          <div className="flex items-center gap-3.5">
-            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15 border border-white/20 text-amber-300 shadow-inner">
-              <Sparkles size={22} className="text-amber-300 drop-shadow-sm" />
-            </span>
+        {/* ── 1. STATS CARDS ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm flex items-center gap-3.5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <Database size={20} />
+            </div>
             <div>
-              <h2 className="text-base sm:text-lg font-black text-white tracking-tight drop-shadow-xs">
-                Barangay Knowledge Base
-              </h2>
-              <p className="text-xs sm:text-sm text-emerald-100 font-semibold drop-shadow-2xs">
-                Manage policies, FAQs, and guidelines for the KaagapAI resident chatbot
-              </p>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Total Knowledge</p>
+              <p className="text-xl font-black text-slate-900">{stats.total} records</p>
             </div>
           </div>
 
-          {/* Quick Action Buttons */}
-          <div className="flex flex-wrap items-center gap-2.5">
-            {/* Add New Knowledge Manually */}
-            <button
-              type="button"
-              onClick={openCreate}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-emerald-50 text-[#00552E] font-black text-xs sm:text-sm shadow-md border border-emerald-200 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
-            >
-              <Plus size={16} className="stroke-[3] text-[#00552E]" />
-              <span>New Knowledge</span>
-            </button>
+          <div className="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm flex items-center gap-3.5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-teal-50 text-teal-700 border border-teal-200">
+              <BrainCircuit size={20} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Active in Chatbot</p>
+              <p className="text-xl font-black text-teal-900">{stats.active} trained</p>
+            </div>
+          </div>
 
-            {/* Re-Sync All Content */}
-            <button
-              type="button"
-              onClick={syncPublishedContent}
-              disabled={syncing}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#004D2A] hover:bg-[#006034] text-white font-black text-xs sm:text-sm shadow-md border border-emerald-400/60 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer disabled:opacity-60"
-              title="Re-sync all announcements and livelihood items"
-            >
-              {syncing ? <Loader size={16} className="animate-spin text-emerald-200" /> : <RefreshCw size={16} className="stroke-[2.5] text-emerald-200" />}
-              <span className="text-white font-black">{syncing ? "Syncing..." : "Re-Sync All"}</span>
-            </button>
+          <div className="rounded-2xl border border-purple-100 bg-white p-4 shadow-sm flex items-center gap-3.5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-purple-50 text-purple-700 border border-purple-200">
+              <FileUp size={20} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Doc Uploads / Files</p>
+              <p className="text-xl font-black text-purple-900">{stats.uploaded} documents</p>
+            </div>
+          </div>
 
-            {/* Test Chatbot Playground Button */}
-            <button
-              type="button"
-              onClick={() => setShowSimulator(true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#FFB800] hover:bg-[#F59E0B] text-slate-950 font-black text-xs sm:text-sm shadow-md border border-amber-400 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
-              title="Open Interactive Chatbot Simulator to test live responses"
-            >
-              <Bot size={16} className="stroke-[2.5] text-slate-950" />
-              <span>Test Chatbot</span>
-            </button>
+          <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm flex items-center gap-3.5">
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-700 border border-blue-200">
+              <RefreshCw size={20} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Auto-Synced Data</p>
+              <p className="text-xl font-black text-blue-900">{stats.synced} feeds</p>
+            </div>
           </div>
         </div>
 
-        {/* SEARCH & FILTERS BAR */}
+        {/* ── 2. TOP ACTION BUTTONS (NO GREEN BACKGROUND) ── */}
+        <div className="flex flex-wrap items-center justify-end gap-2.5">
+          {/* Add New Knowledge */}
+          <button
+            type="button"
+            onClick={openCreate}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#00552E] hover:bg-[#004224] text-white font-black text-xs sm:text-sm shadow-md transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+          >
+            <Plus size={16} className="stroke-[3] text-white" />
+            <span>New Knowledge</span>
+          </button>
+
+          {/* Re-Sync All Content */}
+          <button
+            type="button"
+            onClick={syncPublishedContent}
+            disabled={syncing}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-black text-xs sm:text-sm shadow-sm border border-slate-300 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer disabled:opacity-60"
+            title="Re-sync all announcements and livelihood items"
+          >
+            {syncing ? <Loader size={16} className="animate-spin text-emerald-700" /> : <RefreshCw size={16} className="stroke-[2.5] text-emerald-700" />}
+            <span>{syncing ? "Syncing..." : "Re-Sync All"}</span>
+          </button>
+
+          {/* Test Chatbot Playground Button */}
+          <button
+            type="button"
+            onClick={() => setShowSimulator(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#FFB800] hover:bg-[#F59E0B] text-slate-950 font-black text-xs sm:text-sm shadow-md border border-amber-400 transition-all hover:scale-[1.02] active:scale-95 cursor-pointer"
+            title="Open Interactive Chatbot Simulator to test live responses"
+          >
+            <Bot size={16} className="stroke-[2.5] text-slate-950" />
+            <span>Test Chatbot</span>
+          </button>
+        </div>
+
+        {/* ── 3. SEARCH & FILTERS BAR ── */}
         <div className="rounded-2xl bg-white border-2 border-slate-200 p-4 shadow-xs grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_200px_180px_180px]">
           <div className="relative">
             <Search className="absolute left-3.5 top-3 text-slate-500" size={17} />
@@ -527,7 +497,7 @@ const AIKnowledge = () => {
           </select>
         </div>
 
-        {/* KNOWLEDGE RECORDS GRID */}
+        {/* ── 4. KNOWLEDGE RECORDS GRID ── */}
         <div className="space-y-4">
           {loading ? (
             <div className="p-16 text-center text-slate-600 font-bold bg-white rounded-3xl border-2 border-slate-200 shadow-sm">
@@ -539,14 +509,14 @@ const AIKnowledge = () => {
               <BrainCircuit size={44} className="mx-auto text-emerald-600" />
               <h4 className="text-base font-black text-slate-900">No Knowledge Records Found</h4>
               <p className="text-xs text-slate-600 max-w-md mx-auto font-medium">
-                Click &quot;Upload &amp; Ingest File&quot; to upload your documents, or apply one of the quick starter templates to train the chatbot.
+                Click &quot;Upload &amp; Train Document&quot; to ingest your files, or click &quot;New Knowledge&quot; to create a policy record with AI ideas.
               </p>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-700 text-white font-black text-xs hover:bg-emerald-800 cursor-pointer shadow-sm"
               >
-                <Upload size={15} /> Upload First File
+                <Upload size={15} /> Upload First Document
               </button>
             </div>
           ) : (
@@ -634,16 +604,16 @@ const AIKnowledge = () => {
         </div>
       </main>
 
-      {/* NEW / EDIT KNOWLEDGE MODAL */}
+      {/* ── 5. NEW / EDIT KNOWLEDGE MODAL (MANUAL INPUT & PASTE) ── */}
       <FloatingModal
         open={showModal}
         onClose={closeModal}
-        title={editingItem ? "Edit AI Knowledge Record" : "Add AI Knowledge to Chatbot"}
-        subtitle="Enter barangay guidelines, policies, or information to train the resident virtual assistant"
+        title={editingItem ? "Edit Barangay Knowledge Record" : "Add Barangay Knowledge to Chatbot"}
+        subtitle="Enter or paste barangay policies, guidelines, and ordinances to train the resident chatbot"
         maxWidth="max-w-3xl"
       >
         <div className="space-y-5">
-          {/* Inputs */}
+          {/* Form Inputs */}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2 space-y-1">
               <label className="text-xs font-black text-slate-700 uppercase tracking-wider">
@@ -753,7 +723,7 @@ const AIKnowledge = () => {
         </div>
       </FloatingModal>
 
-      {/* FULL KNOWLEDGE RECORD VIEWER MODAL */}
+      {/* ── 6. FULL KNOWLEDGE RECORD VIEWER MODAL ── */}
       <FloatingModal
         open={showViewModal}
         onClose={() => setShowViewModal(false)}
@@ -810,7 +780,7 @@ const AIKnowledge = () => {
         )}
       </FloatingModal>
 
-      {/* INTERACTIVE CHATBOT PLAYGROUND MODAL */}
+      {/* ── 7. INTERACTIVE CHATBOT PLAYGROUND SIMULATOR ── */}
       <FloatingModal
         open={showSimulator}
         onClose={() => setShowSimulator(false)}
@@ -856,7 +826,7 @@ const AIKnowledge = () => {
             {simLoading && (
               <div className="flex gap-3 justify-start items-center text-xs text-slate-500 font-bold pl-2 animate-pulse">
                 <Bot size={16} className="text-emerald-600 animate-spin" />
-                <span>KaagapAI is retrieving knowledge & typing answer...</span>
+                <span>KaagapAI is retrieving knowledge & formulating answer...</span>
               </div>
             )}
           </div>
@@ -882,7 +852,7 @@ const AIKnowledge = () => {
           </div>
 
           {/* Input Form */}
-          <form onSubmit={handleTestChatbot} className="flex gap-2">
+          <form onSubmit={(e) => handleTestChatbot(e)} className="flex gap-2">
             <input
               value={simQuestion}
               onChange={(e) => setSimQuestion(e.target.value)}

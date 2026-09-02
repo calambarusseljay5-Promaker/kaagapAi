@@ -1,11 +1,21 @@
 const DEFAULT_GEMINI_KEY = "";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
-// Fast, ultra-responsive supported models on Google Gemini API v1beta
+// Highly capable, top-tier supported models on Google Gemini API v1beta
+export const AVAILABLE_GEMINI_MODELS = [
+  { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", description: "Ultra-fast, high intelligence & responsive (Recommended)" },
+  { id: "gemini-1.5-flash-latest", name: "Gemini 1.5 Flash (Latest)", description: "Standard lightweight & fast" },
+  { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", description: "Deep reasoning, comprehensive logic & long context" },
+  { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", description: "Next-gen fast multi-step task execution" },
+  { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", description: "Next-gen ultra reasoning & high complexity" },
+];
+
 const DEFAULT_CANDIDATE_MODELS = [
-  "gemini-1.5-flash",
   "gemini-2.0-flash",
+  "gemini-1.5-flash-latest",
   "gemini-1.5-pro",
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
 ];
 
 export function getActiveGeminiApiKey() {
@@ -30,6 +40,78 @@ export function setCustomGeminiApiKey(key) {
   }
 }
 
+export function getActiveGeminiModel() {
+  let model = "gemini-2.0-flash";
+  if (typeof window !== "undefined") {
+    const customModel = window.localStorage.getItem("kaagapai_gemini_model");
+    if (customModel && customModel.trim()) model = customModel.trim();
+    else if (import.meta.env?.VITE_GEMINI_MODEL) model = import.meta.env.VITE_GEMINI_MODEL;
+  } else if (import.meta.env?.VITE_GEMINI_MODEL) {
+    model = import.meta.env.VITE_GEMINI_MODEL;
+  }
+
+  // Normalize deprecated model names to prevent 404s
+  if (model === "gemini-1.5-flash") return "gemini-2.0-flash";
+  if (model === "gemini-1.5-flash-8b") return "gemini-2.0-flash";
+  return model;
+}
+
+export function setCustomGeminiModel(model) {
+  if (typeof window !== "undefined") {
+    if (model && model.trim()) {
+      const normalized = model === "gemini-1.5-flash" ? "gemini-2.0-flash" : model.trim();
+      window.localStorage.setItem("kaagapai_gemini_model", normalized);
+    } else {
+      window.localStorage.removeItem("kaagapai_gemini_model");
+    }
+  }
+}
+
+/**
+ * Quick connectivity and key validity test against Gemini API
+ */
+export async function testGeminiConnection(key, modelToTest) {
+  const apiKey = key || getActiveGeminiApiKey();
+  if (!apiKey) {
+    return { success: false, message: "No API key provided." };
+  }
+
+  const model = modelToTest || getActiveGeminiModel();
+  const testUrl = `${GEMINI_BASE_URL}/models/${model}:generateContent?key=${apiKey}`;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+    const response = await fetch(testUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: "Hello! Reply with 'OK'." }] }],
+        generationConfig: { maxOutputTokens: 10, temperature: 0.1 },
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errText = await response.text();
+      return {
+        success: false,
+        status: response.status,
+        message: `API returned ${response.status}: ${errText.slice(0, 120)}`,
+      };
+    }
+
+    const data = await response.json();
+    const reply = data?.candidates?.[0]?.content?.parts?.[0]?.text || "OK";
+    return { success: true, model, reply };
+  } catch (err) {
+    return { success: false, message: err.message || "Connection timed out." };
+  }
+}
+
 export async function generateText(prompt, options = {}) {
   const apiKey = getActiveGeminiApiKey();
   if (!apiKey) {
@@ -38,13 +120,14 @@ export async function generateText(prompt, options = {}) {
     );
   }
 
+  const activeModel = getActiveGeminiModel();
   const {
-    model = import.meta.env?.VITE_GEMINI_MODEL || "gemini-1.5-flash",
+    model = activeModel,
     temperature = 0.2,
     maxOutputTokens = 2048,
     systemInstruction = "",
     fileData = null,
-    timeoutMs = 3500,
+    timeoutMs = 8500,
   } = options;
 
   const userParts = [];
@@ -93,9 +176,10 @@ export async function generateText(prompt, options = {}) {
     };
   }
 
+  // Model fallback chain: user selected model -> top tier models
   const modelsToTry = Array.from(new Set([model, ...DEFAULT_CANDIDATE_MODELS]))
     .filter(Boolean)
-    .filter((m) => m !== "gemini-2.0-flash-lite"); // exclude deprecated model
+    .filter((m) => m !== "gemini-2.0-flash-lite");
   let lastError = null;
 
   for (const currentModel of modelsToTry) {
@@ -119,7 +203,7 @@ export async function generateText(prompt, options = {}) {
 
       if (!response.ok) {
         const errorText = await response.text();
-        // If key is invalid or leaked, stop loop immediately to avoid lagging
+        // If key is invalid or unauthorized, stop loop immediately
         if (response.status === 403 || response.status === 401) {
           throw new Error(`Gemini API Authentication Error (${response.status}): ${errorText}`);
         }

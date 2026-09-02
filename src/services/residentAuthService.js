@@ -504,6 +504,23 @@ export async function requestResidentActivation(activation = {}) {
     }
   }
 
+  // 3. Always ensure the resident's exact chosen credentials are saved in resident_activation_requests
+  if (requestId && (username || password)) {
+    try {
+      await supabase
+        .from("resident_activation_requests")
+        .update({
+          requested_username: username || null,
+          requested_plain_password: password || null,
+          requested_password_hash: password || null,
+          requested_email: email || null,
+        })
+        .eq("id", requestId);
+    } catch (updateErr) {
+      console.warn("Notice syncing requested credentials to request record:", updateErr);
+    }
+  }
+
   if (activation.proofFile && requestId) {
     try {
       await attachResidentRegistrationProof(requestId, activation.proofFile);
@@ -588,22 +605,96 @@ export function clearResidentSession() {
 /**
  * Send SMS One-Time Password (OTP) for password recovery
  */
+export async function findResidentByPhoneVariants(phoneOrIdentifier) {
+  const raw = String(phoneOrIdentifier || "").trim();
+  if (!raw) return null;
+
+  const digits = raw.replace(/\D/g, "");
+  const searchTerms = new Set([raw]);
+
+  if (digits.length >= 7) {
+    searchTerms.add(digits);
+    if (digits.length >= 10) {
+      const last10 = digits.slice(-10);
+      searchTerms.add(last10);
+      searchTerms.add(`0${last10}`);
+      searchTerms.add(`+63${last10}`);
+      searchTerms.add(`63${last10}`);
+      searchTerms.add(`0${last10.slice(0, 3)}-${last10.slice(3, 6)}-${last10.slice(6)}`);
+      searchTerms.add(`0${last10.slice(0, 3)} ${last10.slice(3, 6)} ${last10.slice(6)}`);
+    }
+  }
+
+  const termsArray = Array.from(searchTerms).filter(Boolean);
+
+  // 1. Check in residents table using .in()
+  try {
+    const { data: list } = await supabase
+      .from("residents")
+      .select("id, full_name, phone, status, resident_accounts(id, username)")
+      .in("phone", termsArray)
+      .neq("status", "Archived")
+      .limit(1);
+
+    if (list && list.length > 0) return list[0];
+  } catch (err) {
+    console.warn("findResidentByPhoneVariants in() error:", err);
+  }
+
+  // 2. Check in residents table using ilike with the last 10 digits
+  if (digits.length >= 10) {
+    try {
+      const last10 = digits.slice(-10);
+      const { data: ilikeList } = await supabase
+        .from("residents")
+        .select("id, full_name, phone, status, resident_accounts(id, username)")
+        .ilike("phone", `%${last10}%`)
+        .neq("status", "Archived")
+        .limit(1);
+
+      if (ilikeList && ilikeList.length > 0) return ilikeList[0];
+    } catch (err) {
+      console.warn("findResidentByPhoneVariants ilike error:", err);
+    }
+  }
+
+  // 3. Check in resident_accounts by username
+  try {
+    const { data: account } = await supabase
+      .from("resident_accounts")
+      .select("id, username, resident_id, residents(id, full_name, phone, status)")
+      .ilike("username", raw)
+      .limit(1)
+      .maybeSingle();
+
+    if (account && account.residents) {
+      return {
+        ...account.residents,
+        resident_accounts: [{ id: account.id, username: account.username }],
+      };
+    }
+  } catch (err) {
+    console.warn("findResidentByPhoneVariants username error:", err);
+  }
+
+  return null;
+}
+
+/**
+ * Send SMS One-Time Password (OTP) for password recovery
+ */
 export async function sendResidentForgotOTP(phone) {
   const cleanPhone = String(phone || "").trim();
   if (!cleanPhone) throw new Error("Please enter your registered mobile number.");
 
-  // 1. Verify that the phone number exists in active residents
-  const { data: resident, error } = await supabase
-    .from("residents")
-    .select("id, full_name, phone, status")
-    .eq("phone", cleanPhone)
-    .neq("status", "Archived")
-    .limit(1)
-    .maybeSingle();
+  // 1. Verify that the phone number exists in active residents (supports 09..., +639..., etc.)
+  const resident = await findResidentByPhoneVariants(cleanPhone);
 
-  if (error || !resident) {
+  if (!resident) {
     throw new Error("No active resident account found matching this mobile number.");
   }
+
+  const targetPhone = resident.phone || cleanPhone;
 
   // 2. Generate 6-digit OTP code
   const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -611,6 +702,8 @@ export async function sendResidentForgotOTP(phone) {
   // Store OTP in sessionStorage with 5-minute expiry
   const otpData = {
     phone: cleanPhone,
+    targetPhone: targetPhone,
+    residentId: resident.id,
     code: otpCode,
     expiresAt: Date.now() + 5 * 60 * 1000,
   };
@@ -621,14 +714,14 @@ export async function sendResidentForgotOTP(phone) {
 
   try {
     await sendSmsNotification({
-      recipients: [cleanPhone],
+      recipients: [targetPhone],
       message,
     });
   } catch (smsErr) {
     console.warn("SMS OTP notification notice:", smsErr);
   }
 
-  return { success: true, phone: cleanPhone, residentName: resident.full_name };
+  return { success: true, phone: targetPhone, residentName: resident.full_name };
 }
 
 /**
@@ -640,13 +733,19 @@ export function verifyResidentForgotOTP(phone, enteredOTP) {
     throw new Error("No active OTP request found or code has expired. Please request a new code.");
   }
 
-  const { phone: savedPhone, code: savedCode, expiresAt } = JSON.parse(raw);
+  const { phone: savedPhone, targetPhone, code: savedCode, expiresAt } = JSON.parse(raw);
   if (Date.now() > expiresAt) {
     sessionStorage.removeItem("kaagapai_forgot_otp");
     throw new Error("Verification code has expired. Please request a new one.");
   }
 
-  if (String(savedPhone) !== String(phone).trim() || String(savedCode) !== String(enteredOTP).trim()) {
+  const p1 = String(phone || "").replace(/\D/g, "");
+  const p2 = String(savedPhone || "").replace(/\D/g, "");
+  const p3 = String(targetPhone || "").replace(/\D/g, "");
+
+  const phoneMatches = !p1 || p1 === p2 || p1 === p3 || (p1.length >= 10 && (p2.endsWith(p1.slice(-10)) || p3.endsWith(p1.slice(-10))));
+
+  if (!phoneMatches || String(savedCode).trim() !== String(enteredOTP).trim()) {
     throw new Error("Invalid verification code. Please check your SMS and try again.");
   }
 
@@ -666,10 +765,18 @@ export async function resetResidentPasswordByPhone(phone, newPassword) {
     throw new Error("New password must be at least 6 characters long.");
   }
 
-  // 1. Try dedicated RPC for password update by phone (updates password_hash and plain_password)
+  // 1. Locate resident with multi-format matching
+  const resident = await findResidentByPhoneVariants(cleanPhone);
+  if (!resident) {
+    throw new Error("No active resident account found matching this phone number.");
+  }
+
+  const targetPhone = resident.phone || cleanPhone;
+
+  // 2. Try dedicated RPC for password update by phone
   try {
     const { data: rpcSuccess, error: rpcErr } = await supabase.rpc("reset_resident_password_by_phone", {
-      p_phone: cleanPhone,
+      p_phone: targetPhone,
       p_new_password: cleanPassword,
     });
     if (!rpcErr && rpcSuccess) return true;
@@ -677,21 +784,7 @@ export async function resetResidentPasswordByPhone(phone, newPassword) {
     console.warn("reset_resident_password_by_phone RPC notice:", err);
   }
 
-  // 2. Find resident by phone
-  const { data: resident, error: fetchErr } = await supabase
-    .from("residents")
-    .select("id, full_name, phone, status")
-    .eq("phone", cleanPhone)
-    .neq("status", "Archived")
-    .limit(1)
-    .maybeSingle();
-
-  if (fetchErr) throw getResidentAuthError(fetchErr);
-  if (!resident) {
-    throw new Error("No active resident account found matching this phone number.");
-  }
-
-  // 3. Find account and sync password
+  // 3. Find account in resident_accounts
   const { data: account } = await supabase
     .from("resident_accounts")
     .select("id, username")
@@ -702,7 +795,7 @@ export async function resetResidentPasswordByPhone(phone, newPassword) {
     throw new Error("No resident login credentials found for this account.");
   }
 
-  // Sync using sync_resident_plain_password RPC which hashes with pgcrypto
+  // 4. Sync using sync_resident_plain_password RPC
   let synced = false;
   if (account.username) {
     try {

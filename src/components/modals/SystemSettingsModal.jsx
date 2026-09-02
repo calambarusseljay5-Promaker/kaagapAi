@@ -33,6 +33,10 @@ import {
   Pencil,
   Lock,
   Brain,
+  Sparkles,
+  EyeOff,
+  Cpu,
+  Key,
 } from "lucide-react";
 import FloatingModal from "../FloatingModal";
 import { useConfirm } from "../../context/ConfirmContext";
@@ -42,6 +46,12 @@ import {
   resetSystemSettings,
   saveSystemSettings,
 } from "../../services/adminActivityService";
+import {
+  AVAILABLE_GEMINI_MODELS,
+  testGeminiConnection,
+  getActiveGeminiApiKey,
+  getActiveGeminiModel,
+} from "../../services/geminiService";
 import { getBarangayLogo, setBarangayLogo } from "../../services/logoService";
 import {
   createAndUploadBackup,
@@ -87,6 +97,9 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
   const [logoPreview, setLogoPreview] = useState(() => getBarangayLogo());
   const [isEditingGeneral, setIsEditingGeneral] = useState(false);
   const [logoConfirmModal, setLogoConfirmModal] = useState({ isOpen: false, dataUrl: "", file: null });
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [testingAi, setTestingAi] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState(null);
   const [savedMessage, _setSavedMessage] = useState("");
   const setSavedMessage = useCallback((msg) => {
     if (msg) {
@@ -176,6 +189,34 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
       });
     }
     setLogoConfirmModal({ isOpen: false, dataUrl: "", file: null });
+  };
+
+  const handleTestAi = async () => {
+    setTestingAi(true);
+    setAiTestResult(null);
+    try {
+      const activeKey = settings.geminiApiKey || getActiveGeminiApiKey();
+      const activeModel = settings.geminiModel || getActiveGeminiModel();
+      const res = await testGeminiConnection(activeKey, activeModel);
+      setAiTestResult(res);
+      if (res.success) {
+        showAdminSystemToast({
+          type: "success",
+          title: "Gemini AI Connected",
+          text: `Successfully connected to ${res.model || "Gemini AI"}!`,
+        });
+      } else {
+        showAdminSystemToast({
+          type: "error",
+          title: "Gemini Connection Failed",
+          text: res.message || "Failed to reach Google Gemini API.",
+        });
+      }
+    } catch (err) {
+      setAiTestResult({ success: false, message: err.message });
+    } finally {
+      setTestingAi(false);
+    }
   };
 
   const handleSave = async (event) => {
@@ -560,6 +601,121 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
                         }`}
                       />
                     </label>
+                  </div>
+                </div>
+              </section>
+
+              {/* ─── Google Gemini AI Configuration ────────────────────────────── */}
+              <section className="rounded-xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-2xs">
+                <div className="flex items-center justify-between gap-2.5 border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-700 text-white shrink-0 shadow-xs">
+                      <Brain size={16} />
+                    </span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-xs sm:text-sm font-extrabold text-slate-900">Google Gemini AI Engine</h3>
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-850 border border-emerald-300 px-2 py-0.5 text-[10px] font-black">
+                          <Sparkles size={10} /> Pro & High-Tier
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        Configure the active Gemini model and API key powering the Resident Chatbot, Copilot & Document OCR.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-3.5 space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {/* Active Gemini Model */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700">
+                        Active Gemini AI Model
+                        <select
+                          disabled={!isEditingGeneral}
+                          value={settings.geminiModel || "gemini-2.0-flash"}
+                          onChange={(e) => updateField("geminiModel", e.target.value)}
+                          className={`mt-1 w-full h-8.5 rounded-lg border px-3 text-xs font-semibold outline-none transition ${
+                            !isEditingGeneral
+                              ? "border-slate-200 bg-slate-100/70 text-slate-600 cursor-not-allowed select-none"
+                              : "border-slate-300 bg-white text-slate-900 focus:border-[#00552E] focus:ring-2 focus:ring-[#00552E]/20"
+                          }`}
+                        >
+                          {AVAILABLE_GEMINI_MODELS.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.name} - {m.description}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        Select <strong>Gemini 2.0 Flash</strong> for high speed or <strong>Gemini 1.5 Pro / 2.5 Pro</strong> for deep reasoning.
+                      </p>
+                    </div>
+
+                    {/* Gemini API Key */}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700">
+                        Google Gemini API Key
+                        <div className="relative mt-1">
+                          <input
+                            type={showApiKey ? "text" : "password"}
+                            disabled={!isEditingGeneral}
+                            value={settings.geminiApiKey || ""}
+                            onChange={(e) => updateField("geminiApiKey", e.target.value)}
+                            placeholder="AIzaSy... (leave blank to use .env key)"
+                            className={`w-full h-8.5 rounded-lg border pl-3 pr-9 text-xs font-mono font-semibold outline-none transition ${
+                              !isEditingGeneral
+                                ? "border-slate-200 bg-slate-100/70 text-slate-600 cursor-not-allowed select-none"
+                                : "border-slate-300 bg-white text-slate-900 focus:border-[#00552E] focus:ring-2 focus:ring-[#00552E]/20"
+                            }`}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowApiKey(!showApiKey)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                          >
+                            {showApiKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                          </button>
+                        </div>
+                      </label>
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        Get your API key for free from <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="text-emerald-700 font-bold underline">Google AI Studio</a>.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Test Connection Button & Status */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 p-2.5">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleTestAi}
+                        disabled={testingAi}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white hover:bg-emerald-50 text-[#00552E] px-3 py-1 text-xs font-bold shadow-2xs transition active:scale-95 disabled:opacity-50 cursor-pointer"
+                      >
+                        {testingAi ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                        <span>{testingAi ? "Testing API..." : "Test AI Connection"}</span>
+                      </button>
+
+                      {aiTestResult && (
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold ${
+                            aiTestResult.success
+                              ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                              : "bg-rose-100 text-rose-800 border border-rose-300"
+                          }`}
+                        >
+                          {aiTestResult.success ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                          {aiTestResult.success ? `Connected (${aiTestResult.model})` : `Failed: ${aiTestResult.message}`}
+                        </span>
+                      )}
+                    </div>
+
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      High reasoning intelligence enabled
+                    </span>
                   </div>
                 </div>
               </section>

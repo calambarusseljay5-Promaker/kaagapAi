@@ -569,8 +569,8 @@ const Announcements = () => {
     }
   };
 
-  const loadAnnouncements = useCallback(async () => {
-    setLoading(true);
+  const loadAnnouncements = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
       const data = await fetchAnnouncements({
         search,
@@ -580,20 +580,21 @@ const Announcements = () => {
       const activeData = (data || []).filter((item) => !isAnnouncementExpired(item));
       setAnnouncements(activeData);
     } catch (error) {
-      notify({ type: "error", text: error.message || "Failed to load announcements." });
+      if (!isSilent) {
+        notify({ type: "error", text: error.message || "Failed to load announcements." });
+      }
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   }, [categoryFilter, search, statusFilter]);
 
   useEffect(() => {
-    const timer = window.setTimeout(loadAnnouncements, 0);
-    return () => window.clearTimeout(timer);
+    loadAnnouncements(false);
   }, [loadAnnouncements]);
 
-  // Realtime multi-tab & cross-device auto-refresh
+  // Realtime multi-tab & cross-device auto-refresh - silent background sync
   useRealtimeSync(["announcements"], () => {
-    loadAnnouncements();
+    loadAnnouncements(true);
   });
 
   useEffect(() => {

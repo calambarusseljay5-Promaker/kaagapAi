@@ -785,54 +785,57 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
           onClose={() => setActiveAdminModal(null)}
         />
 
-        {/* ─── Top Floating System Notification Toast ─── */}
-        <AnimatePresence>
-          {toastMessage && (
-            <motion.div
-              initial={{ opacity: 0, y: -30, scale: 0.96 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -30, scale: 0.96 }}
-              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-              className={`fixed top-4 left-1/2 -translate-x-1/2 z-[9999999] flex items-center gap-3.5 rounded-2xl px-5 py-3.5 shadow-2xl backdrop-blur-2xl border max-w-xl w-[94%] sm:w-auto min-w-[340px] ${
-                toastMessage.type === "error"
-                  ? "bg-rose-900/95 text-white border-rose-400/50 shadow-rose-950/40"
-                  : "bg-[#064e3b]/95 text-white border-emerald-400/50 shadow-emerald-950/40"
-              }`}
-            >
-              <div
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
-                  toastMessage.type === "error" ? "bg-rose-500/20 text-rose-200" : "bg-emerald-400/20 text-emerald-200"
+        {/* ─── Top Floating System Notification Toast (Portaled to body for highest z-index) ─── */}
+        {typeof document !== "undefined" && createPortal(
+          <AnimatePresence>
+            {toastMessage && (
+              <motion.div
+                initial={{ opacity: 0, y: -30, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -30, scale: 0.96 }}
+                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                className={`fixed top-5 left-1/2 -translate-x-1/2 z-[99999999] flex items-center gap-3.5 rounded-2xl px-5 py-3.5 shadow-2xl backdrop-blur-2xl border max-w-xl w-[94%] sm:w-auto min-w-[340px] pointer-events-auto ${
+                  toastMessage.type === "error"
+                    ? "bg-rose-950/95 text-white border-rose-400/60 shadow-[0_20px_50px_rgba(225,29,72,0.35)]"
+                    : "bg-[#043323]/95 text-white border-emerald-400/60 shadow-[0_20px_50px_rgba(5,150,105,0.35)]"
                 }`}
               >
-                {toastMessage.type === "error" ? (
-                  <AlertCircle size={22} className="text-rose-300" />
-                ) : (
-                  <CheckCircle size={22} className="text-emerald-300" />
-                )}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p
-                  className={`text-[10px] font-black uppercase tracking-wider leading-none mb-1 ${
-                    toastMessage.type === "error" ? "text-rose-200" : "text-emerald-300"
+                <div
+                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                    toastMessage.type === "error" ? "bg-rose-500/25 text-rose-200" : "bg-emerald-400/25 text-emerald-200"
                   }`}
                 >
-                  {toastMessage.title || (toastMessage.type === "error" ? "System Alert" : "System Notification")}
-                </p>
-                <p className="text-xs font-bold text-white leading-relaxed break-words">
-                  {toastMessage.text}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setToastMessage(null)}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-white/70 hover:text-white hover:bg-white/15 transition cursor-pointer shrink-0 ml-1"
-                title="Dismiss notification"
-              >
-                <X size={16} />
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                  {toastMessage.type === "error" ? (
+                    <AlertCircle size={22} className="text-rose-300" />
+                  ) : (
+                    <CheckCircle size={22} className="text-emerald-300" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={`text-[10px] font-black uppercase tracking-wider leading-none mb-1 ${
+                      toastMessage.type === "error" ? "text-rose-200" : "text-emerald-300"
+                    }`}
+                  >
+                    {toastMessage.title || (toastMessage.type === "error" ? "System Alert" : "System Notification")}
+                  </p>
+                  <p className="text-xs font-bold text-white leading-relaxed break-words">
+                    {toastMessage.text}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setToastMessage(null)}
+                  className="flex h-7 w-7 items-center justify-center rounded-lg text-white/70 hover:text-white hover:bg-white/15 transition cursor-pointer shrink-0 ml-1"
+                  title="Dismiss notification"
+                >
+                  <X size={16} />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
       </>
   );
 };

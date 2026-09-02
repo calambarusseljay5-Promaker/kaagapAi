@@ -865,7 +865,7 @@ const ResidentForm = memo(function ResidentForm({
           className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#044E35] via-[#057A55] to-[#046C4E] hover:from-[#033E2B] hover:to-[#035438] px-4 py-2.5 text-sm font-bold text-white transition-all shadow-md shadow-emerald-900/20 active:scale-95 disabled:cursor-not-allowed disabled:bg-slate-400 cursor-pointer"
         >
           {saving ? <Loader size={18} className="animate-spin" /> : <Save size={18} />}
-          {saving ? "Saving..." : mode === "create" ? "Create Resident" : "Update Resident"}
+          {saving ? "Saving..." : mode === "create" ? "Save Resident" : "Save Changes"}
         </button>
       </div>
     </form>

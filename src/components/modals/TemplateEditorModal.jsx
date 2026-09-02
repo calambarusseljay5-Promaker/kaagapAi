@@ -6,6 +6,7 @@ import {
   Bold,
   Italic,
   Underline,
+  Strikethrough,
   AlignLeft,
   AlignCenter,
   AlignRight,
@@ -29,11 +30,19 @@ import {
   ArrowLeft,
   Plus,
   Minus,
+  Undo2,
+  Redo2,
+  Scissors,
+  Copy,
+  Clipboard,
+  Calendar,
+  Trash2,
+  List,
+  ListOrdered,
 } from "lucide-react";
 import {
   AVAILABLE_PLACEHOLDERS,
   TEMPLATE_CATEGORIES,
-  TEMPLATE_STATUSES,
 } from "../../services/documentTemplateService";
 import {
   getRealDocumentTemplateKey,
@@ -73,16 +82,19 @@ export default function TemplateEditorModal({
   const [fontSize, setFontSize] = useState("12");
   const [lineHeight, setLineHeight] = useState("1.25");
 
+  // Word & Character count metrics
+  const [docStats, setDocStats] = useState({ words: 0, characters: 0 });
+
   // Logo Customization & Realignment State
   const [logoConfig, setLogoConfig] = useState({
     url: BARANGAY_SEAL_SRC,
     alignment: "left", // 'left' | 'center' | 'right' | 'dual'
-    size: 85, // in pixels
+    size: 110, // in pixels (matches 1.18in standard)
     offsetX: 0, // in pixels
     offsetY: 0, // in pixels
     visible: true,
     secondaryUrl: "/aleosan.logo.png",
-    secondarySize: 85,
+    secondarySize: 110,
     secondaryOffsetX: 0,
     secondaryOffsetY: 0,
     secondaryVisible: false,
@@ -103,10 +115,22 @@ export default function TemplateEditorModal({
     sealNote: "Brgy. Seal/25",
   });
 
-  // Ref for the Master Unified Editable Canvas
-  const unifiedEditorRef = useRef(null);
+  // Refs
+  const headerEditorRef = useRef(null);
+  const bodyEditorRef = useRef(null);
   const logoFileInputRef = useRef(null);
   const secondaryLogoFileInputRef = useRef(null);
+
+  // Preset Seals
+  const PRESET_LOGOS = [
+    { id: "brgy", name: "Upper Mingading Seal", url: "/logo.png" },
+    { id: "aleosan", name: "Aleosan Municipal Seal", url: "/aleosan.logo.png" },
+    {
+      id: "ph",
+      name: "Philippine National Seal",
+      url: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/84/Coat_of_arms_of_the_Philippines.svg/512px-Coat_of_arms_of_the_Philippines.svg.png",
+    },
+  ];
 
   // Helper to get default template body text
   const getDefaultContentForKey = (key) => {
@@ -134,71 +158,22 @@ export default function TemplateEditorModal({
     return `<p>This is to certify that <strong>{{FULL_NAME}}</strong>, <strong>{{AGE}}</strong> yrs. old, Filipino, {{CIVIL_STATUS}}, a bona fide resident of Purok {{PUROK}}, Barangay Upper Mingading, Aleosan, Cotabato.</p><p>This certification is issued for <strong>{{PURPOSE}}</strong> and whatever legal purpose it may serve best.</p><p>Issued this <u>{{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
   };
 
-  // Helper to compile the entire full document HTML (Header Text + Title + Salutation + Body + Signature + CTC)
-  const buildFullDocumentHtml = ({ key, header, bodyText }) => {
-    const isSolo = key === "solo";
-    const isClearance = key === "clearance";
-    const isResidency = key === "residency";
-    const isIndigency = key === "indigency";
-
-    let orSectionHtml = "";
-    if (!isSolo) {
-      let sealNoteHtml = (isResidency || isIndigency) ? `<p class="real-doc-seal-note">${header.sealNote || "Brgy. Seal/25"}</p>` : "";
-      let ctcRowHtml = (isClearance || isResidency || isIndigency) ? `
-        <div class="real-doc-or-row">
-          <span class="real-doc-or-label">CTC No.</span>
-          <span class="real-doc-or-val"><u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u></span>
-        </div>` : "";
-      let clearanceDateRow = isClearance ? `
-        <div class="real-doc-or-row">
-          <span class="real-doc-or-label">Date Issued:</span>
-          <span class="real-doc-or-val"><u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u></span>
-        </div>` : "";
-
-      orSectionHtml = `
-        <div class="real-doc-or real-doc-${key}-or">
-          ${sealNoteHtml}
-          <div class="real-doc-or-table">
-            <div class="real-doc-or-row">
-              <span class="real-doc-or-label">O. R. No.</span>
-              <span class="real-doc-or-val"><u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u></span>
-            </div>
-            <div class="real-doc-or-row">
-              <span class="real-doc-or-label">Date Issued:</span>
-              <span class="real-doc-or-val"><u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u></span>
-            </div>
-            ${ctcRowHtml}
-            ${clearanceDateRow}
-          </div>
-        </div>
-      `;
-    }
-
-    return `
-      <div class="real-doc-header-text">
-        <p>${header.country || "Republic of the Philippines"}</p>
-        <p>${header.province || "Province of Cotabato"}</p>
-        <p>${header.municipality || "Municipality of Aleosan"}</p>
-        <p>${header.barangay || "Barangay of Upper Mingading"}</p>
-        <p class="real-doc-office"><strong>${header.office || "OFFICE OF THE PUNONG BARANGAY"}</strong></p>
-      </div>
-      <h1 class="real-doc-title">${header.title || "BARANGAY CLEARANCE"}</h1>
-      <p class="real-doc-to">${header.salutation || "TO WHOM IT MAY CONCERN:"}</p>
-      <div class="real-doc-body">
-        ${bodyText}
-      </div>
-      <div class="real-doc-signature real-doc-${key}-signature">
-        <p class="real-doc-captain-name"><strong>${header.captainName || PUNONG_BARANGAY}</strong></p>
-        <p class="real-doc-subtext">${header.captainTitle || "Punong Barangay"}</p>
-      </div>
-      ${orSectionHtml}
-    `.trim();
-  };
-
   // Strip any accidental <img> tags from the text container to prevent duplication
   const sanitizeTextHtml = (html) => {
     if (!html) return "";
     return html.replace(/<img[^>]*>/gi, "");
+  };
+
+  // Update live word & character statistics
+  const updateMetrics = () => {
+    const headerText = headerEditorRef.current?.innerText || "";
+    const bodyText = bodyEditorRef.current?.innerText || "";
+    const combined = `${headerText} ${bodyText}`.trim();
+    const words = combined ? combined.split(/\s+/).length : 0;
+    setDocStats({
+      words,
+      characters: combined.length,
+    });
   };
 
   useEffect(() => {
@@ -225,12 +200,12 @@ export default function TemplateEditorModal({
     const loadedLogoConfig = {
       url: savedConfig.logoUrl || BARANGAY_SEAL_SRC,
       alignment: savedConfig.logoAlignment || "left",
-      size: Number(savedConfig.logoSize) || 85,
+      size: Number(savedConfig.logoSize) || 110,
       offsetX: Number(savedConfig.logoOffsetX) || 0,
       offsetY: Number(savedConfig.logoOffsetY) || 0,
       visible: savedConfig.showLogo !== false,
       secondaryUrl: savedConfig.secondaryUrl || "/aleosan.logo.png",
-      secondarySize: Number(savedConfig.secondarySize) || 85,
+      secondarySize: Number(savedConfig.secondarySize) || 110,
       secondaryOffsetX: Number(savedConfig.secondaryOffsetX) || 0,
       secondaryOffsetY: Number(savedConfig.secondaryOffsetY) || 0,
       secondaryVisible: Boolean(savedConfig.secondaryVisible) || savedConfig.logoAlignment === "dual",
@@ -261,20 +236,15 @@ export default function TemplateEditorModal({
       content: initialBody,
     });
 
-    const fullHtml = buildFullDocumentHtml({
-      key,
-      header: loadedHeaderConfig,
-      bodyText: initialBody,
-    });
-
     setTimeout(() => {
-      if (unifiedEditorRef.current) {
-        unifiedEditorRef.current.innerHTML = fullHtml;
+      if (bodyEditorRef.current) {
+        bodyEditorRef.current.innerHTML = initialBody;
       }
+      updateMetrics();
     }, 50);
   }, [template, isOpen]);
 
-  // Global Keyboard Shortcuts (Ctrl+A, Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+S)
+  // Global Keyboard Shortcuts (Ctrl+A, Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+S, Ctrl+Z, Ctrl+Y, Ctrl+P)
   useEffect(() => {
     if (!isOpen) return;
 
@@ -284,10 +254,7 @@ export default function TemplateEditorModal({
       }
 
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
-      if (isCtrlOrCmd && e.key.toLowerCase() === "a") {
-        e.preventDefault();
-        handleSelectAll();
-      } else if (isCtrlOrCmd && e.key.toLowerCase() === "s") {
+      if (isCtrlOrCmd && e.key.toLowerCase() === "s") {
         e.preventDefault();
         handleSubmit(e);
       } else if (isCtrlOrCmd && e.key.toLowerCase() === "b") {
@@ -299,12 +266,52 @@ export default function TemplateEditorModal({
       } else if (isCtrlOrCmd && e.key.toLowerCase() === "u") {
         e.preventDefault();
         executeCommand("underline");
+      } else if (isCtrlOrCmd && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        executeCommand("undo");
+      } else if (isCtrlOrCmd && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        executeCommand("redo");
+      } else if (isCtrlOrCmd && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        handlePrintPreview();
+      } else if (e.key === "Delete" && selectedCanvasObject) {
+        e.preventDefault();
+        handleCutLogo(selectedCanvasObject === "secondaryLogo");
+      }
+    };
+
+    const handleGlobalPaste = (e) => {
+      // Check if image is in clipboard
+      if (e.clipboardData && e.clipboardData.items) {
+        const items = e.clipboardData.items;
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf("image") !== -1) {
+            e.preventDefault();
+            const file = items[i].getAsFile();
+            const reader = new FileReader();
+            reader.onload = (event) => {
+              setLogoConfig((prev) => ({
+                ...prev,
+                url: event.target.result,
+                visible: true,
+              }));
+              setSelectedCanvasObject("logo");
+            };
+            reader.readAsDataURL(file);
+            return;
+          }
+        }
       }
     };
 
     window.addEventListener("keydown", handleGlobalKeyDown);
-    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [isOpen, formData]);
+    window.addEventListener("paste", handleGlobalPaste);
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+      window.removeEventListener("paste", handleGlobalPaste);
+    };
+  }, [isOpen, formData, selectedCanvasObject]);
 
   if (!isOpen) return null;
 
@@ -326,49 +333,82 @@ export default function TemplateEditorModal({
           secondaryUrl: event.target.result,
           secondaryVisible: true,
         }));
+        setSelectedCanvasObject("secondaryLogo");
       } else {
         setLogoConfig((prev) => ({
           ...prev,
           url: event.target.result,
           visible: true,
         }));
+        setSelectedCanvasObject("logo");
       }
     };
     reader.readAsDataURL(file);
   };
 
-  const handleEditorInput = () => {
-    if (unifiedEditorRef.current) {
-      // Remove any stray <img> tags if dropped accidentally
-      const imgs = unifiedEditorRef.current.querySelectorAll("img");
-      if (imgs.length > 0) {
-        imgs.forEach((img) => img.remove());
-      }
+  // Cut / Delete Logo
+  const handleCutLogo = (isSecondary = false) => {
+    if (isSecondary) {
+      setLogoConfig((prev) => ({
+        ...prev,
+        secondaryVisible: false,
+      }));
+    } else {
+      setLogoConfig((prev) => ({
+        ...prev,
+        visible: false,
+      }));
     }
+    setSelectedCanvasObject(null);
+  };
+
+  // Paste Logo from Clipboard via navigator API
+  const handlePasteLogoFromClipboard = async (isSecondary = false) => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          for (const type of item.types) {
+            if (type.startsWith("image/")) {
+              const blob = await item.getType(type);
+              const reader = new FileReader();
+              reader.onload = (event) => {
+                if (isSecondary) {
+                  setLogoConfig((prev) => ({
+                    ...prev,
+                    secondaryUrl: event.target.result,
+                    secondaryVisible: true,
+                  }));
+                  setSelectedCanvasObject("secondaryLogo");
+                } else {
+                  setLogoConfig((prev) => ({
+                    ...prev,
+                    url: event.target.result,
+                    visible: true,
+                  }));
+                  setSelectedCanvasObject("logo");
+                }
+              };
+              reader.readAsDataURL(blob);
+              return;
+            }
+          }
+        }
+      }
+      alert("No image in clipboard. Please copy an image first, then press Ctrl+V to paste!");
+    } catch (err) {
+      console.warn("Clipboard access error:", err);
+      alert("Please press Ctrl+V on your keyboard to paste the image directly onto the template.");
+    }
+  };
+
+  const handleEditorInput = () => {
+    updateMetrics();
   };
 
   const executeCommand = (command, value = null) => {
     document.execCommand(command, false, value);
     handleEditorInput();
-  };
-
-  // Master Select All: Highlights the entire document from Header to Footer seamlessly!
-  const handleSelectAll = (e) => {
-    if (e && e.preventDefault) e.preventDefault();
-    const targetElement = unifiedEditorRef.current;
-    if (!targetElement) return;
-
-    try {
-      targetElement.focus();
-      const range = document.createRange();
-      range.selectNodeContents(targetElement);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-    } catch (err) {
-      console.warn("Select all range error:", err);
-      document.execCommand("selectAll", false, null);
-    }
   };
 
   const handleReset = () => {
@@ -393,12 +433,12 @@ export default function TemplateEditorModal({
     setLogoConfig({
       url: BARANGAY_SEAL_SRC,
       alignment: "left",
-      size: 85,
+      size: 110,
       offsetX: 0,
       offsetY: 0,
       visible: true,
       secondaryUrl: "/aleosan.logo.png",
-      secondarySize: 85,
+      secondarySize: 110,
       secondaryOffsetX: 0,
       secondaryOffsetY: 0,
       secondaryVisible: false,
@@ -407,20 +447,15 @@ export default function TemplateEditorModal({
     setHeaderConfig(defaultHeader);
     setSelectedCanvasObject(null);
 
-    const fullHtml = buildFullDocumentHtml({
-      key,
-      header: defaultHeader,
-      bodyText: defaultText,
-    });
-
-    if (unifiedEditorRef.current) {
-      unifiedEditorRef.current.innerHTML = fullHtml;
+    if (bodyEditorRef.current) {
+      bodyEditorRef.current.innerHTML = defaultText;
+      updateMetrics();
     }
   };
 
   const handleInsertPlaceholder = (token) => {
-    if (unifiedEditorRef.current) {
-      unifiedEditorRef.current.focus();
+    if (bodyEditorRef.current) {
+      bodyEditorRef.current.focus();
       const sel = window.getSelection();
       if (sel && sel.rangeCount > 0) {
         const range = sel.getRangeAt(0);
@@ -439,66 +474,33 @@ export default function TemplateEditorModal({
     setFieldMenuOpen(false);
   };
 
+  const handleInsertDate = () => {
+    const today = new Date();
+    const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const dateStr = `${today.getDate()} day of ${months[today.getMonth()]} ${today.getFullYear()}`;
+    executeCommand("insertText", dateStr);
+  };
+
+  const handlePrintPreview = () => {
+    window.print();
+  };
+
   const handleSubmit = (e) => {
     if (e && e.preventDefault) e.preventDefault();
     if (!formData.template_name.trim()) return;
 
-    let bodyHtml = formData.content;
-    let extractedCountry = headerConfig.country;
-    let extractedProvince = headerConfig.province;
-    let extractedMunicipality = headerConfig.municipality;
-    let extractedBarangay = headerConfig.barangay;
-    let extractedOffice = headerConfig.office;
-    let extractedTitle = headerConfig.title;
-    let extractedSalutation = headerConfig.salutation;
-    let extractedCaptainName = headerConfig.captainName;
-    let extractedCaptainTitle = headerConfig.captainTitle;
-
-    if (unifiedEditorRef.current) {
-      // Clean any accidental img tags
-      const imgs = unifiedEditorRef.current.querySelectorAll("img");
-      imgs.forEach((img) => img.remove());
-
-      const bodyEl = unifiedEditorRef.current.querySelector(".real-doc-body");
-      if (bodyEl) {
-        bodyHtml = bodyEl.innerHTML;
-      } else {
-        bodyHtml = unifiedEditorRef.current.innerHTML;
-      }
-
-      const headerTextEl = unifiedEditorRef.current.querySelector(".real-doc-header-text");
-      if (headerTextEl) {
-        const ps = headerTextEl.querySelectorAll("p, div");
-        if (ps.length >= 1) extractedCountry = ps[0]?.innerText?.trim() || extractedCountry;
-        if (ps.length >= 2) extractedProvince = ps[1]?.innerText?.trim() || extractedProvince;
-        if (ps.length >= 3) extractedMunicipality = ps[2]?.innerText?.trim() || extractedMunicipality;
-        if (ps.length >= 4) extractedBarangay = ps[3]?.innerText?.trim() || extractedBarangay;
-        if (ps.length >= 5) extractedOffice = ps[4]?.innerText?.trim() || extractedOffice;
-      }
-
-      const titleEl = unifiedEditorRef.current.querySelector(".real-doc-title");
-      if (titleEl) extractedTitle = titleEl.innerText?.trim() || extractedTitle;
-
-      const salutationEl = unifiedEditorRef.current.querySelector(".real-doc-to");
-      if (salutationEl) extractedSalutation = salutationEl.innerText?.trim() || extractedSalutation;
-
-      const captainEl = unifiedEditorRef.current.querySelector(".real-doc-captain-name");
-      if (captainEl) extractedCaptainName = captainEl.innerText?.trim() || extractedCaptainName;
-
-      const captainTitleEl = unifiedEditorRef.current.querySelector(".real-doc-subtext");
-      if (captainTitleEl) extractedCaptainTitle = captainTitleEl.innerText?.trim() || extractedCaptainTitle;
-    }
+    const bodyHtml = bodyEditorRef.current ? bodyEditorRef.current.innerHTML : formData.content;
 
     const compiledHeaderConfig = {
-      country: extractedCountry,
-      province: extractedProvince,
-      municipality: extractedMunicipality,
-      barangay: extractedBarangay,
-      office: extractedOffice,
-      title: extractedTitle,
-      salutation: extractedSalutation,
-      captainName: extractedCaptainName,
-      captainTitle: extractedCaptainTitle,
+      country: headerConfig.country,
+      province: headerConfig.province,
+      municipality: headerConfig.municipality,
+      barangay: headerConfig.barangay,
+      office: headerConfig.office,
+      title: headerConfig.title,
+      salutation: headerConfig.salutation,
+      captainName: headerConfig.captainName,
+      captainTitle: headerConfig.captainTitle,
       logoUrl: logoConfig.url,
       logoAlignment: logoConfig.alignment,
       logoSize: logoConfig.size,
@@ -529,18 +531,24 @@ export default function TemplateEditorModal({
   const fontMap = {
     rockwell: '"Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif',
     times: '"Times New Roman", Times, "Liberation Serif", serif',
-    felix: '"Felix Titling", "Felix-Titling", "Times New Roman", serif',
-    cooper: '"Cooper Std Black", "Cooper Black", serif, sans-serif',
     arial: 'Arial, "Helvetica Neue", Helvetica, sans-serif',
     georgia: 'Georgia, "Times New Roman", serif',
+    felix: '"Felix Titling", "Felix-Titling", "Times New Roman", serif',
+    cooper: '"Cooper Std Black", "Cooper Black", serif, sans-serif',
   };
+
+  const isSolo = docKey === "solo";
+  const isClearance = docKey === "clearance";
+  const isResidency = docKey === "residency";
+  const isIndigency = docKey === "indigency";
+  const isRsbsa = docKey === "rsbsa";
 
   const modalMarkup = (
     <div className="fixed inset-0 z-[99999] w-screen h-screen bg-[#cbd5e1] flex flex-col overflow-hidden select-none animate-fadeIn">
       {/* Inject exact CSS from realDocumentTemplates */}
       <style>{REAL_DOCUMENT_CSS}</style>
 
-      {/* ── 1. TOP APP BAR (Steady Fullscreen Header) ── */}
+      {/* ── 1. TOP APP BAR ── */}
       <header className="h-14 bg-gradient-to-r from-emerald-950 via-emerald-900 to-teal-950 px-4 sm:px-6 flex items-center justify-between text-white shrink-0 border-b border-emerald-800 shadow-md z-30">
         <div className="flex items-center gap-3 min-w-0">
           <button
@@ -563,21 +571,31 @@ export default function TemplateEditorModal({
                   {formData.template_name}
                 </h1>
                 <span className="hidden md:inline-block text-[10px] font-bold bg-emerald-700/80 px-2 py-0.5 rounded-full border border-emerald-500/40 text-emerald-100 shrink-0">
-                  Document Studio
+                  Official Document Studio
                 </span>
               </div>
               <p className="text-[10px] font-medium text-emerald-300/80 truncate">
-                Full-page continuous highlight • Select All (Ctrl+A) • Clean Logo Positioning
+                Authentic Barangay Letterhead Format • Word-Style Text & Seal Controls
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={handlePrintPreview}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-bold transition cursor-pointer active:scale-95 shrink-0"
+            title="Print Preview (Ctrl + P)"
+          >
+            <Printer size={14} className="text-emerald-300" />
+            <span className="hidden sm:inline">Print Preview</span>
+          </button>
+
           <button
             type="button"
             onClick={onClose}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-md transition cursor-pointer active:scale-95 shrink-0"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-md transition cursor-pointer active:scale-95 shrink-0"
             title="Exit Studio"
           >
             <X size={15} />
@@ -586,25 +604,76 @@ export default function TemplateEditorModal({
         </div>
       </header>
 
-      {/* ── 2. WORD TOOLBAR WITH LOGO CONTROLS & ZOOM CONTROLS ── */}
-      <div className="h-12 bg-white border-b border-slate-300 px-4 flex items-center justify-between gap-2 shrink-0 shadow-xs z-20 overflow-x-auto">
+      {/* ── 2. MICROSOFT WORD RIBBON & COMPREHENSIVE TOOLBAR ── */}
+      <div className="bg-white border-b border-slate-300 px-3 py-1.5 flex items-center justify-between gap-2 shrink-0 shadow-xs z-20 overflow-x-auto">
         <div className="flex items-center gap-1.5 shrink-0">
-          {/* Font Family */}
+          {/* 1. Undo / Redo */}
+          <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+            <button
+              type="button"
+              onClick={() => executeCommand("undo")}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-700 hover:text-slate-900 transition cursor-pointer"
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => executeCommand("redo")}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-700 hover:text-slate-900 transition cursor-pointer"
+              title="Redo (Ctrl+Y)"
+            >
+              <Redo2 size={13} />
+            </button>
+          </div>
+
+          {/* 2. Clipboard Tools */}
+          <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+            <button
+              type="button"
+              onClick={() => executeCommand("cut")}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-700 hover:text-slate-900 transition cursor-pointer"
+              title="Cut Text (Ctrl+X)"
+            >
+              <Scissors size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => executeCommand("copy")}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-700 hover:text-slate-900 transition cursor-pointer"
+              title="Copy Text (Ctrl+C)"
+            >
+              <Copy size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => handlePasteLogoFromClipboard(false)}
+              className="h-7 px-2 flex items-center gap-1 rounded-md hover:bg-white text-slate-700 hover:text-emerald-800 text-[11px] font-bold transition cursor-pointer"
+              title="Paste Image or Logo from Clipboard (Ctrl+V)"
+            >
+              <Clipboard size={12} className="text-emerald-600" />
+              <span>Paste Seal</span>
+            </button>
+          </div>
+
+          <div className="h-5 w-px bg-slate-200 mx-0.5" />
+
+          {/* 3. Font Family */}
           <select
             value={fontFamily}
             onChange={(e) => setFontFamily(e.target.value)}
-            className="h-8 rounded-lg border border-slate-300 bg-slate-50 px-2.5 text-xs font-bold text-slate-800 outline-none hover:bg-white focus:border-emerald-500 cursor-pointer shadow-2xs"
+            className="h-8 rounded-lg border border-slate-300 bg-slate-50 px-2 text-xs font-bold text-slate-800 outline-none hover:bg-white focus:border-emerald-500 cursor-pointer shadow-2xs"
             title="Font Family"
           >
-            <option value="times">Times New Roman</option>
-            <option value="rockwell">Rockwell Condensed</option>
-            <option value="felix">Felix Titling</option>
-            <option value="cooper">Cooper Std Black</option>
-            <option value="arial">Arial</option>
-            <option value="georgia">Georgia</option>
+            <option value="times">Times New Roman (Standard)</option>
+            <option value="rockwell">Rockwell Condensed (Official)</option>
+            <option value="arial">Arial (Modern)</option>
+            <option value="georgia">Georgia (Serif)</option>
+            <option value="felix">Felix Titling (Certificates)</option>
+            <option value="cooper">Cooper Std Black (Bold Display)</option>
           </select>
 
-          {/* Font Size */}
+          {/* 4. Font Size */}
           <select
             value={fontSize}
             onChange={(e) => setFontSize(e.target.value)}
@@ -613,106 +682,134 @@ export default function TemplateEditorModal({
           >
             <option value="10">10 pt</option>
             <option value="11">11 pt</option>
-            <option value="12">12 pt</option>
+            <option value="12">12 pt (Clearance Standard)</option>
             <option value="13">13 pt</option>
-            <option value="14">14 pt</option>
+            <option value="14">14 pt (Residency Standard)</option>
             <option value="15">15 pt</option>
             <option value="16">16 pt</option>
             <option value="18">18 pt</option>
           </select>
 
-          {/* Line Spacing */}
+          {/* 5. Line Spacing */}
           <select
             value={lineHeight}
             onChange={(e) => setLineHeight(e.target.value)}
             className="h-8 rounded-lg border border-slate-300 bg-slate-50 px-2 text-xs font-bold text-slate-800 outline-none hover:bg-white focus:border-emerald-500 cursor-pointer shadow-2xs"
             title="Line Spacing"
           >
-            <option value="1.15">1.15x</option>
+            <option value="1.15">1.15x Tight</option>
             <option value="1.25">1.25x Normal</option>
-            <option value="1.35">1.35x</option>
-            <option value="1.5">1.50x</option>
-            <option value="2.0">2.00x</option>
+            <option value="1.35">1.35x Relaxed</option>
+            <option value="1.5">1.50x 1.5 Lines</option>
+            <option value="2.0">2.00x Double</option>
           </select>
 
-          <div className="h-5 w-px bg-slate-200 mx-1" />
+          <div className="h-5 w-px bg-slate-200 mx-0.5" />
 
-          {/* Master Select All Button (Ctrl+A) */}
-          <button
-            type="button"
-            onClick={handleSelectAll}
-            className="h-8 px-3 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 text-xs font-black transition cursor-pointer shadow-2xs flex items-center gap-1.5 active:scale-95"
-            title="Select Entire Document (Ctrl + A)"
-          >
-            <span className="font-mono text-emerald-700 bg-white/80 px-1 py-0.2 rounded text-[10px] border border-emerald-200">Ctrl+A</span>
-            <span>Select All</span>
-          </button>
+          {/* 6. Text Styles */}
+          <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+            <button
+              type="button"
+              onClick={() => executeCommand("bold")}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 font-black transition cursor-pointer shadow-2xs"
+              title="Bold (Ctrl+B)"
+            >
+              <Bold size={13} className="stroke-[2.5]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => executeCommand("italic")}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 italic transition cursor-pointer shadow-2xs"
+              title="Italic (Ctrl+I)"
+            >
+              <Italic size={13} className="stroke-[2.5]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => executeCommand("underline")}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 underline transition cursor-pointer shadow-2xs"
+              title="Underline (Ctrl+U)"
+            >
+              <Underline size={13} className="stroke-[2.5]" />
+            </button>
+            <button
+              type="button"
+              onClick={() => executeCommand("strikeThrough")}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 line-through transition cursor-pointer shadow-2xs"
+              title="Strikethrough"
+            >
+              <Strikethrough size={13} />
+            </button>
+          </div>
 
-          <div className="h-5 w-px bg-slate-200 mx-1" />
+          {/* 7. Alignments */}
+          <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+            <button
+              type="button"
+              onClick={() => executeCommand("justifyLeft")}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 transition cursor-pointer"
+              title="Align Left"
+            >
+              <AlignLeft size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => executeCommand("justifyCenter")}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 transition cursor-pointer"
+              title="Align Center"
+            >
+              <AlignCenter size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => executeCommand("justifyRight")}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 transition cursor-pointer"
+              title="Align Right"
+            >
+              <AlignRight size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => executeCommand("justifyFull")}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 transition cursor-pointer"
+              title="Justify"
+            >
+              <AlignJustify size={13} />
+            </button>
+          </div>
 
-          {/* Text Styles */}
-          <button
-            type="button"
-            onClick={() => executeCommand("bold")}
-            className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 font-black transition cursor-pointer active:scale-95 shadow-2xs"
-            title="Bold (Ctrl+B)"
-          >
-            <Bold size={13} className="stroke-[2.5]" />
-          </button>
-          <button
-            type="button"
-            onClick={() => executeCommand("italic")}
-            className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 italic transition cursor-pointer active:scale-95 shadow-2xs"
-            title="Italic (Ctrl+I)"
-          >
-            <Italic size={13} className="stroke-[2.5]" />
-          </button>
-          <button
-            type="button"
-            onClick={() => executeCommand("underline")}
-            className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 underline transition cursor-pointer active:scale-95 shadow-2xs"
-            title="Underline (Ctrl+U)"
-          >
-            <Underline size={13} className="stroke-[2.5]" />
-          </button>
+          {/* 8. Lists & Inserts */}
+          <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
+            <button
+              type="button"
+              onClick={() => executeCommand("insertUnorderedList")}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 transition cursor-pointer"
+              title="Bullet List"
+            >
+              <List size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => executeCommand("insertOrderedList")}
+              className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 transition cursor-pointer"
+              title="Numbered List"
+            >
+              <ListOrdered size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={handleInsertDate}
+              className="h-7 px-1.5 flex items-center gap-1 rounded-md hover:bg-white text-slate-800 text-[10px] font-bold transition cursor-pointer"
+              title="Insert Current Date"
+            >
+              <Calendar size={12} className="text-emerald-700" />
+              <span>Date</span>
+            </button>
+          </div>
 
-          {/* Alignments */}
-          <button
-            type="button"
-            onClick={() => executeCommand("justifyLeft")}
-            className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 transition cursor-pointer active:scale-95 shadow-2xs"
-            title="Align Left"
-          >
-            <AlignLeft size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={() => executeCommand("justifyCenter")}
-            className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 transition cursor-pointer active:scale-95 shadow-2xs"
-            title="Align Center"
-          >
-            <AlignCenter size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={() => executeCommand("justifyRight")}
-            className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 transition cursor-pointer active:scale-95 shadow-2xs"
-            title="Align Right"
-          >
-            <AlignRight size={13} />
-          </button>
-          <button
-            type="button"
-            onClick={() => executeCommand("justifyFull")}
-            className="h-8 w-8 flex items-center justify-center rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 transition cursor-pointer active:scale-95 shadow-2xs"
-            title="Justify"
-          >
-            <AlignJustify size={13} />
-          </button>
+          <div className="h-5 w-px bg-slate-200 mx-0.5" />
 
-          <div className="h-5 w-px bg-slate-200 mx-1" />
-
-          {/* ── LOGO CONTROLS MENU POPOVER ── */}
+          {/* 9. LOGO & SEALS STUDIO CONTROLS POPOVER */}
           <div className="relative inline-block">
             <button
               type="button"
@@ -721,47 +818,85 @@ export default function TemplateEditorModal({
                 setZoomMenuOpen(false);
                 setFieldMenuOpen(false);
               }}
-              className="h-8 px-2.5 flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 text-xs font-bold transition cursor-pointer shadow-2xs"
-              title="Logo Customization, Alignment & Sizing"
+              className={`h-8 px-3 flex items-center gap-1.5 rounded-lg border transition cursor-pointer shadow-2xs font-bold text-xs ${
+                logoMenuOpen
+                  ? "bg-emerald-600 text-white border-emerald-700 shadow-md"
+                  : "border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-emerald-900"
+              }`}
+              title="Logo Customization, Alignment, Upload & Pasting"
             >
-              <ImageIcon size={13} className="text-emerald-700" />
-              <span>Logo: {logoConfig.alignment.toUpperCase()} ({logoConfig.size}px)</span>
+              <ImageIcon size={14} className={logoMenuOpen ? "text-white" : "text-emerald-700"} />
+              <span>Seal: {logoConfig.alignment.toUpperCase()} ({logoConfig.size}px)</span>
               <ChevronDown size={12} />
             </button>
 
             {logoMenuOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setLogoMenuOpen(false)} />
-                <div className="absolute left-0 top-9 z-50 w-88 rounded-xl border border-slate-200 bg-white p-3.5 shadow-2xl space-y-3">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <div className="absolute left-0 top-9 z-50 w-96 rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl space-y-3.5">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                     <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                      <ImageIcon size={14} className="text-emerald-600" />
-                      Logo & Seal Positioning & Sizing
+                      <ImageIcon size={15} className="text-emerald-600" />
+                      Official Seal Studio
                     </span>
                     <button
                       type="button"
                       onClick={() =>
                         setLogoConfig((prev) => ({ ...prev, visible: !prev.visible }))
                       }
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 cursor-pointer ${
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 cursor-pointer transition ${
                         logoConfig.visible
-                          ? "bg-emerald-100 text-emerald-800"
-                          : "bg-slate-100 text-slate-600"
+                          ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                       }`}
                     >
-                      {logoConfig.visible ? <Eye size={11} /> : <EyeOff size={11} />}
+                      {logoConfig.visible ? <Eye size={12} /> : <EyeOff size={12} />}
                       {logoConfig.visible ? "Visible" : "Hidden"}
                     </button>
+                  </div>
+
+                  {/* Preset Logos */}
+                  <div>
+                    <label className="text-[11px] font-bold text-slate-600 block mb-1.5">
+                      Choose Preset Seal:
+                    </label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {PRESET_LOGOS.map((preset) => (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => {
+                            setLogoConfig((prev) => ({
+                              ...prev,
+                              url: preset.url,
+                              visible: true,
+                            }));
+                          }}
+                          className={`p-1.5 rounded-xl border text-center transition cursor-pointer flex flex-col items-center gap-1 ${
+                            logoConfig.url === preset.url
+                              ? "border-emerald-500 bg-emerald-50 text-emerald-900 font-bold shadow-xs"
+                              : "border-slate-200 hover:bg-slate-50 text-slate-700"
+                          }`}
+                        >
+                          <img
+                            src={preset.url}
+                            alt={preset.name}
+                            className="w-8 h-8 object-contain rounded-full border border-slate-200 bg-white"
+                          />
+                          <span className="text-[10px] leading-tight truncate w-full">{preset.name}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   {/* Alignment Options */}
                   <div>
                     <label className="text-[11px] font-bold text-slate-600 block mb-1">
-                      Logo Alignment / Position:
+                      Seal Position:
                     </label>
-                    <div className="grid grid-cols-4 gap-1">
+                    <div className="grid grid-cols-4 gap-1.5">
                       {[
-                        { id: "left", label: "Left" },
+                        { id: "left", label: "Left (Official)" },
                         { id: "center", label: "Center" },
                         { id: "right", label: "Right" },
                         { id: "dual", label: "Dual (Both)" },
@@ -776,7 +911,7 @@ export default function TemplateEditorModal({
                               secondaryVisible: align.id === "dual",
                             }));
                           }}
-                          className={`py-1.5 px-2 rounded-lg text-xs font-bold transition text-center cursor-pointer ${
+                          className={`py-1.5 px-2 rounded-xl text-xs font-bold transition text-center cursor-pointer ${
                             logoConfig.alignment === align.id
                               ? "bg-emerald-600 text-white shadow-xs"
                               : "bg-slate-100 hover:bg-slate-200 text-slate-700"
@@ -788,10 +923,10 @@ export default function TemplateEditorModal({
                     </div>
                   </div>
 
-                  {/* Size Slider & Presets */}
+                  {/* Size Slider */}
                   <div>
                     <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1">
-                      <span>Primary Seal Size:</span>
+                      <span>Seal Size:</span>
                       <span className="text-emerald-700 font-black">{logoConfig.size} px</span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -804,7 +939,7 @@ export default function TemplateEditorModal({
                       </button>
                       <input
                         type="range"
-                        min="40"
+                        min="50"
                         max="180"
                         step="5"
                         value={logoConfig.size}
@@ -821,30 +956,9 @@ export default function TemplateEditorModal({
                         <Plus size={12} />
                       </button>
                     </div>
-                    <div className="flex justify-between gap-1 mt-1.5">
-                      {[
-                        { label: "S (60px)", val: 60 },
-                        { label: "M (85px)", val: 85 },
-                        { label: "L (110px)", val: 110 },
-                        { label: "XL (135px)", val: 135 },
-                      ].map((preset) => (
-                        <button
-                          key={preset.val}
-                          type="button"
-                          onClick={() => setLogoConfig((prev) => ({ ...prev, size: preset.val }))}
-                          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border cursor-pointer ${
-                            logoConfig.size === preset.val
-                              ? "border-emerald-500 bg-emerald-50 text-emerald-800 font-bold"
-                              : "border-slate-200 text-slate-600 hover:bg-slate-50"
-                          }`}
-                        >
-                          {preset.label}
-                        </button>
-                      ))}
-                    </div>
                   </div>
 
-                  {/* Fine Position Offset Sliders (X and Y) */}
+                  {/* Offset Sliders */}
                   <div className="pt-2 border-t border-slate-100 space-y-2">
                     <div>
                       <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-0.5">
@@ -878,72 +992,104 @@ export default function TemplateEditorModal({
                     </div>
                   </div>
 
-                  {/* Upload Custom Logo */}
-                  <div className="pt-2 border-t border-slate-100">
-                    <input
-                      ref={logoFileInputRef}
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => handleLogoUpload(e, false)}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => logoFileInputRef.current?.click()}
-                      className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg border border-dashed border-emerald-400 bg-emerald-50/50 hover:bg-emerald-50 text-emerald-900 text-xs font-bold transition cursor-pointer"
-                    >
-                      <Upload size={12} />
-                      <span>Upload Custom Seal / Logo</span>
-                    </button>
-                  </div>
-
-                  {/* Dual Mode Secondary Logo */}
-                  {logoConfig.alignment === "dual" && (
-                    <div className="pt-2 border-t border-slate-100">
-                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-600 mb-1">
-                        <span>Right Municipal Seal Size:</span>
-                        <span className="text-emerald-700 font-black">{logoConfig.secondarySize} px</span>
-                      </div>
+                  {/* Upload / Paste / Cut */}
+                  <div className="pt-2 border-t border-slate-100 flex flex-col gap-1.5">
+                    <div className="grid grid-cols-2 gap-2">
                       <input
-                        type="range"
-                        min="40"
-                        max="180"
-                        step="5"
-                        value={logoConfig.secondarySize}
-                        onChange={(e) =>
-                          setLogoConfig((prev) => ({
-                            ...prev,
-                            secondarySize: Number(e.target.value),
-                          }))
-                        }
-                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-emerald-600"
-                      />
-                      <input
-                        ref={secondaryLogoFileInputRef}
+                        ref={logoFileInputRef}
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => handleLogoUpload(e, true)}
+                        onChange={(e) => handleLogoUpload(e, false)}
                       />
                       <button
                         type="button"
-                        onClick={() => secondaryLogoFileInputRef.current?.click()}
-                        className="w-full mt-1.5 flex items-center justify-center gap-1.5 py-1 rounded-lg border border-dashed border-slate-300 hover:bg-slate-50 text-slate-700 text-[11px] font-bold transition cursor-pointer"
+                        onClick={() => logoFileInputRef.current?.click()}
+                        className="flex items-center justify-center gap-1.5 py-2 rounded-xl border border-emerald-400 bg-emerald-50 hover:bg-emerald-100 text-emerald-950 text-xs font-bold transition cursor-pointer"
                       >
-                        <Upload size={11} />
-                        <span>Upload Right Municipal Seal</span>
+                        <Upload size={13} className="text-emerald-700" />
+                        <span>Upload File</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handlePasteLogoFromClipboard(false)}
+                        className="flex items-center justify-center gap-1.5 py-2 rounded-xl border border-sky-400 bg-sky-50 hover:bg-sky-100 text-sky-950 text-xs font-bold transition cursor-pointer"
+                      >
+                        <Clipboard size={13} className="text-sky-700" />
+                        <span>Paste (Ctrl+V)</span>
                       </button>
                     </div>
-                  )}
+
+                    <button
+                      type="button"
+                      onClick={() => handleCutLogo(false)}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 rounded-xl border border-red-200 hover:bg-red-50 text-red-700 text-xs font-bold transition cursor-pointer"
+                    >
+                      <Scissors size={12} />
+                      <span>Cut / Remove Logo</span>
+                    </button>
+                  </div>
                 </div>
               </>
             )}
           </div>
 
-          <div className="h-5 w-px bg-slate-200 mx-1" />
+          {/* 10. Dynamic Placeholders */}
+          <div className="relative inline-block shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setFieldMenuOpen(!fieldMenuOpen);
+                setLogoMenuOpen(false);
+                setZoomMenuOpen(false);
+              }}
+              className="h-8 px-3 flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-sm transition cursor-pointer active:scale-95"
+            >
+              <Sparkles size={13} />
+              <span>+ Insert Field</span>
+              <ChevronDown size={12} />
+            </button>
 
-          {/* ── ZOOM CONTROLS ── */}
-          <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+            {fieldMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setFieldMenuOpen(false)} />
+                <div className="absolute left-0 top-9 z-50 w-76 max-h-84 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2.5 shadow-2xl space-y-2">
+                  <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 flex items-center justify-between">
+                    <span>Insert Dynamic Placeholder</span>
+                    <span className="text-[9px] text-emerald-700 font-bold">Auto-fills</span>
+                  </div>
+                  {AVAILABLE_PLACEHOLDERS.map((group) => (
+                    <div key={group.category} className="mb-1">
+                      <div className="px-2 py-0.5 text-[10px] font-bold text-emerald-800 bg-emerald-50 rounded">
+                        {group.category}
+                      </div>
+                      <div className="space-y-0.5 mt-1">
+                        {group.fields.map((field) => (
+                          <button
+                            key={field.token}
+                            type="button"
+                            onClick={() => handleInsertPlaceholder(field.token)}
+                            className="w-full text-left px-2 py-1 rounded-lg text-xs hover:bg-slate-100 flex items-center justify-between text-slate-800 group transition cursor-pointer"
+                          >
+                            <span className="font-semibold">{field.label}</span>
+                            <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-1 rounded group-hover:bg-emerald-100">
+                              {field.token}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Right Toolbar: Zoom & Reset */}
+        <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
             <button
               type="button"
               onClick={handleZoomOut}
@@ -972,7 +1118,7 @@ export default function TemplateEditorModal({
               {zoomMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setZoomMenuOpen(false)} />
-                  <div className="absolute left-0 top-8 z-50 w-28 rounded-lg border border-slate-200 bg-white p-1 shadow-xl">
+                  <div className="absolute right-0 top-8 z-50 w-28 rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
                     {[50, 65, 75, 85, 100, 115, 125, 150, 175, 200].map((z) => (
                       <button
                         key={z}
@@ -1017,71 +1163,23 @@ export default function TemplateEditorModal({
             </button>
           </div>
 
-          {/* Reset button */}
           <button
             type="button"
             onClick={handleReset}
-            className="h-8 px-2.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-600 text-xs font-semibold transition cursor-pointer shadow-2xs flex items-center gap-1"
-            title="Reset All Elements to Default"
+            className="h-8 px-2.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition cursor-pointer shadow-2xs flex items-center gap-1"
+            title="Reset Template to Official Legal Format"
           >
             <RotateCcw size={12} />
-            <span>Reset</span>
+            <span className="hidden sm:inline">Reset Format</span>
           </button>
-        </div>
-
-        {/* Dynamic Placeholders */}
-        <div className="relative inline-block ml-auto shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              setFieldMenuOpen(!fieldMenuOpen);
-              setLogoMenuOpen(false);
-              setZoomMenuOpen(false);
-            }}
-            className="h-8 px-3.5 flex items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-sm transition cursor-pointer active:scale-95"
-          >
-            <Sparkles size={13} />
-            <span>+ Insert Field</span>
-            <ChevronDown size={12} />
-          </button>
-
-          {fieldMenuOpen && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setFieldMenuOpen(false)} />
-              <div className="absolute right-0 top-9 z-50 w-72 max-h-80 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-2xl">
-                <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1">
-                  Insert Dynamic Field Placeholder
-                </div>
-                {AVAILABLE_PLACEHOLDERS.map((group) => (
-                  <div key={group.category} className="mb-2">
-                    <div className="px-2 py-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 rounded">
-                      {group.category}
-                    </div>
-                    <div className="space-y-0.5 mt-1">
-                      {group.fields.map((field) => (
-                        <button
-                          key={field.token}
-                          type="button"
-                          onClick={() => handleInsertPlaceholder(field.token)}
-                          className="w-full text-left px-2 py-1 rounded text-xs hover:bg-slate-100 flex items-center justify-between text-slate-800 group transition cursor-pointer"
-                        >
-                          <span className="font-semibold">{field.label}</span>
-                          <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-1 rounded group-hover:bg-emerald-100">
-                            {field.token}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
         </div>
       </div>
 
-      {/* ── 3. PAPER CANVAS (UNIFIED SEAMLESS EDITABLE FLOW) ── */}
-      <main className="flex-1 min-h-0 overflow-auto bg-[#cbd5e1] p-6 flex flex-col items-center custom-scrollbar">
+      {/* ── 3. PAPER CANVAS (AUTHENTIC BARANGAY LETTERHEAD + EDITABLE FLOW) ── */}
+      <main
+        className="flex-1 min-h-0 overflow-auto bg-[#cbd5e1] p-6 flex flex-col items-center custom-scrollbar"
+        onClick={() => setSelectedCanvasObject(null)}
+      >
         <div
           className="w-full flex justify-center items-start"
           style={{ minHeight: "100%" }}
@@ -1107,198 +1205,381 @@ export default function TemplateEditorModal({
                 textRendering: "optimizeLegibility",
               }}
             >
-              {/* ── LOGO LAYER (UN-EDITABLE, NON-DUPLICATING OVERLAY) ── */}
-              {logoConfig.visible && (
-                <div
-                  contentEditable={false}
-                  className="select-none pointer-events-auto"
-                  style={{
-                    position: logoConfig.alignment === "center" ? "relative" : "absolute",
-                    left:
-                      logoConfig.alignment === "left" || logoConfig.alignment === "dual"
-                        ? `${10 + logoConfig.offsetX}px`
-                        : undefined,
-                    right:
-                      logoConfig.alignment === "right"
-                        ? `${10 + logoConfig.offsetX}px`
-                        : undefined,
-                    top:
-                      logoConfig.alignment === "center"
-                        ? `${logoConfig.offsetY}px`
-                        : `${-5 + logoConfig.offsetY}px`,
-                    display: logoConfig.alignment === "center" ? "flex" : undefined,
-                    justifyContent: logoConfig.alignment === "center" ? "center" : undefined,
-                    marginBottom: logoConfig.alignment === "center" ? "8px" : undefined,
-                    zIndex: 25,
-                  }}
-                >
-                  <div className="relative group/seal inline-block">
-                    <img
-                      draggable={false}
-                      src={logoConfig.url}
-                      alt="Barangay Seal"
-                      style={{
-                        width: `${logoConfig.size}px`,
-                        height: `${logoConfig.size}px`,
-                        aspectRatio: "1 / 1",
-                      }}
-                      className={`rounded-full object-contain cursor-pointer transition select-none ${
-                        selectedCanvasObject === "logo"
-                          ? "ring-3 ring-emerald-500 ring-offset-2 shadow-xl scale-105"
-                          : "hover:ring-2 hover:ring-emerald-400"
-                      }`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedCanvasObject(selectedCanvasObject === "logo" ? null : "logo");
-                      }}
-                      onDragStart={(e) => e.preventDefault()}
-                      title="Click to adjust Barangay Seal"
-                    />
-
-                    {/* On-Canvas Floating Quick Action Pill */}
-                    {selectedCanvasObject === "logo" && (
-                      <div
-                        contentEditable={false}
-                        className="absolute -top-10 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-[10px] font-bold px-2.5 py-1 rounded-full shadow-2xl flex items-center gap-1.5 whitespace-nowrap animate-fadeIn border border-slate-700"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setLogoConfig((prev) => ({ ...prev, size: Math.max(prev.size - 5, 40) }))}
-                          className="p-0.5 rounded hover:bg-white/20 cursor-pointer"
-                          title="Decrease size"
-                        >
-                          <Minus size={11} />
-                        </button>
-                        <span>{logoConfig.size}px</span>
-                        <button
-                          type="button"
-                          onClick={() => setLogoConfig((prev) => ({ ...prev, size: Math.min(prev.size + 5, 180) }))}
-                          className="p-0.5 rounded hover:bg-white/20 cursor-pointer"
-                          title="Increase size"
-                        >
-                          <Plus size={11} />
-                        </button>
-                        <span className="text-slate-500">|</span>
-                        <button
-                          type="button"
-                          onClick={() => logoFileInputRef.current?.click()}
-                          className="text-emerald-300 hover:text-emerald-200 underline cursor-pointer"
-                        >
-                          Upload
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedCanvasObject(null)}
-                          className="ml-1 text-slate-400 hover:text-white"
-                        >
-                          <X size={10} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Secondary Seal for Dual Mode (Aleosan Municipal Seal) */}
-              {logoConfig.alignment === "dual" && (
-                <div
-                  contentEditable={false}
-                  className="select-none pointer-events-auto"
-                  style={{
-                    position: "absolute",
-                    right: `${10 + logoConfig.secondaryOffsetX}px`,
-                    top: `${-5 + logoConfig.secondaryOffsetY}px`,
-                    zIndex: 25,
-                  }}
-                >
-                  <div className="relative group/seal inline-block">
-                    <img
-                      draggable={false}
-                      src={logoConfig.secondaryUrl || "/aleosan.logo.png"}
-                      alt="Municipal Seal"
-                      style={{
-                        width: `${logoConfig.secondarySize}px`,
-                        height: `${logoConfig.secondarySize}px`,
-                        aspectRatio: "1 / 1",
-                      }}
-                      className={`rounded-full object-contain cursor-pointer transition select-none ${
-                        selectedCanvasObject === "secondaryLogo"
-                          ? "ring-3 ring-sky-500 ring-offset-2 shadow-xl scale-105"
-                          : "hover:ring-2 hover:ring-sky-400"
-                      }`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedCanvasObject(selectedCanvasObject === "secondaryLogo" ? null : "secondaryLogo");
-                      }}
-                      onDragStart={(e) => e.preventDefault()}
-                      title="Click to adjust Municipal Seal"
-                    />
-
-                    {/* On-Canvas Floating Quick Action Pill for Secondary Logo */}
-                    {selectedCanvasObject === "secondaryLogo" && (
-                      <div
-                        contentEditable={false}
-                        className="absolute -top-10 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-[10px] font-bold px-2.5 py-1 rounded-full shadow-2xl flex items-center gap-1.5 whitespace-nowrap animate-fadeIn border border-slate-700"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setLogoConfig((prev) => ({ ...prev, secondarySize: Math.max(prev.secondarySize - 5, 40) }))}
-                          className="p-0.5 rounded hover:bg-white/20 cursor-pointer"
-                          title="Decrease size"
-                        >
-                          <Minus size={11} />
-                        </button>
-                        <span>{logoConfig.secondarySize}px</span>
-                        <button
-                          type="button"
-                          onClick={() => setLogoConfig((prev) => ({ ...prev, secondarySize: Math.min(prev.secondarySize + 5, 180) }))}
-                          className="p-0.5 rounded hover:bg-white/20 cursor-pointer"
-                          title="Increase size"
-                        >
-                          <Plus size={11} />
-                        </button>
-                        <span className="text-slate-500">|</span>
-                        <button
-                          type="button"
-                          onClick={() => secondaryLogoFileInputRef.current?.click()}
-                          className="text-sky-300 hover:text-sky-200 underline cursor-pointer"
-                        >
-                          Upload
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedCanvasObject(null)}
-                          className="ml-1 text-slate-400 hover:text-white"
-                        >
-                          <X size={10} />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* ── 4. UNIFIED CONTINUOUS EDITABLE TEXT FLOW (HEADER TO FOOTER) ── */}
+              {/* ── REAL BARANGAY LETTERHEAD WITH INTEGRATED SEALS & CRISP BOTTOM BORDER ── */}
               <div
-                ref={unifiedEditorRef}
+                className="real-doc-header relative"
+                style={{
+                  paddingTop: logoConfig.alignment === "center" ? "4px" : undefined,
+                }}
+              >
+                {/* Primary Seal (Positioned inside the letterhead) */}
+                {logoConfig.visible && (
+                  <div
+                    contentEditable={false}
+                    className="select-none pointer-events-auto"
+                    style={{
+                      position: logoConfig.alignment === "center" ? "relative" : "absolute",
+                      left:
+                        logoConfig.alignment === "left" || logoConfig.alignment === "dual"
+                          ? `calc(0.1in + ${logoConfig.offsetX}px)`
+                          : undefined,
+                      right:
+                        logoConfig.alignment === "right"
+                          ? `calc(0.1in + ${logoConfig.offsetX}px)`
+                          : undefined,
+                      top:
+                        logoConfig.alignment === "center"
+                          ? `${logoConfig.offsetY}px`
+                          : `calc(-0.05in + ${logoConfig.offsetY}px)`,
+                      display: logoConfig.alignment === "center" ? "flex" : undefined,
+                      justifyContent: logoConfig.alignment === "center" ? "center" : undefined,
+                      marginBottom: logoConfig.alignment === "center" ? "8px" : undefined,
+                      zIndex: 25,
+                    }}
+                  >
+                    <div className="relative group/seal inline-block">
+                      <img
+                        draggable={false}
+                        src={logoConfig.url}
+                        alt="Barangay Seal"
+                        style={{
+                          width: `${logoConfig.size}px`,
+                          height: `${logoConfig.size}px`,
+                          aspectRatio: "1 / 1",
+                        }}
+                        className={`rounded-full object-contain cursor-pointer transition select-none ${
+                          selectedCanvasObject === "logo"
+                            ? "ring-4 ring-emerald-600 ring-offset-2 shadow-2xl scale-102 border-2 border-dashed border-emerald-400"
+                            : "hover:ring-2 hover:ring-emerald-400"
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCanvasObject(selectedCanvasObject === "logo" ? null : "logo");
+                        }}
+                        onDragStart={(e) => e.preventDefault()}
+                        title="Click to select Seal (Resize, Move, Cut, Upload, Paste)"
+                      />
+
+                      {/* Word-Style Floating Quick Action Pill */}
+                      {selectedCanvasObject === "logo" && (
+                        <div
+                          contentEditable={false}
+                          className="absolute -top-11 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1.5 rounded-full shadow-2xl flex items-center gap-2 whitespace-nowrap animate-fadeIn border border-slate-700"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span className="text-emerald-400 font-extrabold flex items-center gap-1">
+                            <ImageIcon size={11} />
+                            Seal ({logoConfig.size}px)
+                          </span>
+                          <div className="h-3 w-px bg-slate-700" />
+                          <button
+                            type="button"
+                            onClick={() => setLogoConfig((prev) => ({ ...prev, size: Math.max(prev.size - 5, 40) }))}
+                            className="p-1 rounded hover:bg-white/20 cursor-pointer"
+                            title="Decrease size"
+                          >
+                            <Minus size={11} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setLogoConfig((prev) => ({ ...prev, size: Math.min(prev.size + 5, 180) }))}
+                            className="p-1 rounded hover:bg-white/20 cursor-pointer"
+                            title="Increase size"
+                          >
+                            <Plus size={11} />
+                          </button>
+                          <div className="h-3 w-px bg-slate-700" />
+                          <button
+                            type="button"
+                            onClick={() => logoFileInputRef.current?.click()}
+                            className="text-emerald-300 hover:text-emerald-200 underline cursor-pointer"
+                          >
+                            Upload
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePasteLogoFromClipboard(false)}
+                            className="text-sky-300 hover:text-sky-200 underline cursor-pointer"
+                          >
+                            Paste
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCutLogo(false)}
+                            className="text-red-400 hover:text-red-300 flex items-center gap-0.5 cursor-pointer ml-1"
+                          >
+                            <Scissors size={10} />
+                            <span>Cut</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCanvasObject(null)}
+                            className="ml-1 text-slate-400 hover:text-white"
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Secondary Seal (Aleosan Municipal Seal for Dual Mode) */}
+                {logoConfig.alignment === "dual" && logoConfig.secondaryVisible !== false && (
+                  <div
+                    contentEditable={false}
+                    className="select-none pointer-events-auto"
+                    style={{
+                      position: "absolute",
+                      right: `calc(0.1in + ${logoConfig.secondaryOffsetX}px)`,
+                      top: `calc(-0.05in + ${logoConfig.secondaryOffsetY}px)`,
+                      zIndex: 25,
+                    }}
+                  >
+                    <div className="relative group/seal inline-block">
+                      <img
+                        draggable={false}
+                        src={logoConfig.secondaryUrl || "/aleosan.logo.png"}
+                        alt="Municipal Seal"
+                        style={{
+                          width: `${logoConfig.secondarySize}px`,
+                          height: `${logoConfig.secondarySize}px`,
+                          aspectRatio: "1 / 1",
+                        }}
+                        className={`rounded-full object-contain cursor-pointer transition select-none ${
+                          selectedCanvasObject === "secondaryLogo"
+                            ? "ring-4 ring-sky-500 ring-offset-2 shadow-2xl scale-102 border-2 border-dashed border-sky-400"
+                            : "hover:ring-2 hover:ring-sky-400"
+                        }`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedCanvasObject(selectedCanvasObject === "secondaryLogo" ? null : "secondaryLogo");
+                        }}
+                        onDragStart={(e) => e.preventDefault()}
+                        title="Click to select Municipal Seal"
+                      />
+
+                      {/* Floating pill for secondary seal */}
+                      {selectedCanvasObject === "secondaryLogo" && (
+                        <div
+                          contentEditable={false}
+                          className="absolute -top-11 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1.5 rounded-full shadow-2xl flex items-center gap-2 whitespace-nowrap animate-fadeIn border border-slate-700"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span className="text-sky-400 font-extrabold flex items-center gap-1">
+                            <ImageIcon size={11} />
+                            Municipal ({logoConfig.secondarySize}px)
+                          </span>
+                          <div className="h-3 w-px bg-slate-700" />
+                          <button
+                            type="button"
+                            onClick={() => setLogoConfig((prev) => ({ ...prev, secondarySize: Math.max(prev.secondarySize - 5, 40) }))}
+                            className="p-1 rounded hover:bg-white/20 cursor-pointer"
+                          >
+                            <Minus size={11} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setLogoConfig((prev) => ({ ...prev, secondarySize: Math.min(prev.secondarySize + 5, 180) }))}
+                            className="p-1 rounded hover:bg-white/20 cursor-pointer"
+                          >
+                            <Plus size={11} />
+                          </button>
+                          <div className="h-3 w-px bg-slate-700" />
+                          <button
+                            type="button"
+                            onClick={() => secondaryLogoFileInputRef.current?.click()}
+                            className="text-sky-300 hover:text-sky-200 underline cursor-pointer"
+                          >
+                            Upload
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handlePasteLogoFromClipboard(true)}
+                            className="text-emerald-300 hover:text-emerald-200 underline cursor-pointer"
+                          >
+                            Paste
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCutLogo(true)}
+                            className="text-red-400 hover:text-red-300 flex items-center gap-0.5 cursor-pointer ml-1"
+                          >
+                            <Scissors size={10} />
+                            <span>Cut</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCanvasObject(null)}
+                            className="ml-1 text-slate-400 hover:text-white"
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Editable Header Text (Centered) */}
+                <div
+                  ref={headerEditorRef}
+                  className="real-doc-header-text"
+                >
+                  <div
+                    contentEditable={true}
+                    suppressContentEditableWarning={true}
+                    onBlur={(e) => setHeaderConfig((prev) => ({ ...prev, country: e.target.innerText.trim() }))}
+                  >
+                    {headerConfig.country}
+                  </div>
+                  <div
+                    contentEditable={true}
+                    suppressContentEditableWarning={true}
+                    onBlur={(e) => setHeaderConfig((prev) => ({ ...prev, province: e.target.innerText.trim() }))}
+                  >
+                    {headerConfig.province}
+                  </div>
+                  <div
+                    contentEditable={true}
+                    suppressContentEditableWarning={true}
+                    onBlur={(e) => setHeaderConfig((prev) => ({ ...prev, municipality: e.target.innerText.trim() }))}
+                  >
+                    {headerConfig.municipality}
+                  </div>
+                  <div
+                    contentEditable={true}
+                    suppressContentEditableWarning={true}
+                    onBlur={(e) => setHeaderConfig((prev) => ({ ...prev, barangay: e.target.innerText.trim() }))}
+                  >
+                    {headerConfig.barangay}
+                  </div>
+                  <div
+                    contentEditable={true}
+                    suppressContentEditableWarning={true}
+                    className="real-doc-office"
+                    onBlur={(e) => setHeaderConfig((prev) => ({ ...prev, office: e.target.innerText.trim() }))}
+                  >
+                    {headerConfig.office}
+                  </div>
+                </div>
+              </div>
+
+              {/* ── DOCUMENT TITLE ── */}
+              <h1
+                contentEditable={true}
+                suppressContentEditableWarning={true}
+                className="real-doc-title outline-none"
+                onBlur={(e) => setHeaderConfig((prev) => ({ ...prev, title: e.target.innerText.trim() }))}
+              >
+                {headerConfig.title}
+              </h1>
+
+              {/* ── SALUTATION ── */}
+              <p
+                contentEditable={true}
+                suppressContentEditableWarning={true}
+                className="real-doc-to outline-none"
+                onBlur={(e) => setHeaderConfig((prev) => ({ ...prev, salutation: e.target.innerText.trim() }))}
+              >
+                {headerConfig.salutation}
+              </p>
+
+              {/* ── EDITABLE BODY PARAGRAPHS ── */}
+              <section
+                ref={bodyEditorRef}
                 contentEditable={true}
                 suppressContentEditableWarning={true}
                 onInput={handleEditorInput}
                 onBlur={handleEditorInput}
-                onDrop={(e) => e.preventDefault()}
-                className="outline-none cursor-text w-full min-h-[9in]"
+                className="real-doc-body outline-none"
                 style={{
-                  outline: "none",
-                  WebkitUserModify: "read-write",
+                  minHeight: "3.5in",
                 }}
               />
+
+              {/* ── OFFICIAL SIGNATURE SECTION ── */}
+              <section className={`real-doc-signature ${isClearance ? "real-doc-clearance-signature" : ""}`}>
+                <p className="real-doc-captain-name">
+                  {isClearance || isIndigency ? (
+                    <u>
+                      <strong
+                        contentEditable={true}
+                        suppressContentEditableWarning={true}
+                        onBlur={(e) => setHeaderConfig((prev) => ({ ...prev, captainName: e.target.innerText.trim() }))}
+                      >
+                        {headerConfig.captainName}
+                      </strong>
+                    </u>
+                  ) : (
+                    <strong
+                      contentEditable={true}
+                      suppressContentEditableWarning={true}
+                      onBlur={(e) => setHeaderConfig((prev) => ({ ...prev, captainName: e.target.innerText.trim() }))}
+                    >
+                      {headerConfig.captainName}
+                    </strong>
+                  )}
+                </p>
+                <p
+                  contentEditable={true}
+                  suppressContentEditableWarning={true}
+                  className="real-doc-subtext"
+                  onBlur={(e) => setHeaderConfig((prev) => ({ ...prev, captainTitle: e.target.innerText.trim() }))}
+                >
+                  {headerConfig.captainTitle}
+                </p>
+              </section>
+
+              {/* ── OFFICIAL EXTRAS (THUMBMARK, O.R., CTC BOX) ── */}
+              {isClearance && (
+                <section className="real-doc-thumbmark" aria-hidden="true">
+                  <span></span>
+                </section>
+              )}
+
+              {!isSolo && headerConfig.showOrSection && (
+                <section className={`real-doc-or real-doc-${docKey}-or`}>
+                  {(isResidency || isIndigency) && (
+                    <p style={{ marginBottom: "2px" }}>
+                      <span
+                        contentEditable={true}
+                        suppressContentEditableWarning={true}
+                        onBlur={(e) => setHeaderConfig((prev) => ({ ...prev, sealNote: e.target.innerText.trim() }))}
+                      >
+                        {headerConfig.sealNote || "Brgy. Seal/25"}
+                      </span>
+                    </p>
+                  )}
+                  <div className="real-doc-or-table">
+                    <div className="real-doc-or-row">
+                      <span className="real-doc-or-label">O. R. No.</span>
+                      <span className="real-doc-or-val"><u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u></span>
+                    </div>
+                    <div className="real-doc-or-row">
+                      <span className="real-doc-or-label">Date Issued:</span>
+                      <span className="real-doc-or-val"><u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u></span>
+                    </div>
+                    {(isClearance || isResidency || isIndigency) && (
+                      <div className="real-doc-or-row">
+                        <span className="real-doc-or-label">CTC No.</span>
+                        <span className="real-doc-or-val"><u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u></span>
+                      </div>
+                    )}
+                    {isClearance && (
+                      <div className="real-doc-or-row">
+                        <span className="real-doc-or-label">Date Issued:</span>
+                        <span className="real-doc-or-val"><u>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u></span>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
             </article>
           </div>
         </div>
 
-        {/* ── FLOATING QUICK ZOOM WIDGET ON CANVAS (BOTTOM RIGHT - CRISP HIGH CONTRAST) ── */}
+        {/* ── FLOATING ZOOM WIDGET ON CANVAS (BOTTOM RIGHT) ── */}
         <div className="fixed bottom-16 right-8 z-30 flex items-center gap-1 bg-slate-900/95 backdrop-blur-md px-2.5 py-1.5 rounded-2xl border border-slate-700 shadow-2xl text-white">
           <button
             type="button"
@@ -1338,15 +1619,19 @@ export default function TemplateEditorModal({
         </div>
       </main>
 
-      {/* ── 5. FOOTER STATUS & SAVE BAR ── */}
+      {/* ── 4. FOOTER STATUS & SAVE BAR ── */}
       <footer className="h-12 bg-white border-t border-slate-300 px-6 flex items-center justify-between text-xs text-slate-600 shrink-0 shadow-sm z-20">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <span className="font-semibold text-slate-700">Page 1 of 1</span>
           <span className="text-slate-300">•</span>
           <span className="font-bold text-slate-900">{formData.template_name}</span>
           <span className="text-slate-300">•</span>
-          <span className="text-emerald-700 font-medium">
-            Zoom: {zoom}% • Select All (Ctrl+A) • Full Continuous Highlight
+          <span className="text-slate-500 font-medium">
+            {docStats.words} words • {docStats.characters} characters
+          </span>
+          <span className="text-slate-300 hidden sm:inline">•</span>
+          <span className="text-emerald-700 font-medium hidden sm:inline">
+            Zoom: {zoom}% • Authentic Legal Barangay Format
           </span>
         </div>
 

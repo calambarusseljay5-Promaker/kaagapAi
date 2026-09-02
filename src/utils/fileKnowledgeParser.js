@@ -164,13 +164,62 @@ export async function parseFileToKnowledgeText(file) {
   );
 }
 
+function detectCategoryFromText(text = "") {
+  const lower = text.toLowerCase();
+  if (lower.includes("curfew") || lower.includes("disaster") || lower.includes("safety") || lower.includes("tanod") || lower.includes("peace") || lower.includes("fire") || lower.includes("calamity")) return "Public Safety & Disaster";
+  if (lower.includes("health") || lower.includes("medical") || lower.includes("vaccine") || lower.includes("sanitation") || lower.includes("gamot") || lower.includes("clinic") || lower.includes("dental") || lower.includes("checkup")) return "Health & Sanitation";
+  if (lower.includes("ordinance") || lower.includes("ordinansa") || lower.includes("policy") || lower.includes("patakaran") || lower.includes("bawal") || lower.includes("multa") || lower.includes("penalty") || lower.includes("resolution")) return "Ordinances & Policies";
+  if (lower.includes("livelihood") || lower.includes("job") || lower.includes("trabaho") || lower.includes("agri") || lower.includes("farmer") || lower.includes("crop") || lower.includes("tesda") || lower.includes("training")) return "Agriculture & Livelihood";
+  if (lower.includes("clearance") || lower.includes("certificate") || lower.includes("residency") || lower.includes("indigency") || lower.includes("permit") || lower.includes("cedula") || lower.includes("valid id")) return "Document Processing";
+  if (lower.includes("senior") || lower.includes("pwd") || lower.includes("solo parent") || lower.includes("ayuda") || lower.includes("welfare") || lower.includes("4ps") || lower.includes("financial")) return "Social Welfare";
+  if (lower.includes("council") || lower.includes("official") || lower.includes("kapitan") || lower.includes("kagawad") || lower.includes("governance") || lower.includes("session")) return "Governance";
+  return "General";
+}
+
+function generateFallbackQuestions(titleOrText = "") {
+  const clean = titleOrText.slice(0, 45).replace(/[#*_\n\r]/g, "").trim();
+  return [
+    `Ano ang mga alituntunin at patakaran ukol sa ${clean}?`,
+    `Paano ang proseso at ano ang mga requirements para sa ${clean}?`,
+    `Sino ang target at saan ipinapatupad ang ${clean}?`
+  ];
+}
+
+function generateSmartLocalKnowledgeStructure(fileResult) {
+  const rawText = fileResult.text || fileResult.title || "Barangay Policy & Guidelines";
+  const title = fileResult.title || "Barangay Official Knowledge Record";
+  const category = detectCategoryFromText(rawText);
+  const sampleQuestions = generateFallbackQuestions(title);
+
+  let formattedContent = rawText;
+  if (!rawText.includes("•") && !rawText.includes("1.")) {
+    const lines = rawText.split(/[\n.]+/).map((l) => l.trim()).filter((l) => l.length > 5);
+    if (lines.length > 1) {
+      formattedContent = `📌 **Mga Alituntunin at Impormasyon ukol sa ${title}:**\n\n` + lines.map((l) => `• ${l}`).join("\n");
+    }
+  }
+
+  return {
+    title: title.length > 5 ? title : "Barangay Official Knowledge Record",
+    category,
+    audience: "All Residents",
+    summary: `Opisyal na patakaran at alituntunin ukol sa ${title} para sa mga residente ng Barangay Upper Mingading.`,
+    content: formattedContent,
+    sampleQuestions,
+  };
+}
+
 /**
  * Uses Gemini to automatically analyze, summarize, and structure raw text/document into high-quality Barangay AI Knowledge.
+ * Falls back seamlessly to smart local extraction if AI service is offline or rate limited.
  * @param {{ text?: string, title?: string, isImage?: boolean, base64?: string, mimeType?: string, fileName?: string }} fileResult
  * @returns {Promise<{ title: string, category: string, audience: string, content: string, summary: string, sampleQuestions: string[] }>}
  */
 export async function analyzeAndStructureKnowledgeWithAi(fileResult) {
-  const systemInstruction = `You are the Lead AI Knowledge Engineer for Barangay Upper Mingading, Aleosan, Cotabato.
+  const rawText = fileResult.text || fileResult.title || "";
+
+  try {
+    const systemInstruction = `You are the Lead AI Knowledge Engineer for Barangay Upper Mingading, Aleosan, Cotabato.
 Your job is to read documents (memos, resolutions, circulars, announcements, guidelines, forms, ordinances, or meeting minutes) and transform them into crystal-clear, structured knowledge that will be directly injected into the KaagapAI Resident Chatbot knowledge base.
 
 OUTPUT FORMAT REQUIREMENTS:
@@ -188,56 +237,49 @@ You MUST respond with a valid JSON object ONLY (no markdown code fences, no extr
   ]
 }`;
 
-  let prompt = "";
-  let options = {
-    systemInstruction,
-    temperature: 0.2,
-    maxOutputTokens: 2048,
-  };
-
-  if (fileResult.isImage && fileResult.base64) {
-    prompt = `Analyze this uploaded document/memo image "${fileResult.fileName || fileResult.title}". Extract all text, policies, dates, requirements, and information. Then format it as JSON according to the instructions.`;
-    options.fileData = {
-      mimeType: fileResult.mimeType || "image/jpeg",
-      data: fileResult.base64,
+    let prompt = "";
+    let options = {
+      systemInstruction,
+      temperature: 0.2,
+      maxOutputTokens: 2048,
     };
-  } else {
-    const rawText = fileResult.text || "";
-    prompt = `Analyze the following extracted document text from "${fileResult.fileName || fileResult.title}". Extract and organize all policies, guidelines, requirements, and barangay information into clean, high-precision knowledge for the resident chatbot.\n\nDOCUMENT CONTENT:\n${rawText.slice(0, 10000)}`;
-  }
 
-  const response = await generateText(prompt, options);
-  const rawOutput =
-    response?.candidates?.[0]?.content?.parts?.[0]?.text ||
-    response?.text ||
-    "";
+    if (fileResult.isImage && fileResult.base64) {
+      prompt = `Analyze this uploaded document/memo image "${fileResult.fileName || fileResult.title}". Extract all text, policies, dates, requirements, and information. Then format it as JSON according to the instructions.`;
+      options.fileData = {
+        mimeType: fileResult.mimeType || "image/jpeg",
+        data: fileResult.base64,
+      };
+    } else {
+      prompt = `Analyze the following extracted document text from "${fileResult.fileName || fileResult.title}". Extract and organize all policies, guidelines, requirements, and barangay information into clean, high-precision knowledge for the resident chatbot.\n\nDOCUMENT CONTENT:\n${rawText.slice(0, 10000)}`;
+    }
 
-  // Clean JSON string
-  const cleanJson = rawOutput
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
+    const response = await generateText(prompt, options);
+    const rawOutput =
+      response?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      response?.text ||
+      "";
 
-  try {
+    // Clean JSON string
+    const cleanJson = rawOutput
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+
     const parsed = JSON.parse(cleanJson);
     return {
       title: parsed.title || fileResult.title || "Barangay Knowledge Record",
-      category: parsed.category || "General",
+      category: parsed.category || detectCategoryFromText(rawText),
       audience: parsed.audience || "All Residents",
       summary: parsed.summary || "",
-      content: parsed.content || fileResult.text || "",
-      sampleQuestions: Array.isArray(parsed.sampleQuestions) ? parsed.sampleQuestions : [],
+      content: parsed.content || rawText,
+      sampleQuestions: Array.isArray(parsed.sampleQuestions) && parsed.sampleQuestions.length > 0
+        ? parsed.sampleQuestions
+        : generateFallbackQuestions(fileResult.title || rawText),
     };
-  } catch (parseErr) {
-    console.warn("JSON parsing failed, extracting fallback:", parseErr);
-    return {
-      title: fileResult.title || "Barangay Knowledge Record",
-      category: "General",
-      audience: "All Residents",
-      summary: rawOutput.slice(0, 150),
-      content: rawOutput || fileResult.text || "",
-      sampleQuestions: [],
-    };
+  } catch (err) {
+    console.warn("AI Knowledge Structuring fallback activated:", err.message);
+    return generateSmartLocalKnowledgeStructure(fileResult);
   }
 }
 

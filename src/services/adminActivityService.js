@@ -17,6 +17,7 @@ export const DEFAULT_SYSTEM_SETTINGS = {
   aiAssistantEnabled: true,
   documentNotificationsEnabled: true,
   geminiApiKey: "",
+  geminiModel: "gemini-2.0-flash",
 };
 
 const SETTINGS_UPDATED_EVENT = "kaagapai:system-settings-updated";
@@ -204,6 +205,13 @@ export function saveSystemSettings(settings) {
         storage.removeItem("kaagapai_gemini_api_key");
       }
     }
+    if (nextSettings.geminiModel !== undefined) {
+      if (nextSettings.geminiModel?.trim()) {
+        storage.setItem("kaagapai_gemini_model", nextSettings.geminiModel.trim());
+      } else {
+        storage.removeItem("kaagapai_gemini_model");
+      }
+    }
   }
 
   notifySettingsUpdated(nextSettings);
@@ -224,6 +232,7 @@ export function resetSystemSettings() {
   if (storage) {
     storage.removeItem(SETTINGS_KEY);
     storage.removeItem("kaagapai_gemini_api_key");
+    storage.removeItem("kaagapai_gemini_model");
   }
 
   notifySettingsUpdated(DEFAULT_SYSTEM_SETTINGS);

@@ -1497,7 +1497,7 @@ const Login = ({ portalMode = null }) => {
     if (e) e.preventDefault();
     const cleanPhone = normalizeSmsPhone(forgotPhone);
     if (!cleanPhone || cleanPhone.length < 10) {
-      setError("Please enter a valid 11-digit registered mobile number (e.g. 09306259795).");
+      setError("Please enter a valid 11-digit registered mobile number.");
       return;
     }
 
@@ -1937,7 +1937,7 @@ const Login = ({ portalMode = null }) => {
                   placeholder={
                     modalStep === "admin_login" || accessMode === "Admin"
                       ? "Enter admin username"
-                      : "Enter your mobile phone or username"
+                      : "Enter your username"
                   }
                   className="w-full h-12 rounded-xl bg-black/35 border border-emerald-400/30 pl-11 pr-4 outline-none text-xs font-semibold text-white placeholder-emerald-200/60 focus:border-emerald-400 focus:bg-black/50 focus:ring-2 focus:ring-emerald-400/30 transition-all duration-200 backdrop-blur-md"
                   required
@@ -2199,7 +2199,7 @@ const Login = ({ portalMode = null }) => {
                     maxLength={11}
                     value={forgotPhone}
                     onChange={(e) => setForgotPhone(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                    placeholder="Enter mobile number (e.g. 09306259795)"
+                    placeholder="Enter mobile number"
                     className="w-full h-12 rounded-xl border border-emerald-400/30 bg-black/40 pl-11 pr-4 text-xs text-white placeholder-emerald-200/50 outline-none focus:border-emerald-400 focus:bg-black/60 transition font-medium"
                     required
                     autoFocus

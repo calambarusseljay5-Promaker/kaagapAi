@@ -17,7 +17,16 @@ const normalizeKnowledgeError = (error) => {
   return error;
 };
 
-const normalizeDate = (value) => value || null;
+const normalizeDate = (value) => {
+  if (!value) return null;
+  try {
+    const parsed = new Date(value);
+    if (!isNaN(parsed.getTime())) {
+      return parsed.toISOString().slice(0, 10);
+    }
+  } catch {}
+  return String(value);
+};
 
 const compactText = (...values) =>
   values
@@ -92,7 +101,6 @@ export async function fetchKnowledgeItems({
   residentVisible = false,
   limit = 100,
 } = {}) {
-  const today = new Date().toISOString().slice(0, 10);
   let query = supabase
     .from(TABLE)
     .select("*")
@@ -122,8 +130,13 @@ export async function fetchKnowledgeItems({
     return data.filter((item) => {
       if (item.status && item.status !== "Active") return false;
       if (item.audience === "Admin Only") return false;
-      if (item.effective_date && String(item.effective_date).slice(0, 10) > today) return false;
-      if (item.expires_at && String(item.expires_at).slice(0, 10) < today) return false;
+      // If expires_at is set, check if expired
+      if (item.expires_at) {
+        try {
+          const exp = new Date(item.expires_at).getTime();
+          if (!isNaN(exp) && exp < Date.now() - 24 * 60 * 60 * 1000) return false;
+        } catch {}
+      }
       return true;
     });
   }

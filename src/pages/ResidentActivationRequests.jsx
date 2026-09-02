@@ -97,17 +97,19 @@ const ResidentActivationRequests = () => {
     }
   };
 
-  const loadRequests = async (filter = statusFilter) => {
-    setLoading(true);
+  const loadRequests = async (filter = statusFilter, isSilent = false) => {
+    if (!isSilent) setLoading(true);
     setError("");
 
     try {
       const data = await fetchResidentActivationRequests(filter === "All" ? null : filter);
       setRequests(data);
     } catch (loadError) {
-      setError(loadError.message || "Unable to load resident registration requests.");
+      if (!isSilent) {
+        setError(loadError.message || "Unable to load resident registration requests.");
+      }
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
@@ -139,9 +141,9 @@ const ResidentActivationRequests = () => {
     };
   }, []);
 
-  // Realtime multi-tab & cross-device auto-refresh
+  // Realtime multi-tab & cross-device auto-refresh - silent background sync
   useRealtimeSync(["activations", "residents"], () => {
-    loadRequests(statusFilter);
+    loadRequests(statusFilter, true);
   });
 
   const filteredRequests = useMemo(() => {
