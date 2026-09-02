@@ -4894,7 +4894,7 @@ const UserDashboard = () => {
               <div className="relative rounded-[2.2rem] overflow-hidden border-2 border-white/20 shadow-2xl bg-emerald-950/35 backdrop-blur-2xl text-white p-4 sm:p-5 space-y-3">
                 <div className="relative z-10 space-y-2.5">
                   <h2 className="text-base sm:text-xl font-black tracking-tight text-white leading-tight drop-shadow-sm">
-                    Maligayang Pagdating sa KaagapA.I Portal
+                    Welcome to the KaagapA.I Resident Portal
                   </h2>
                   
                   {/* 4 QUICK ACTION BUTTONS: COMPACT ICON-BASED RIBBON ON MOBILE, FULL CARDS ON DESKTOP */}
