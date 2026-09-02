@@ -25,7 +25,7 @@ const countBy = (items, getKey) =>
 const STATS_PAGE_SIZE = 1000;
 let cachedResidentStats = null;
 let cachedStatsTimestamp = 0;
-const STATS_CACHE_TTL_MS = 60000; // 1 minute cache
+const STATS_CACHE_TTL_MS = 15000; // 15 seconds real-time cache
 
 export async function fetchResidentStats(forceRefresh = false) {
   if (!forceRefresh && cachedResidentStats && Date.now() - cachedStatsTimestamp < STATS_CACHE_TTL_MS) {
@@ -60,10 +60,11 @@ export async function fetchResidentStats(forceRefresh = false) {
   const currentResidents = residents.filter((resident) => resident.status !== "Archived");
   const seniorResidents = currentResidents.filter((resident) => {
     const age = getResidentAge(resident);
-    return age !== null && age >= 60;
+    return (age !== null && age >= 60) || Boolean(resident.is_senior_citizen);
   });
   const pwdResidents = currentResidents.filter((resident) => Boolean(resident.is_pwd));
   const soloParentResidents = currentResidents.filter((resident) => Boolean(resident.is_solo_parent));
+  const fourPsResidents = currentResidents.filter((resident) => Boolean(resident.is_4ps_member || resident.is_4ps));
   const genderCounts = countBy(currentResidents, normalizeGender);
   const statusCounts = countBy(residents, (resident) => resident.status);
   const purokSummary = buildPurokSummary(currentResidents, { includeOther: true });
@@ -75,6 +76,7 @@ export async function fetchResidentStats(forceRefresh = false) {
     counts[purok.label] = purok.households;
     return counts;
   }, {});
+  const totalHouseholds = Object.values(purokHouseholdCounts).reduce((sum, h) => sum + (Number(h) || 0), 0);
 
   const ageDistribution = {
     "Children (0-12)": 0,
@@ -89,15 +91,18 @@ export async function fetchResidentStats(forceRefresh = false) {
   currentResidents.forEach((res) => {
     const age = getResidentAge(res);
     const purokDef = getPurokDefinition(res.purok);
+    const isSenior = (age !== null && age >= 60) || Boolean(res.is_senior_citizen);
     
-    // Push anonymized data for AI complex queries
+    // Push anonymized data for AI statistical queries (strictly zero private names/phone numbers)
     anonymousResidents.push({
       age: age !== null ? age : "Unknown",
       gender: normalizeGender(res),
       purok: purokDef ? purokDef.label : normalizeText(res.purok),
       status: normalizeText(res.status),
-      isSenior: age !== null && age >= 60,
-      isPWD: Boolean(res.is_pwd)
+      isSenior,
+      isPWD: Boolean(res.is_pwd),
+      isSoloParent: Boolean(res.is_solo_parent),
+      is4Ps: Boolean(res.is_4ps_member || res.is_4ps),
     });
 
     if (age === null || age < 0) return;
@@ -118,6 +123,8 @@ export async function fetchResidentStats(forceRefresh = false) {
     seniorCitizens: seniorResidents.length,
     pwdResidents: pwdResidents.length,
     soloParentResidents: soloParentResidents.length,
+    fourPsResidents: fourPsResidents.length,
+    totalHouseholds,
     maleResidents: genderCounts.Male || 0,
     femaleResidents: genderCounts.Female || 0,
     unknownGenderResidents: genderCounts.Unknown || 0,

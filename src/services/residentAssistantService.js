@@ -802,10 +802,34 @@ const buildSelfProfileAnswer = (resident, language = "tagalog") => {
 
 const buildPrivacyLimitationAnswer = (language = "tagalog") => {
   if (language === "tagalog") {
-    return "🔒 **Paalala sa Data Privacy:**\n\nAlinsunod sa **Data Privacy Act of 2012 (RA 10173)**, mahigpit na pinangangalagaan ang personal na impormasyon, numero ng telepono, at tirahan ng bawat indibidwal na residente at hindi ito maaaring ibigay sa publiko o sa pamamagitan ng virtual assistant.\n\nKung may kailangan kayong opisyal na transaksyon o emergency, mangyaring makipag-ugnayan nang direkta sa ating **Barangay Office** sa **09306259795**.";
+    return [
+      "🔒 **Paalala sa Data Privacy & Seguridad:**",
+      "",
+      "Alinsunod sa **Data Privacy Act of 2012 (RA 10173)**, mahigpit na pinoprotektahan ang personal na impormasyon, pribadong talaan, numero, at tirahan ng bawat indibidwal na residente. Hindi po pinahihintulutan ang pagbabahagi ng indibidwal na talaan ng Resident Management o pribadong detalye ng mga mamamayan.",
+      "",
+      "📊 **Ano ang maaari ninyong itanong sa Assistant:**",
+      "• **Kabuuang Populasyon** (*Halimbawa: 'Ilan ang total residents?'*)",
+      "• **Distribusyon Kada Purok** (*Halimbawa: 'Ilan ang residente sa Kamonsil?' o 'Purok breakdown'*)",
+      "• **Bilang ayon sa Kategorya** (*Halimbawa: Senior citizens, PWD, Solo Parents, 4Ps, Kalalakihan, Kababaihan*)",
+      "• **Opisyal na Talaan ng Pamunuan** (*Halimbawa: 'Sino ang mga opisyal?' o 'Organizational chart'*)",
+      "",
+      "Para sa mga opisyal na personal na transaksyon, mangyaring bumisita sa **Barangay Hall** o tumawag sa ating opisyal na hotline: **09306259795**."
+    ].join("\n");
   }
 
-  return "🔒 **Data Privacy Advisory:**\n\nIn compliance with the **Data Privacy Act of 2012 (RA 10173)**, personal records, private contact numbers, and personal details of individual residents are strictly confidential and cannot be disclosed by the AI virtual assistant.\n\nFor official community inquiries or emergency assistance, please contact the **Barangay Office** directly at **09306259795**.";
+  return [
+    "🔒 **Data Privacy & Security Advisory:**",
+    "",
+    "In strict compliance with the **Data Privacy Act of 2012 (RA 10173)**, individual resident personal records, private profiles, phone numbers, and resident directories are strictly confidential and cannot be disclosed by the virtual assistant.",
+    "",
+    "📊 **Available Public & Statistical Data You Can Inquire:**",
+    "• **Total Population Count** (*e.g., 'What is the total number of residents?'*)",
+    "• **Per-Purok Distribution** (*e.g., 'How many residents in Kamonsil?' or 'Purok breakdown'*)",
+    "• **Demographic Categories** (*e.g., Senior Citizens, PWDs, Solo Parents, 4Ps members, Gender counts*)",
+    "• **Official Barangay Council & Leaders** (*e.g., 'Who are the barangay officials?' or 'Organizational chart'*)",
+    "",
+    "For official community matters, please visit the **Barangay Hall** or call our hotline at **09306259795**."
+  ].join("\n");
 };
 
 const isSelfProfileQuestion = (normalizedQ, resident) => {
@@ -838,12 +862,21 @@ const isThirdPartyPrivacyQuestion = (normalizedQ) => {
     "saan nakatira", "where does", "contact info of", "give me the info of", "give me the information of",
     "information of", "info of", "info ni", "impormasyon ni", "details of", "records of",
     "what about her number", "what about his number", "ano number ni", "anong number ni",
-    "anong phone number ni", "ano cp number ni", "ano ang number ni", "ano ang cp number"
+    "anong phone number ni", "ano cp number ni", "ano ang number ni", "ano ang cp number",
+    "resident info", "residents info", "resident information", "residents information",
+    "residents management", "resident management", "residents list", "list of residents",
+    "listahan ng mga residente", "pangalan ng mga residente", "names of residents",
+    "resident record", "resident records", "records of residents", "resident profile", "profiles of residents",
+    "who lives in", "sinong nakatira", "sino nakatira sa"
   ];
 
   if (includesAny(normalizedQ, privacyTriggers)) {
-    // Exempt official barangay hotlines or official public leadership questions
-    if (includesAny(normalizedQ, ["hotline", "office", "barangay phone", "emergency", "captain", "kapitan", "wilson caponpon", "tanod", "hall"])) {
+    // Exempt official barangay hotlines, statistical count questions, or public leadership questions
+    if (includesAny(normalizedQ, [
+      "hotline", "office", "barangay phone", "emergency", "captain", "kapitan",
+      "clarito", "malarito", "calarito", "tanod", "hall", "total", "ilan", "bilang",
+      "statistics", "stats", "count", "populasyon", "population", "breakdown"
+    ])) {
       return false;
     }
     return true;
@@ -2002,7 +2035,8 @@ const formatCounts = (counts = {}) =>
     .join(", ") || "None";
 
 const isResidentStatsQuestion = (question) => {
-  const normalized = normalizeText(question);
+  const normalized = normalizeText(question).toLowerCase();
+
   const asksCount = includesAny(normalized, [
     "how many",
     "ilan",
@@ -2010,156 +2044,333 @@ const isResidentStatsQuestion = (question) => {
     "number of",
     "total",
     "kabuuan",
+    "kabuuang",
     "population",
+    "populasyon",
+    "bilang",
+    "statistics",
+    "stats",
+    "breakdown",
+    "distribusyon",
+    "distribution",
   ]);
+
   const mentionsStatsTarget = includesAny(normalized, [
     "resident",
     "residents",
     "residente",
+    "populasyon",
     "population",
+    "tao",
+    "mamamayan",
     "senior",
+    "seniors",
     "senior citizen",
     "senior citizens",
+    "matanda",
+    "matatanda",
+    "elderly",
     "pwd",
+    "pwds",
     "pwed",
     "disability",
     "disabled",
+    "kapansanan",
+    "may kapansanan",
+    "solo parent",
+    "solo parents",
+    "single mother",
+    "single father",
+    "soloparent",
+    "4ps",
+    "four ps",
+    "4 ps",
+    "pantawid",
     "male",
     "female",
     "gender",
+    "kasarian",
     "lalaki",
     "babae",
+    "kalalakihan",
+    "kababaihan",
     "purok",
-  ]);
-  const mentionsSpecificStats = includesAny(normalized, [
-    "population",
-    "senior",
-    "senior citizen",
-    "senior citizens",
-    "pwd",
-    "pwed",
-    "disability",
-    "disabled",
-    "male",
-    "female",
-    "gender",
-    "lalaki",
-    "babae",
-    "purok",
+    "puroks",
+    "kamonsil",
+    "payhod",
+    "muslim",
+    "malipayon",
+    "buklod",
+    "azucena",
+    "purok 3",
+    "purok3",
+    "purok-3",
+    "household",
+    "households",
+    "pamilya",
+    "kabahayan",
+    "bahay",
+    "families",
+    "family",
   ]);
 
-  return mentionsStatsTarget && (asksCount || mentionsSpecificStats);
+  const mentionsSpecificStats = includesAny(normalized, [
+    "total residents",
+    "kabuuang residente",
+    "purok breakdown",
+    "per purok",
+    "kada purok",
+    "bawat purok",
+    "senior citizens",
+    "solo parent",
+    "4ps",
+    "gender breakdown",
+    "demographics",
+    "resident count",
+    "population count",
+  ]);
+
+  return (mentionsStatsTarget && asksCount) || mentionsSpecificStats || (asksCount && normalized.includes("barangay"));
 };
 
 const buildResidentStatsAnswer = (question, stats, language = "english") => {
   if (!stats?.loaded) {
     return language === "tagalog"
-      ? "Hindi pa naka-load ang barangay resident statistics sa assistant. Paki-refresh ang dashboard at subukan ulit."
-      : "Barangay resident statistics are not loaded in the assistant yet. Please refresh the dashboard and try again.";
+      ? "Hindi pa naka-load ang pinakabagong talaan ng barangay statistics. Paki-refresh ang pahina at subukan muli."
+      : "Barangay resident statistics are not loaded in the assistant yet. Please refresh the page and try again.";
   }
 
   const normalized = normalizeText(question).toLowerCase();
-  
-  // 1. Identify specific Purok
+
+  // 1. Identify specific Purok target
   let targetPurok = null;
   const purokKeys = Object.keys(stats.purokCounts || {});
   for (const p of purokKeys) {
-    if (normalized.includes(p.toLowerCase())) {
+    const cleanP = p.replace(/^purok[\s\-_]*/i, "").trim().toLowerCase();
+    if (normalized.includes(p.toLowerCase()) || (cleanP && normalized.includes(cleanP))) {
       targetPurok = p;
       break;
     }
   }
 
-  // 2. Identify generic vs specific queries
-  const wantsFemale = normalized.includes("female") || normalized.includes("babae");
-  const wantsMale = (normalized.includes("male") && !normalized.includes("female")) || normalized.includes("lalaki");
-  const wantsBothGender = (normalized.includes("male") && normalized.includes("female")) || (normalized.includes("lalaki") && normalized.includes("babae"));
-  const wantsGenericGender = (normalized.includes("gender") || normalized.includes("sex") || wantsBothGender) && !targetPurok;
-  
-  const wantsSenior = includesAny(normalized, ["senior", "elderly", "matanda"]);
-  const wantsPwd = includesAny(normalized, ["pwd", "pwed", "disability", "disabled"]);
-  const wantsGenericPurok = normalized.includes("purok") && !targetPurok && !wantsFemale && !wantsMale && !wantsSenior && !wantsPwd;
+  // 2. Identify Category Inquiries
+  const wantsSenior = includesAny(normalized, ["senior", "seniors", "senior citizen", "senior citizens", "matanda", "matatanda", "elderly"]);
+  const wantsPwd = includesAny(normalized, ["pwd", "pwds", "pwed", "disability", "disabled", "may kapansanan", "kapansanan"]);
+  const wantsSoloParent = includesAny(normalized, ["solo parent", "solo parents", "single mother", "single father", "soloparent"]);
+  const wants4Ps = includesAny(normalized, ["4ps", "four ps", "4 ps", "pantawid", "4ps member", "4ps members"]);
+  const wantsFemale = normalized.includes("female") || normalized.includes("babae") || normalized.includes("kababaihan");
+  const wantsMale = (normalized.includes("male") && !normalized.includes("female")) || normalized.includes("lalaki") || normalized.includes("kalalakihan");
+  const wantsBothGender = (wantsMale && wantsFemale) || normalized.includes("gender") || normalized.includes("kasarian") || normalized.includes("sex");
+  const wantsHousehold = includesAny(normalized, ["household", "households", "pamilya", "kabahayan", "bahay", "families", "family"]);
+  const wantsPurokBreakdown = includesAny(normalized, ["bawat purok", "kada purok", "per purok", "purok totals", "purok breakdown", "lahat ng purok", "all puroks", "mga purok", "list of purok", "listahan ng purok"]) || (normalized.includes("purok") && !targetPurok && !wantsSenior && !wantsPwd && !wantsSoloParent && !wants4Ps && !wantsFemale && !wantsMale);
 
-  // 3. Dynamic Filtering using Anonymized Raw Data
-  let filtered = stats.anonymousResidents || [];
-  let baseCount = filtered.length;
-  let otherLabel = "Others (Overall)";
-
+  // CASE 1: Specific Purok Inquiry (e.g. "Ilan ang residente sa Kamonsil?")
   if (targetPurok) {
-    filtered = filtered.filter(r => (r.purok || "").toLowerCase().includes(targetPurok.toLowerCase()));
-    baseCount = filtered.length;
-    otherLabel = `Others in ${targetPurok}`;
-  }
-  
-  const hasSpecificFilter = targetPurok || (wantsFemale && !wantsBothGender) || (wantsMale && !wantsBothGender) || wantsSenior || wantsPwd;
+    const pName = targetPurok.startsWith("Purok") ? targetPurok : `Purok ${targetPurok}`;
+    const pTotal = stats.purokCounts[targetPurok] || 0;
+    const pHouseholds = stats.purokHouseholdCounts?.[targetPurok] || 0;
+    const pPercent = stats.currentResidents ? ((pTotal / stats.currentResidents) * 100).toFixed(1) : 0;
 
-  if (hasSpecificFilter && !wantsGenericGender && !wantsGenericPurok) {
-    // Apply remaining filters
-    if (wantsFemale && !wantsBothGender) filtered = filtered.filter(r => r.gender === "Female");
-    if (wantsMale && !wantsBothGender) filtered = filtered.filter(r => r.gender === "Male");
-    if (wantsSenior) filtered = filtered.filter(r => r.isSenior);
-    if (wantsPwd) filtered = filtered.filter(r => r.isPWD);
+    // Sub-filter inside this purok
+    if (wantsSenior || wantsPwd || wantsSoloParent || wants4Ps || (wantsFemale && !wantsBothGender) || (wantsMale && !wantsBothGender)) {
+      let filtered = (stats.anonymousResidents || []).filter((r) => (r.purok || "").toLowerCase().includes(targetPurok.toLowerCase()));
+      let categoryLabel = "Residente";
+      if (wantsSenior) { filtered = filtered.filter((r) => r.isSenior); categoryLabel = "Senior Citizens"; }
+      else if (wantsPwd) { filtered = filtered.filter((r) => r.isPWD); categoryLabel = "PWD Residents"; }
+      else if (wantsSoloParent) { filtered = filtered.filter((r) => r.isSoloParent); categoryLabel = "Solo Parents"; }
+      else if (wants4Ps) { filtered = filtered.filter((r) => r.is4Ps); categoryLabel = "4Ps Members"; }
+      else if (wantsFemale) { filtered = filtered.filter((r) => r.gender === "Female"); categoryLabel = "Kababaihan (Female)"; }
+      else if (wantsMale) { filtered = filtered.filter((r) => r.gender === "Male"); categoryLabel = "Kalalakihan (Male)"; }
 
-    const totalCount = filtered.length;
-    const pName = targetPurok ? (targetPurok.startsWith("Purok") ? targetPurok : `Purok ${targetPurok}`) : "Barangay Upper Mingading";
-
-    let categoryName = language === "tagalog" ? "Residente" : "Residents";
-    if (wantsSenior && wantsPwd) categoryName = language === "tagalog" ? "Senior Citizens na may PWD" : "Senior Citizens with Disability (PWD)";
-    else if (wantsSenior) categoryName = language === "tagalog" ? "Senior Citizens" : "Senior Citizens";
-    else if (wantsPwd) categoryName = language === "tagalog" ? "PWD Residents" : "PWD Residents";
-    else if (wantsFemale) categoryName = language === "tagalog" ? "Kababaihan (Female)" : "Female Residents";
-    else if (wantsMale) categoryName = language === "tagalog" ? "Kalalakihan (Male)" : "Male Residents";
-
-    // Single Purok request (no other filters)
-    if (targetPurok && !wantsFemale && !wantsMale && !wantsSenior && !wantsPwd) {
-      const pTotal = stats.purokCounts?.[targetPurok] ?? (totalCount > 0 ? totalCount : 0);
+      const count = filtered.length;
       const text = language === "tagalog"
-        ? `Batay sa ating opisyal na rekord ng barangay, ang **${pName}** ay may kabuuang **${pTotal} residente**.`
-        : `Based on our official barangay records, **${pName}** currently has a total of **${pTotal} residents**.`;
+        ? `📍 Batay sa opisyal na rekord ng Barangay Upper Mingading, mayroong **${count} ${categoryLabel}** sa **${pName}** (mula sa kabuuang ${pTotal} residente ng purok na ito).`
+        : `📍 Based on official records of Barangay Upper Mingading, there are **${count} ${categoryLabel}** in **${pName}** (out of ${pTotal} total residents in this purok).`;
 
-      const chartData = { [pName]: pTotal };
+      const chartData = { [`${categoryLabel} (${pName})`]: count, [`Iba pang residente sa ${targetPurok}`]: Math.max(0, pTotal - count) };
       return `${text}\n\n[CHART:BAR:${JSON.stringify(chartData)}]`;
     }
 
-    const text = language === "tagalog" 
-      ? `Batay sa opisyal na rekord ng Barangay Upper Mingading, mayroong **${totalCount} ${categoryName}** sa **${pName}**.` 
-      : `Based on official records of Barangay Upper Mingading, there are **${totalCount} ${categoryName}** in **${pName}**.`;
+    // Pure Purok total
+    const text = language === "tagalog"
+      ? [
+          `📍 **Opisyal na Talaan para sa ${pName}:**`,
+          "",
+          `• **Kabuuang Residente:** **${pTotal.toLocaleString()}** (${pPercent}% ng kabuuang populasyon ng barangay)`,
+          `• **Tinatayang Kabahayan (Households):** **${pHouseholds.toLocaleString()}** pamilya/kabahayan`,
+          "",
+          `*Nais niyo po bang malaman ang breakdown ng senior citizens, kalalakihan, kababaihan, o 4Ps sa ${pName}?*`
+        ].join("\n")
+      : [
+          `📍 **Official Statistics for ${pName}:**`,
+          "",
+          `• **Total Residents:** **${pTotal.toLocaleString()}** (${pPercent}% of barangay population)`,
+          `• **Estimated Households:** **${pHouseholds.toLocaleString()}** families/households`,
+          "",
+          `*Would you like to know the breakdown of senior citizens, male, female, or 4Ps in ${pName}?*`
+        ].join("\n");
 
-    const chartData = {
-      [`${categoryName} (${pName})`]: totalCount
-    };
+    const chartData = { [pName]: pTotal };
     return `${text}\n\n[CHART:BAR:${JSON.stringify(chartData)}]`;
   }
 
-  // Fallbacks for generic requests
-  if (wantsGenericGender || wantsBothGender) {
-    const data = { "Male": stats.maleResidents || 0, "Female": stats.femaleResidents || 0 };
-    if (stats.unknownGenderResidents) data["Not Set"] = stats.unknownGenderResidents;
-    const text = language === "tagalog" ? "Narito ang breakdown ng gender ng mga residente:" : "Here is the gender breakdown of residents:";
-    return `${text}\n[CHART:BAR:${JSON.stringify(data)}]`;
+  // CASE 2: Purok Breakdown / Per Purok Inquiries
+  if (wantsPurokBreakdown) {
+    const sortedPuroks = Object.entries(stats.purokCounts || {})
+      .sort((a, b) => b[1] - a[1]);
+
+    const lines = [
+      language === "tagalog"
+        ? `🏘️ **Opisyal na Distribusyon ng Populasyon Kada Purok (Kabuuang Residente: ${stats.currentResidents.toLocaleString()}):**\n`
+        : `🏘️ **Official Population Distribution per Purok (Total Residents: ${stats.currentResidents.toLocaleString()}):**\n`,
+    ];
+
+    const chartData = {};
+    sortedPuroks.forEach(([name, count], index) => {
+      const pct = stats.currentResidents ? ((count / stats.currentResidents) * 100).toFixed(1) : 0;
+      const hCount = stats.purokHouseholdCounts?.[name] || 0;
+      lines.push(`${index + 1}. 📍 **${name.startsWith("Purok") ? name : `Purok ${name}`}**: **${count.toLocaleString()}** residente (${pct}%) — *${hCount} kabahayan*`);
+      chartData[name] = count;
+    });
+
+    lines.push("");
+    lines.push(
+      language === "tagalog"
+        ? "*Maaari ninyong itanong ang detalye ng isang partikular na purok tulad ng: 'Ilan ang residente sa Kamonsil?'*"
+        : "*You can ask about a specific purok like: 'How many residents in Kamonsil?'*"
+    );
+
+    return `${lines.join("\n")}\n\n[CHART:BAR:${JSON.stringify(chartData)}]`;
   }
 
-  if (wantsGenericPurok) {
-    const data = stats.purokCounts || {};
-    const totalRes = stats.currentResidents || 0;
-    const text = language === "tagalog" 
-      ? `Kabuuan ng mga residente: ${totalRes.toLocaleString()}. Narito ang breakdown kada purok:` 
-      : `Total residents: ${totalRes.toLocaleString()}. Here is the breakdown by purok:`;
-    return `${text}\n[CHART:BAR:${JSON.stringify(data)}]`;
+  // CASE 3: Category Inquiries (Seniors, PWD, Solo Parents, 4Ps, Gender, Households)
+  if (wantsSenior && !wantsPwd && !wantsSoloParent && !wants4Ps) {
+    const sCount = stats.seniorCitizens || 0;
+    const sPct = stats.currentResidents ? ((sCount / stats.currentResidents) * 100).toFixed(1) : 0;
+    const text = language === "tagalog"
+      ? `👴👵 **Senior Citizens sa Barangay Upper Mingading:**\n\nMay kabuuang **${sCount.toLocaleString()} Senior Citizens** (edad 60 pataas) ang opisyal na rehistrado sa ating barangay. Ito ay bumubuo ng humigit-kumulang **${sPct}%** ng ating kabuuang populasyon.`
+      : `👴👵 **Senior Citizens in Barangay Upper Mingading:**\n\nThere are a total of **${sCount.toLocaleString()} registered Senior Citizens** (aged 60 and above) in our barangay. This accounts for approximately **${sPct}%** of our total population.`;
+    const chartData = { "Senior Citizens (60+)": sCount, "Iba Pang Residente": Math.max(0, stats.currentResidents - sCount) };
+    return `${text}\n\n[CHART:BAR:${JSON.stringify(chartData)}]`;
   }
 
-  // Default to general totals bar chart with demographic breakdown
-  const data = {
-     "Male": stats.maleResidents || 0,
-     "Female": stats.femaleResidents || 0,
-     "Seniors": stats.seniorCitizens || 0,
-     "PWD": stats.pwdResidents || 0
+  if (wantsPwd && !wantsSenior && !wantsSoloParent && !wants4Ps) {
+    const pCount = stats.pwdResidents || 0;
+    const text = language === "tagalog"
+      ? `♿ **Persons with Disability (PWD) sa Barangay Upper Mingading:**\n\nKasalukuyang may **${pCount.toLocaleString()} rehistradong Persons with Disability (PWD)** sa talaan ng ating barangay na binibigyang-priyoridad para sa mga serbisyong panlipunan at tulong-medikal.`
+      : `♿ **Persons with Disability (PWD) in Barangay Upper Mingading:**\n\nThere are currently **${pCount.toLocaleString()} registered Persons with Disability (PWD)** in our official barangay records.`;
+    const chartData = { "PWD Residents": pCount, "General Population": Math.max(0, stats.currentResidents - pCount) };
+    return `${text}\n\n[CHART:BAR:${JSON.stringify(chartData)}]`;
+  }
+
+  if (wantsSoloParent) {
+    const spCount = stats.soloParentResidents || 0;
+    const text = language === "tagalog"
+      ? `👨‍👧👩‍👧 **Solo Parents sa Barangay Upper Mingading:**\n\nMayroong **${spCount.toLocaleString()} rehistradong Solo Parents** sa talaan ng ating barangay na kwalipikado sa mga tulong at programa alinsunod sa Solo Parents Welfare Act (RA 11861).`
+      : `👨‍👧👩‍👧 **Solo Parents in Barangay Upper Mingading:**\n\nThere are **${spCount.toLocaleString()} registered Solo Parents** in our barangay database under the Solo Parents Welfare Act.`;
+    const chartData = { "Solo Parents": spCount, "General Population": Math.max(0, stats.currentResidents - spCount) };
+    return `${text}\n\n[CHART:BAR:${JSON.stringify(chartData)}]`;
+  }
+
+  if (wants4Ps) {
+    const fpCount = stats.fourPsResidents || 0;
+    const text = language === "tagalog"
+      ? `🌾 **Pantawid Pamilyang Pilipino Program (4Ps) sa Barangay Upper Mingading:**\n\nMayroong **${fpCount.toLocaleString()} rehistradong 4Ps Beneficiaries/Members** sa ating barangay na tumatanggap ng suporta sa kalusugan at edukasyon.`
+      : `🌾 **Pantawid Pamilyang Pilipino Program (4Ps) in Barangay Upper Mingading:**\n\nThere are **${fpCount.toLocaleString()} registered 4Ps beneficiaries/members** in our barangay receiving national government support.`;
+    const chartData = { "4Ps Beneficiaries": fpCount, "General Population": Math.max(0, stats.currentResidents - fpCount) };
+    return `${text}\n\n[CHART:BAR:${JSON.stringify(chartData)}]`;
+  }
+
+  if (wantsBothGender || (wantsMale && wantsFemale)) {
+    const m = stats.maleResidents || 0;
+    const f = stats.femaleResidents || 0;
+    const mPct = stats.currentResidents ? ((m / stats.currentResidents) * 100).toFixed(1) : 0;
+    const fPct = stats.currentResidents ? ((f / stats.currentResidents) * 100).toFixed(1) : 0;
+
+    const text = language === "tagalog"
+      ? [
+          `👥 **Distribusyon ng Kasarian (Gender Breakdown) sa Barangay Upper Mingading:**`,
+          "",
+          `• 👨 **Kalalakihan (Male):** **${m.toLocaleString()}** (${mPct}%)`,
+          `• 👩 **Kababaihan (Female):** **${f.toLocaleString()}** (${fPct}%)`,
+          `• **Kabuuan:** **${stats.currentResidents.toLocaleString()}** residente`
+        ].join("\n")
+      : [
+          `👥 **Gender Breakdown in Barangay Upper Mingading:**`,
+          "",
+          `• 👨 **Male:** **${m.toLocaleString()}** (${mPct}%)`,
+          `• 👩 **Female:** **${f.toLocaleString()}** (${fPct}%)`,
+          `• **Total:** **${stats.currentResidents.toLocaleString()}** residents`
+        ].join("\n");
+
+    const chartData = { "Male": m, "Female": f };
+    return `${text}\n\n[CHART:BAR:${JSON.stringify(chartData)}]`;
+  }
+
+  if (wantsHousehold) {
+    const h = stats.totalHouseholds || 0;
+    const avgPerH = h > 0 ? (stats.currentResidents / h).toFixed(1) : 0;
+    const text = language === "tagalog"
+      ? `🏠 **Bilang ng Kabahayan (Households) sa Barangay Upper Mingading:**\n\nKasalukuyang may **${h.toLocaleString()} rehistradong pamilya/kabahayan (households)** sa ating barangay, na may average na humigit-kumulang **${avgPerH} miyembro kada kabahayan**.`
+      : `🏠 **Total Households in Barangay Upper Mingading:**\n\nThere are currently **${h.toLocaleString()} registered households/families** in our barangay, with an average of **${avgPerH} members per household**.`;
+    const chartData = stats.purokHouseholdCounts || {};
+    return `${text}\n\n[CHART:BAR:${JSON.stringify(chartData)}]`;
+  }
+
+  // CASE 4: Overall Total / Executive Summary (Default for "Ilan ang total residents?")
+  const total = stats.currentResidents || 0;
+  const m = stats.maleResidents || 0;
+  const f = stats.femaleResidents || 0;
+  const seniors = stats.seniorCitizens || 0;
+  const pwd = stats.pwdResidents || 0;
+  const solo = stats.soloParentResidents || 0;
+  const fourPs = stats.fourPsResidents || 0;
+  const h = stats.totalHouseholds || 0;
+
+  const text = language === "tagalog"
+    ? [
+        `📊 **Opisyal na Kabuuang Estadistika ng Barangay Upper Mingading:**`,
+        "",
+        `• 👥 **Kabuuang Populasyon:** **${total.toLocaleString()} rehistradong residente**`,
+        `• 🏠 **Kabuuang Kabahayan:** **${h.toLocaleString()} kabahayan (households)**`,
+        "",
+        `📋 **Pangunahing Demographic Breakdown:**`,
+        `• 👨 **Kalalakihan (Male):** ${m.toLocaleString()}`,
+        `• 👩 **Kababaihan (Female):** ${f.toLocaleString()}`,
+        `• 🧓 **Senior Citizens (60+):** ${seniors.toLocaleString()}`,
+        `• ♿ **PWD Residents:** ${pwd.toLocaleString()}`,
+        `• 👨‍👧 **Solo Parents:** ${solo.toLocaleString()}`,
+        `• 🌾 **4Ps Beneficiaries:** ${fourPs.toLocaleString()}`,
+        "",
+        `*Maaari ninyo ring itanong ang: 'Ilan ang residente kada purok?' para sa kumpletong distribusyon.*`
+      ].join("\n")
+    : [
+        `📊 **Official Resident Statistics of Barangay Upper Mingading:**`,
+        "",
+        `• 👥 **Total Population:** **${total.toLocaleString()} registered residents**`,
+        `• 🏠 **Total Households:** **${h.toLocaleString()} households**`,
+        "",
+        `📋 **Demographic Highlights:**`,
+        `• 👨 **Male:** ${m.toLocaleString()}`,
+        `• 👩 **Female:** ${f.toLocaleString()}`,
+        `• 🧓 **Senior Citizens (60+):** ${seniors.toLocaleString()}`,
+        `• ♿ **PWD Residents:** ${pwd.toLocaleString()}`,
+        `• 👨‍👧 **Solo Parents:** ${solo.toLocaleString()}`,
+        `• 🌾 **4Ps Beneficiaries:** ${fourPs.toLocaleString()}`,
+        "",
+        `*You can also ask: 'How many residents per purok?' to see the distribution across all zones.*`
+      ].join("\n");
+
+  const chartData = {
+    "Male": m,
+    "Female": f,
+    "Seniors": seniors,
+    "PWD": pwd,
+    "Solo Parent": solo,
+    "4Ps": fourPs
   };
-  const totalRes = stats.currentResidents || 0;
-  const text = language === "tagalog" 
-    ? `Kabuuan ng mga residente sa Barangay Upper Mingading: ${totalRes.toLocaleString()}. Narito ang demographic breakdown:` 
-    : `Total overall residents in Barangay Upper Mingading: ${totalRes.toLocaleString()}. Here is the demographic breakdown:`;
-  return `${text}\n[CHART:BAR:${JSON.stringify(data)}]`;
+
+  return `${text}\n\n[CHART:BAR:${JSON.stringify(chartData)}]`;
 };
 
 const isDocumentHowToQuestion = (question) => {
@@ -3179,10 +3390,13 @@ async function buildLocalAnswer(question, context = {}) {
   if (isAskingCurrentCaptain) {
     return buildCurrentCaptainAnswer(resolvedOfficials, language);
   }
+  if (hasOrganizationChartIntent(question)) {
+    return buildOrganizationAnswer(question, resolvedOfficials, language);
+  }
   if (isHistory) {
     return buildPoliticalHistoryAnswer(question, resolvedOfficials, language);
   }
-  if (wantsResidentStats) {
+  if (isResidentStatsQuestion(question) || wantsResidentStats) {
     return buildResidentStatsAnswer(question, residentStats, language);
   }
   const smartKnowledgeAnswer = findSmartAnswerInKnowledge(question, knowledgeItems || [], language);
@@ -3333,9 +3547,21 @@ export async function askResidentAssistant(question, context = {}) {
   const normalizedQ = normalizeText(trimmedQuestion);
   const language = isTagalogQuestion(trimmedQuestion) ? "tagalog" : "english";
 
-  const resolvedOfficials = context.organizationOfficials?.length
-    ? context.organizationOfficials
-    : getOrganizationOfficials();
+  // Real-time synchronization with Admin database for Organization Officials
+  let resolvedOfficials = context.organizationOfficials;
+  try {
+    const freshOfficials = await fetchOrganizationOfficials();
+    if (freshOfficials && Array.isArray(freshOfficials) && freshOfficials.length > 0) {
+      resolvedOfficials = freshOfficials;
+      context.organizationOfficials = freshOfficials;
+    }
+  } catch (e) {
+    console.warn("Could not load fresh organization officials for assistant:", e);
+  }
+  if (!resolvedOfficials || !resolvedOfficials.length) {
+    resolvedOfficials = getOrganizationOfficials();
+    context.organizationOfficials = resolvedOfficials;
+  }
 
   // Automatically load or refresh AI Knowledge Items from database so any newly added item is instantly known
   try {
@@ -3424,16 +3650,16 @@ export async function askResidentAssistant(question, context = {}) {
     answer = buildConversationalAnswer(trimmedQuestion, resident, language);
   } else if (isAskingCurrentCaptain) {
     answer = buildCurrentCaptainAnswer(resolvedOfficials, language);
+  } else if (hasOrganizationChartIntent(trimmedQuestion)) {
+    answer = buildOrganizationAnswer(trimmedQuestion, resolvedOfficials, language);
   } else if (isHistory) {
     answer = buildPoliticalHistoryAnswer(trimmedQuestion, resolvedOfficials, language);
   } else if (isResidentStatsQuestion(trimmedQuestion)) {
-    if (!context.residentStats?.loaded) {
-      try {
-        const freshStats = await fetchResidentStats();
-        context.residentStats = freshStats;
-      } catch (error) {
-        console.error("Failed to dynamically fetch fresh stats for AI prompt:", error);
-      }
+    try {
+      const freshStats = await fetchResidentStats(true);
+      context.residentStats = freshStats;
+    } catch (error) {
+      console.error("Failed to dynamically fetch fresh stats for AI prompt:", error);
     }
     answer = buildResidentStatsAnswer(trimmedQuestion, context.residentStats, language);
   } else if (wantsDocuments || Boolean(documentFocus)) {

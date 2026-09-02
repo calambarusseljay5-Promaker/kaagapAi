@@ -3100,7 +3100,7 @@ const UserDashboard = () => {
     setAssistantLoading(true);
 
     try {
-      const organizationOfficials = getOrganizationOfficials();
+      const organizationOfficials = officials?.length ? officials : getOrganizationOfficials();
       const answer = await askResidentAssistant(question, {
         announcements: publishedAnnouncements,
         documentTemplates,
