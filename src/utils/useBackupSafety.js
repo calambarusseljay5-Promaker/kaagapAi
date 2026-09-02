@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useState } from "react";
 import { createSafetyBackup } from "../services/backupService";
 
 /**
@@ -17,7 +17,7 @@ import { createSafetyBackup } from "../services/backupService";
  * the destructive action still proceeds (non-blocking).
  */
 export function useBackupSafety() {
-  const backingRef = useRef(false);
+  const [isBacking, setIsBacking] = useState(false);
 
   /**
    * Wrap a destructive async function with a safety backup.
@@ -26,7 +26,7 @@ export function useBackupSafety() {
    * @returns {Promise<*>} The result of asyncFn.
    */
   const withSafetyBackup = useCallback(async (actionLabel, asyncFn) => {
-    backingRef.current = true;
+    setIsBacking(true);
 
     // Attempt safety backup (non-blocking on failure)
     try {
@@ -34,9 +34,9 @@ export function useBackupSafety() {
     } catch (backupError) {
       console.warn(`Safety backup failed for "${actionLabel}":`, backupError.message);
       // Continue with the action even if backup fails
+    } finally {
+      setIsBacking(false);
     }
-
-    backingRef.current = false;
 
     // Execute the actual destructive action
     return asyncFn();
@@ -44,7 +44,7 @@ export function useBackupSafety() {
 
   return {
     withSafetyBackup,
-    isBacking: backingRef.current,
+    isBacking,
   };
 }
 

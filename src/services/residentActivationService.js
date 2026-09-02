@@ -477,6 +477,7 @@ export async function rejectResidentActivationRequest(request, reason = "Rejecte
  * Automatically sync and recover any approved online registration requests
  * ensuring that every approved registrant has an active row in the `residents` table
  * and a linked account in `resident_accounts`.
+ */
 let lastSyncTime = 0;
 const SYNC_THROTTLE_MS = 10 * 60 * 1000; // 10 minutes
 

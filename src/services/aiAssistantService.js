@@ -682,6 +682,7 @@ Rules:
 - For privacy, do not expose more personal details than needed for the admin question.
 - Do not include suggested next questions or follow-up prompts.`;
 
+    const adminContext = formatAdminContext(snapshot);
     const prompt = `Admin system data:
 ${adminContext}
 

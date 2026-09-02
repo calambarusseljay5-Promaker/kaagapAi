@@ -133,7 +133,7 @@ import {
   standardOccupationOptions,
   getCustomPurokDefinitions,
 } from "../utils/residentProfile";
-import { getRealDocumentTemplateKey } from "../utils/realDocumentTemplates";
+import { getRealDocumentTemplateKey, formatBirthdate } from "../utils/realDocumentTemplates";
 import TypingIndicator from "../components/TypingIndicator";
 import FloatingModal from "../components/FloatingModal";
 import { useBarangayLogo } from "../services/logoService";

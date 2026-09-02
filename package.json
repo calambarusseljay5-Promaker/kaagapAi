@@ -8,7 +8,7 @@
     "dev:admin": "vite --port 5173",
     "dev:resident": "vite --port 5174",
     "build": "vite build",
-    "lint": "eslint .",
+    "lint": "eslint src",
     "preview": "vite preview",
     "supabase:check": "node scripts/checkSupabase.mjs"
   },

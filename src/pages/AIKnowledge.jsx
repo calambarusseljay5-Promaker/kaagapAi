@@ -513,10 +513,10 @@ const AIKnowledge = () => {
               </p>
               <button
                 type="button"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={openCreate}
                 className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-700 text-white font-black text-xs hover:bg-emerald-800 cursor-pointer shadow-sm"
               >
-                <Upload size={15} /> Upload First Document
+                <Plus size={15} /> Create First Knowledge Record
               </button>
             </div>
           ) : (
