@@ -1,4 +1,4 @@
-const DEFAULT_GEMINI_KEY = "";
+const DEFAULT_GEMINI_KEY = "AIzaSyBzwJArwOpDnKgTNHldjWlpMoYIXCUPpn4";
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
 // Highly capable, top-tier supported models on Google Gemini API v1beta
