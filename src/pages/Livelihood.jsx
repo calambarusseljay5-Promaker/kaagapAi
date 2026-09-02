@@ -114,13 +114,125 @@ const detectLanguage = (text = "") => {
   return isTagalog ? "tagalog" : "english";
 };
 
-// AI Livelihood Draft Generator with North Cotabato SPES & Gov. Emmylou "Lala" Taliño-Mendoza & DOLE
+// AI Livelihood Draft Generator with North Cotabato SPES & TESDA Vocations (Driving NC2, Welding, Baking, etc.)
 const generateAiLivelihoodDraft = (title = "", category = "Program") => {
   const cleanTitle = title.trim();
   const lower = cleanTitle.toLowerCase();
   const lang = detectLanguage(cleanTitle);
 
-  // 1. SPES PROGRAM - PROVINCIAL GOVERNMENT OF COTABATO & DOLE (GOV. EMMYLOU "LALA" TALIÑO-MENDOZA)
+  // 1. DRIVING NC II / TRANSPORT / VEHICLE OPERATION
+  if (
+    lower.includes("driv") ||
+    lower.includes("nc2") ||
+    lower.includes("nc 2") ||
+    lower.includes("nc ii") ||
+    lower.includes("ncii") ||
+    lower.includes("driver") ||
+    lower.includes("kotse") ||
+    lower.includes("sakay") ||
+    lower.includes("sasakyan") ||
+    lower.includes("forklift") ||
+    lower.includes("heavy equipment")
+  ) {
+    return {
+      title: cleanTitle || "TESDA Driving NC II Skills Training & Certification Program",
+      category: "Training",
+      organization: "TESDA Accredited Driving Center, LTO & Barangay Transport Office",
+      location: "Barangay Upper Mingading Covered Court & Practical Driving Circuit",
+      slots: "25",
+      deadline: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+      contact: "Barangay Livelihood & Transport Desk: 09306259795",
+      eligibility: lang === "tagalog"
+        ? `1. Residente ng Barangay Upper Mingading (18 taong gulang pataas)\n2. May hawak na Valid Student Permit o Driver's License\n3. Medical Certificate (fit to drive & good eyesight)\n4. Dedicated na kumpletuhin ang 15-day theoretical at practical driving sessions.`
+        : `1. Bonafide resident of Barangay Upper Mingading (18 years old and above)\n2. Holder of a Valid Student Permit or Driver's License\n3. Medical Certificate of Physical and Visual Fitness to drive\n4. Committed to completing the 15-day theoretical and practical driving curriculum.`,
+      description: lang === "tagalog"
+        ? `DRIVING NC II TRAINING OVERVIEW 🚗💨:\nLibreng pagsasanay at TESDA National Assessment para sa mga residenteng nais magkaroon ng professional Driving NC II qualification para sa trabaho bilang professional driver, delivery operator, o transport personnel.\n\nMGA MATUTUTUNAN (COURSE MODULES):\n- Traffic Rules, Road Signs, & LTO Regulations (TDC)\n- Defensive Driving & Hazard Avoidance\n- Pre-trip Vehicle Inspection & Troubleshooting\n- Parking Mastery (Parallel, Reverse, Hill Start)\n- Vehicle Maintenance & Road Safety Ethics\n\nBENEPISYO:\n- 100% Free Tuition & Free National Assessment\n- Certificate of Training & Endorsement for LTO Professional License Upgrading.`
+        : `DRIVING NC II TRAINING OVERVIEW 🚗💨:\nComprehensive technical vocational driving course sponsored by TESDA and Barangay Upper Mingading.\n\nCOURSE MODULES:\n- LTO Traffic Laws, Road Signs & Defensive Driving Principles\n- Vehicle Pre-Trip Inspection & Mechanical Troubleshooting\n- Maneuvering & Parking Mastery (Parallel, Reverse, Uphill/Downhill)\n- Emergency Response & Road Safety Ethics\n\nBENEFITS:\n- 100% Free Tuition & Official TESDA NC II National Assessment\n- Endorsement for Professional Driver's License upgrading.`,
+      language: lang,
+    };
+  }
+
+  // 2. WELDING / SHIELDED METAL ARC WELDING (SMAW NC I / NC II)
+  if (lower.includes("weld") || lower.includes("smaw") || lower.includes("bakal") || lower.includes("fabrication")) {
+    return {
+      title: cleanTitle || "TESDA Shielded Metal Arc Welding (SMAW NC II) Training",
+      category: "Training",
+      organization: "TESDA & Barangay Livelihood Committee",
+      location: "Barangay Upper Mingading Technical Workshop Center",
+      slots: "20",
+      deadline: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+      contact: "Barangay Livelihood Desk: 09306259795",
+      eligibility: "1. Resident of Barangay Upper Mingading (18+ yrs old)\n2. High School graduate or ALS passer\n3. Physically fit with good eyesight.",
+      description: "Hands-on welding course covering arc welding techniques, metal preparation, joint fabrication, safety protocols, and preparation for official TESDA NC II assessment.",
+      language: lang,
+    };
+  }
+
+  // 3. ELECTRICAL INSTALLATION & MAINTENANCE (EIM / SOLAR PV)
+  if (lower.includes("electri") || lower.includes("kuryente") || lower.includes("eim") || lower.includes("solar") || lower.includes("wiring")) {
+    return {
+      title: cleanTitle || "Electrical Installation & Maintenance (EIM NC II) Program",
+      category: "Training",
+      organization: "TESDA & Department of Energy (DOE)",
+      location: "Barangay Upper Mingading Skills Hub",
+      slots: "25",
+      deadline: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+      contact: "Barangay Skills Coordinator: 09306259795",
+      eligibility: "1. Resident of Barangay Upper Mingading (18-50 yrs old)\n2. Basic knowledge in tools\n3. Committed to full training duration.",
+      description: "Comprehensive training in residential wiring, circuit breakers, conduit bending, electrical safety, and solar panel installation with free tools kit.",
+      language: lang,
+    };
+  }
+
+  // 4. COOKERY, BAKING, BREAD & PASTRY, FOOD PROCESSING
+  if (lower.includes("bake") || lower.includes("baking") || lower.includes("bread") || lower.includes("pastry") || lower.includes("cook") || lower.includes("food") || lower.includes("lutuin")) {
+    return {
+      title: cleanTitle || "Bread & Pastry Production / Commercial Cookery NC II",
+      category: "Training",
+      organization: "TESDA, DTI Negosyo Center & Barangay GAD",
+      location: "Barangay Upper Mingading Community Kitchen",
+      slots: "25",
+      deadline: new Date(Date.now() + 12 * 86400000).toISOString().slice(0, 10),
+      contact: "Barangay Livelihood Committee: 09306259795",
+      eligibility: "1. Resident of Barangay Upper Mingading (18+ yrs old)\n2. Interested in bakery business or commercial culinary\n3. Possesses food hygiene awareness.",
+      description: "Hands-on commercial baking course: pastry making, cakes, commercial breads, costing, food safety, and free starter ingredients package.",
+      language: lang,
+    };
+  }
+
+  // 5. CAREGIVING / HEALTHCARE AIDE / HOUSEKEEPING
+  if (lower.includes("caregiv") || lower.includes("care") || lower.includes("nurse") || lower.includes("housekeep") || lower.includes("health")) {
+    return {
+      title: cleanTitle || "Caregiving & Healthcare Support Services NC II",
+      category: "Training",
+      organization: "TESDA & Municipal Health Office",
+      location: "Barangay Health Station & Livelihood Center",
+      slots: "30",
+      deadline: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+      contact: "Barangay Health & Livelihood Focal Person: 09306259795",
+      eligibility: "1. Resident of Upper Mingading (18-45 yrs old)\n2. High School graduate\n3. Passionate about elderly & infant care.",
+      description: "Intensive training in vital signs monitoring, elderly care, pediatric assistance, first aid, and direct endorsement for local and overseas healthcare jobs.",
+      language: lang,
+    };
+  }
+
+  // 6. BEAUTY CARE, HAIRDRESSING, BARBERING, NAIL CARE
+  if (lower.includes("hair") || lower.includes("barber") || lower.includes("gupit") || lower.includes("salon") || lower.includes("nail") || lower.includes("beauty")) {
+    return {
+      title: cleanTitle || "Beauty Care, Hairdressing & Barbering Livelihood Course",
+      category: "Training",
+      organization: "Barangay GAD & TESDA",
+      location: "Barangay Upper Mingading Multi-Purpose Hall",
+      slots: "25",
+      deadline: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10),
+      contact: "Barangay GAD Desk: 09306259795",
+      eligibility: "1. Resident of Barangay Upper Mingading\n2. Open to women, youth, solo parents, and LGBTQ+ members\n3. Committed to attending all sessions.",
+      description: "Complete salon & barbershop training: modern haircutting, styling, hair coloring, nail art, and business startup kit provided.",
+      language: lang,
+    };
+  }
+
+  // 7. SPES PROGRAM - PROVINCIAL GOVERNMENT OF COTABATO & DOLE (GOV. EMMYLOU "LALA" TALIÑO-MENDOZA)
   if (
     lower.includes("spes") ||
     lower.includes("special program") ||
@@ -147,7 +259,7 @@ const generateAiLivelihoodDraft = (title = "", category = "Program") => {
     };
   }
 
-  // 2. TESDA ORGANIC FARMING / AGRICULTURE
+  // 8. TESDA ORGANIC FARMING / AGRICULTURE
   if (
     lower.includes("farm") ||
     lower.includes("agri") ||
@@ -173,7 +285,7 @@ const generateAiLivelihoodDraft = (title = "", category = "Program") => {
     };
   }
 
-  // 3. TUPAD / DOLE EMERGENCY WORK
+  // 9. TUPAD / DOLE EMERGENCY WORK
   if (
     lower.includes("tupad") ||
     lower.includes("dole") ||
@@ -199,13 +311,14 @@ const generateAiLivelihoodDraft = (title = "", category = "Program") => {
     };
   }
 
-  // 4. YOUTH DIGITAL SKILLS / TECH / BPO
+  // 10. YOUTH DIGITAL SKILLS / TECH / BPO / VIRTUAL ASSISTANT
   if (
     lower.includes("tech") ||
     lower.includes("digital") ||
     lower.includes("call center") ||
     lower.includes("bpo") ||
-    lower.includes("virtual")
+    lower.includes("virtual") ||
+    lower.includes("computer")
   ) {
     return {
       title: cleanTitle || "Youth Digital Skills & Virtual Assistant Training",
@@ -221,7 +334,7 @@ const generateAiLivelihoodDraft = (title = "", category = "Program") => {
     };
   }
 
-  // 5. WOMEN TAILORING / GAD
+  // 11. WOMEN TAILORING / GAD
   if (
     lower.includes("sew") ||
     lower.includes("tailor") ||
@@ -243,17 +356,17 @@ const generateAiLivelihoodDraft = (title = "", category = "Program") => {
     };
   }
 
-  // 6. DEFAULT GENERAL
+  // 12. DEFAULT DYNAMIC VOCATIONAL TEMPLATE
   return {
     title: cleanTitle || "Barangay Livelihood & Skills Program",
-    category: category || "Program",
+    category: category || "Training",
     organization: "Barangay Upper Mingading Livelihood Committee",
-    location: "Barangay Upper Mingading Covered Court / Office",
+    location: "Barangay Upper Mingading Covered Court / Training Hall",
     slots: "30",
-    deadline: new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10),
+    deadline: new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
     contact: "Barangay Livelihood Desk: 09306259795",
-    eligibility: "1. Resident of Barangay Upper Mingading\n2. Valid ID or Resident Certificate\n3. Dedicated to completing the program.",
-    description: "Official livelihood development program to enhance local household income and skills. Apply through your Resident Portal or visit the Barangay Hall.",
+    eligibility: `1. Bonafide resident of Barangay Upper Mingading (18+ years old)\n2. Valid Government ID or Barangay Resident Certificate\n3. Committed to completing the training course\n4. Willing to engage in productive community livelihood.`,
+    description: `Official skills development & livelihood opportunity for ${cleanTitle || "our community"}.\n\nPROGRAM HIGHLIGHTS:\n- Professional coaching and practical hands-on application\n- Official Certificate of Completion\n- Startup toolkit and direct livelihood assistance endorsements.`,
     language: lang,
   };
 };
@@ -495,9 +608,62 @@ const Livelihood = () => {
     }));
   };
 
-  // AI Generator Handler
-  const handleAiGenerateDraft = (customTitle = null) => {
-    const targetTitle = customTitle !== null ? customTitle : formData.title;
+  // AI Generator Handler (Supports Real-Time Gemini AI & Rich Vocational Templates)
+  const handleAiGenerateDraft = async (customTitle = null) => {
+    const targetTitle = (customTitle !== null ? customTitle : formData.title || "").trim();
+    setAiGeneratedNotice(`✨ Generating intelligent draft for "${targetTitle || "Livelihood"}"...`);
+
+    // 1. First attempt dynamic generation via Gemini AI if online
+    if (targetTitle) {
+      try {
+        const aiPrompt = `You are an expert Livelihood, Job, and TESDA Skills Program Coordinator for Barangay Upper Mingading.
+Create a complete, professional, realistic livelihood/job/training post for the title: "${targetTitle}".
+Return ONLY a valid JSON object with the following keys:
+{
+  "title": "Full Official Title (e.g. ${targetTitle})",
+  "category": "Training" | "Job" | "Program" | "Grant",
+  "organization": "Partner Agency / Institution / Barangay Committee",
+  "location": "Venue or training location in Barangay Upper Mingading",
+  "slots": "Number of slots (e.g. 25)",
+  "contact": "Barangay Livelihood Desk: 09306259795",
+  "eligibility": "Numbered list of 3-4 realistic qualifications and requirements",
+  "description": "Comprehensive structured program description with course highlights and benefits"
+}`;
+
+        const geminiRes = await generateText(aiPrompt, {
+          temperature: 0.2,
+          maxOutputTokens: 1024,
+          timeoutMs: 6000,
+        });
+
+        const rawText = geminiRes?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || rawText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+          if (parsed && parsed.title && parsed.description) {
+            setFormData((current) => ({
+              ...current,
+              title: parsed.title || current.title,
+              category: parsed.category || current.category,
+              organization: parsed.organization || current.organization,
+              location: parsed.location || current.location,
+              slots: String(parsed.slots || current.slots || "25"),
+              deadline: current.deadline || new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+              contact: parsed.contact || current.contact || "Barangay Livelihood Desk: 09306259795",
+              eligibility: parsed.eligibility || current.eligibility,
+              description: parsed.description || current.description,
+            }));
+            setAiGeneratedNotice(`✨ AI Livelihood Draft generated for ${parsed.title.slice(0, 32)}...`);
+            setTimeout(() => setAiGeneratedNotice(""), 4500);
+            return;
+          }
+        }
+      } catch (err) {
+        // Fallback gracefully to specialized local generator
+      }
+    }
+
+    // 2. High-precision specialized local vocational template fallback
     const res = generateAiLivelihoodDraft(targetTitle, formData.category);
     setFormData((current) => ({
       ...current,
@@ -956,20 +1122,20 @@ Extract all key details and return a clean JSON object with the following fields
             </div>
           </div>
 
-          <div className="p-6 border-b border-slate-200/50 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_180px_180px] bg-white/20">
-            <div className="relative">
-              <Search className="absolute left-4 top-3.5 text-emerald-500" size={18} />
+          <div className="p-4 sm:p-5 border-b border-slate-200/50 flex flex-wrap items-center gap-3 bg-white/20">
+            <div className="relative w-full sm:w-72 md:w-80">
+              <Search className="absolute left-3.5 top-3 text-emerald-600" size={16} />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search title, organization, location..."
-                className="w-full h-[46px] rounded-[12px] border border-slate-200 bg-white/60 pl-11 pr-4 text-sm font-medium outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 shadow-sm"
+                placeholder="Search livelihood & jobs..."
+                className="w-full h-[40px] rounded-[12px] border border-slate-200 bg-white/80 pl-9 pr-3 text-xs sm:text-sm font-semibold outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/10 shadow-xs"
               />
             </div>
             <select
               value={categoryFilter}
               onChange={(event) => setCategoryFilter(event.target.value)}
-              className="h-[46px] rounded-[12px] border border-slate-200 bg-white/60 px-4 text-sm font-medium outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 shadow-sm"
+              className="h-[40px] w-full sm:w-40 rounded-[12px] border border-slate-200 bg-white/80 px-3 text-xs sm:text-sm font-semibold outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/10 shadow-xs cursor-pointer"
             >
               <option value="">All categories</option>
               <option value="Program">Program</option>
@@ -979,7 +1145,7 @@ Extract all key details and return a clean JSON object with the following fields
             <select
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value)}
-              className="h-[46px] rounded-[12px] border border-slate-200 bg-white/60 px-4 text-sm font-medium outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/10 shadow-sm"
+              className="h-[40px] w-full sm:w-36 rounded-[12px] border border-slate-200 bg-white/80 px-3 text-xs sm:text-sm font-semibold outline-none transition focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-500/10 shadow-xs cursor-pointer"
             >
               <option value="">All statuses</option>
               <option value="Open">Open</option>

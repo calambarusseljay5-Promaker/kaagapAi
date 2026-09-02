@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabaseClient";
 import { buildFullName } from "../utils/residentProfile";
+import { sendSmsNotification } from "./smsService";
 
 const RESIDENT_SESSION_KEY = "kaagapai_resident_session";
 const ACTIVATION_SQL_PATH = "supabase/Database/add-resident-account-activation.sql";
@@ -585,6 +586,74 @@ export function clearResidentSession() {
 }
 
 /**
+ * Send SMS One-Time Password (OTP) for password recovery
+ */
+export async function sendResidentForgotOTP(phone) {
+  const cleanPhone = String(phone || "").trim();
+  if (!cleanPhone) throw new Error("Please enter your registered mobile number.");
+
+  // 1. Verify that the phone number exists in active residents
+  const { data: resident, error } = await supabase
+    .from("residents")
+    .select("id, full_name, phone, status")
+    .eq("phone", cleanPhone)
+    .neq("status", "Archived")
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !resident) {
+    throw new Error("No active resident account found matching this mobile number.");
+  }
+
+  // 2. Generate 6-digit OTP code
+  const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+  // Store OTP in sessionStorage with 5-minute expiry
+  const otpData = {
+    phone: cleanPhone,
+    code: otpCode,
+    expiresAt: Date.now() + 5 * 60 * 1000,
+  };
+  sessionStorage.setItem("kaagapai_forgot_otp", JSON.stringify(otpData));
+
+  // 3. Send SMS notification
+  const message = `[KaagapAI] Ang iyong Verification Code (OTP) para sa Password Recovery ay: ${otpCode}. Valid ito sa loob ng 5 minuto. Huwag ibahagi kahit kanino.`;
+
+  try {
+    await sendSmsNotification({
+      recipients: [cleanPhone],
+      message,
+    });
+  } catch (smsErr) {
+    console.warn("SMS OTP notification notice:", smsErr);
+  }
+
+  return { success: true, phone: cleanPhone, residentName: resident.full_name };
+}
+
+/**
+ * Verify SMS One-Time Password (OTP)
+ */
+export function verifyResidentForgotOTP(phone, enteredOTP) {
+  const raw = sessionStorage.getItem("kaagapai_forgot_otp");
+  if (!raw) {
+    throw new Error("No active OTP request found or code has expired. Please request a new code.");
+  }
+
+  const { phone: savedPhone, code: savedCode, expiresAt } = JSON.parse(raw);
+  if (Date.now() > expiresAt) {
+    sessionStorage.removeItem("kaagapai_forgot_otp");
+    throw new Error("Verification code has expired. Please request a new one.");
+  }
+
+  if (String(savedPhone) !== String(phone).trim() || String(savedCode) !== String(enteredOTP).trim()) {
+    throw new Error("Invalid verification code. Please check your SMS and try again.");
+  }
+
+  return true;
+}
+
+/**
  * Reset resident password by verified phone number after OTP validation
  */
 export async function resetResidentPasswordByPhone(phone, newPassword) {
@@ -663,4 +732,126 @@ export async function resetResidentPasswordByPhone(phone, newPassword) {
 
   return true;
 }
+
+/**
+ * Reset resident password by identity verification (Username/Email + Birthday/Phone)
+ */
+export async function resetResidentPasswordByVerification({
+  identifier,
+  verificationKey,
+  newPassword,
+}) {
+  const cleanId = String(identifier || "").trim().toLowerCase();
+  const cleanKey = String(verificationKey || "").trim();
+  const cleanPassword = String(newPassword || "").trim();
+
+  if (!cleanId || !cleanKey || !cleanPassword) {
+    throw new Error("Please fill in all verification fields and new password.");
+  }
+  if (cleanPassword.length < 6) {
+    throw new Error("New password must be at least 6 characters long.");
+  }
+
+  // Find resident by username, email, or phone
+  let targetResidentId = null;
+  let targetUsername = null;
+
+  // 1. Search in resident_accounts by username
+  const { data: accounts } = await supabase
+    .from("resident_accounts")
+    .select("id, resident_id, username")
+    .ilike("username", cleanId);
+
+  if (accounts && accounts.length > 0) {
+    targetResidentId = accounts[0].resident_id;
+    targetUsername = accounts[0].username;
+  }
+
+  // 2. If not found, search in residents table by email, phone, or name
+  if (!targetResidentId) {
+    const { data: resList } = await supabase
+      .from("residents")
+      .select("id, full_name, email, phone, birthday, purok")
+      .or(`email.ilike.%${cleanId}%,phone.ilike.%${cleanId}%,full_name.ilike.%${cleanId}%`)
+      .limit(1);
+
+    if (resList && resList.length > 0) {
+      targetResidentId = resList[0].id;
+    }
+  }
+
+  if (!targetResidentId) {
+    throw new Error("No registered resident account found with the provided username, email, or contact.");
+  }
+
+  // Verify identity with resident profile data (birthday, phone, or purok)
+  const { data: residentProfile, error: profErr } = await supabase
+    .from("residents")
+    .select("id, full_name, birthday, phone, purok")
+    .eq("id", targetResidentId)
+    .single();
+
+  if (profErr || !residentProfile) {
+    throw new Error("Account found, but resident profile verification failed.");
+  }
+
+  const normalizedKey = cleanKey.replace(/\D/g, "");
+  const residentPhoneClean = String(residentProfile.phone || "").replace(/\D/g, "");
+  const residentBdayClean = String(residentProfile.birthday || "").replace(/\D/g, "");
+  const purokMatch = String(residentProfile.purok || "").toLowerCase() === cleanKey.toLowerCase();
+
+  const isMatched =
+    (normalizedKey && residentPhoneClean && residentPhoneClean.includes(normalizedKey)) ||
+    (normalizedKey && residentBdayClean && residentBdayClean.includes(normalizedKey)) ||
+    purokMatch ||
+    cleanKey === String(residentProfile.birthday || "").trim();
+
+  if (!isMatched) {
+    throw new Error("Verification failed: Birthday or registered contact number does not match official records.");
+  }
+
+  // Fetch or resolve account username
+  if (!targetUsername) {
+    const { data: acc } = await supabase
+      .from("resident_accounts")
+      .select("username")
+      .eq("resident_id", targetResidentId)
+      .maybeSingle();
+
+    if (acc?.username) targetUsername = acc.username;
+  }
+
+  // Update password via RPC (pgcrypto)
+  if (targetUsername) {
+    try {
+      await supabase.rpc("sync_resident_plain_password", {
+        p_username: targetUsername,
+        p_password: cleanPassword,
+      });
+    } catch (syncErr) {
+      console.warn("sync_resident_plain_password notice:", syncErr);
+    }
+  }
+
+  // Fallback update direct table
+  try {
+    await supabase
+      .from("resident_accounts")
+      .update({
+        plain_password: cleanPassword,
+        must_change_credentials: false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("resident_id", targetResidentId);
+  } catch (updErr) {
+    console.warn("Direct update error:", updErr);
+  }
+
+  return {
+    success: true,
+    residentName: residentProfile.full_name,
+    username: targetUsername || cleanId,
+  };
+}
+
 

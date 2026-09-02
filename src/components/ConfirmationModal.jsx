@@ -1,4 +1,5 @@
 import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertTriangle,
@@ -42,7 +43,7 @@ const ConfirmationModal = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, loading, onClose, onConfirm]);
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === "undefined") return null;
 
   const isDanger = variant === "danger" || variant === "destructive";
   const isWarning = variant === "warning";
@@ -54,10 +55,10 @@ const ConfirmationModal = ({
     return <CheckCircle2 size={18} />;
   };
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center p-4 overflow-hidden pointer-events-auto">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -103,22 +104,22 @@ const ConfirmationModal = ({
             </div>
 
             {/* Title & Message */}
-            <div className="space-y-1 px-1">
-              <h3 className="text-sm font-black text-slate-900 leading-tight">
+            <div className="space-y-1">
+              <h3 className="text-sm font-bold text-slate-900 tracking-tight leading-snug">
                 {title}
               </h3>
-              <p className="text-xs font-medium text-slate-600 leading-relaxed">
+              <p className="text-xs text-slate-500 font-medium leading-relaxed px-1">
                 {message}
               </p>
             </div>
 
-            {/* Action Buttons (Compact) */}
-            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+            {/* Action Buttons */}
+            <div className="flex items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={onClose}
                 disabled={loading}
-                className="h-8 rounded-lg border border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer disabled:opacity-50"
+                className="flex-1 py-1.5 px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition disabled:opacity-50 cursor-pointer"
               >
                 {cancelText}
               </button>
@@ -127,22 +128,23 @@ const ConfirmationModal = ({
                 type="button"
                 onClick={onConfirm}
                 disabled={loading}
-                className={`h-8 rounded-lg text-xs font-bold text-white shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                className={`flex-1 py-1.5 px-3 rounded-xl text-white text-xs font-bold transition shadow-sm disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5 ${
                   isDanger
-                    ? "bg-rose-600 hover:bg-rose-700 active:scale-98"
+                    ? "bg-rose-600 hover:bg-rose-700 border border-rose-500 active:scale-95"
                     : isWarning
-                    ? "bg-amber-600 hover:bg-amber-700 active:scale-98"
-                    : "bg-[#00552E] hover:bg-[#004224] active:scale-98"
+                    ? "bg-amber-600 hover:bg-amber-700 border border-amber-500 active:scale-95"
+                    : "bg-[#00552E] hover:bg-[#004224] border border-emerald-600 active:scale-95"
                 }`}
               >
-                {loading ? <Loader2 size={13} className="animate-spin" /> : null}
+                {loading && <Loader2 size={12} className="animate-spin" />}
                 <span>{confirmText}</span>
               </button>
             </div>
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };
 

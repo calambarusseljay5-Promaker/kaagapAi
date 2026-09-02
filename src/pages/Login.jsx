@@ -38,6 +38,7 @@ import {
   ArrowRight,
   Briefcase,
 } from "lucide-react";
+import { useBarangayLogo } from "../services/logoService";
 import { supabase } from "../lib/supabaseClient";
 import FloatingModal from "../components/FloatingModal";
 import BarangayCarousel, { DEFAULT_SHOWCASE_SLIDES } from "../components/BarangayCarousel";
@@ -49,6 +50,8 @@ import {
   requestResidentActivation,
   validateResidentRegistrationProof,
   resetResidentPasswordByPhone,
+  sendResidentForgotOTP,
+  verifyResidentForgotOTP,
 } from "../services/residentAuthService";
 import { isValidSmsPhone, normalizeSmsPhone } from "../services/smsService";
 import { getDashboardPathForRole, isTargetAdminPortal } from "../utils/authRoutes";
@@ -72,10 +75,6 @@ import {
   clearFailedAttempts,
   logSecurityEvent,
 } from "../services/securityService";
-import {
-  sendOTP,
-  verifyOTP,
-} from "../services/otpService";
 
 const stepHeaders = [
   { label: "Personal Info", icon: User },
@@ -132,7 +131,8 @@ const getLoginDisplayName = ({ user, profile, resident }) =>
   "User";
 
 const Login = ({ portalMode = null }) => {
-  const [initialLoading, setInitialLoading] = useState(true);
+  const barangayLogo = useBarangayLogo();
+  const [initialLoading, setInitialLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
@@ -146,10 +146,8 @@ const Login = ({ portalMode = null }) => {
     currentPath.includes("resident") ||
     currentPath.includes("portal");
 
-  // View state: 'landing' or 'login'
-  const [currentView, setCurrentView] = useState(() =>
-    isTargetAdmin || isExplicitResidentRoute ? "login" : "landing"
-  );
+  // View state: ALWAYS start at 'landing' (Home Page) so user sees Home Page first
+  const [currentView, setCurrentView] = useState("landing");
 
   const [modalStep, setModalStep] = useState(() =>
     isTargetAdmin ? "admin_login" : "resident_login"
@@ -160,15 +158,14 @@ const Login = ({ portalMode = null }) => {
 
   useEffect(() => {
     if (isTargetAdmin) {
-      setCurrentView("login");
       setAccessMode("Admin");
       setModalStep("admin_login");
     } else if (isExplicitResidentRoute) {
-      setCurrentView("login");
       setAccessMode("Resident");
       setModalStep("resident_login");
     }
   }, [isTargetAdmin, isExplicitResidentRoute]);
+
   const [residentAuthMode, setResidentAuthMode] = useState("signin");
   const [registrationProof, setRegistrationProof] = useState(null);
   const [registrationStep, setRegistrationStep] = useState(1);
@@ -176,15 +173,30 @@ const Login = ({ portalMode = null }) => {
   const [showRecaptcha, setShowRecaptcha] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Forgot Password System States
-  const [forgotEmail, setForgotEmail] = useState("");
+  // Password Recovery States
   const [forgotPhone, setForgotPhone] = useState("");
   const [forgotOTP, setForgotOTP] = useState("");
   const [forgotNewPassword, setForgotNewPassword] = useState("");
   const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
-  const [otpCooldown, setOtpCooldown] = useState(0);
-  const [otpRemaining, setOtpRemaining] = useState(0);
-  const [forgotResidentId, setForgotResidentId] = useState(null);
+  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [canResendOTP, setCanResendOTP] = useState(false);
+
+  // OTP Countdown timer effect
+  useEffect(() => {
+    let timer;
+    if (otpCountdown > 0) {
+      timer = setInterval(() => {
+        setOtpCountdown((prev) => {
+          if (prev <= 1) {
+            setCanResendOTP(true);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [otpCountdown]);
 
   // Modal Overlays
   const [showTermsModal, setShowTermsModal] = useState(false);
@@ -476,18 +488,6 @@ const Login = ({ portalMode = null }) => {
     setNotice(null);
     setMobileMenuOpen(false);
   };
-
-  // Handle countdown timers for resident forgot password OTP
-  useEffect(() => {
-    if (otpCooldown <= 0 && otpRemaining <= 0) return;
-
-    const timer = setInterval(() => {
-      setOtpCooldown((prev) => Math.max(0, prev - 1));
-      setOtpRemaining((prev) => Math.max(0, prev - 1));
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [otpCooldown, otpRemaining]);
 
   // Session check & redirect (Supports both Admin and Resident portals on deployed link)
   useEffect(() => {
@@ -1497,55 +1497,24 @@ const Login = ({ portalMode = null }) => {
     if (e) e.preventDefault();
     const cleanPhone = normalizeSmsPhone(forgotPhone);
     if (!cleanPhone || cleanPhone.length < 10) {
-      setError("Please enter a valid SMS mobile number (e.g. 09306259795).");
+      setError("Please enter a valid 11-digit registered mobile number (e.g. 09306259795).");
       return;
     }
 
     setLoading(true);
     setError(null);
-    setNotice(null);
 
     try {
-      const settings = getSystemSettings();
-      const isAdminPhone =
-        normalizeSmsPhone(settings.officePhone) === cleanPhone ||
-        cleanPhone.includes("09306259795") ||
-        accessMode === "Admin";
-
-      if (!isAdminPhone) {
-        const { data: resident, error: fetchErr } = await supabase
-          .from("residents")
-          .select("id, full_name, phone, status")
-          .eq("phone", cleanPhone)
-          .neq("status", "Archived")
-          .limit(1)
-          .maybeSingle();
-
-        if (fetchErr) throw fetchErr;
-
-        if (!resident) {
-          throw new Error(
-            "No active account found matching this phone number. Please check the number or contact the Barangay Secretary."
-          );
-        }
-        setForgotResidentId(resident.id);
-      }
-
-      await sendOTP(cleanPhone);
-
-      setOtpCooldown(60);
-      setOtpRemaining(5 * 60);
-      setModalStep("resident_otp_verify");
+      await sendResidentForgotOTP(cleanPhone);
       setNotice({
         type: "success",
-        text: `A secure 6-digit verification OTP code has been sent via TextBee SMS to ${cleanPhone}.`,
+        text: "Verification code sent! Please check your SMS.",
       });
-      logSecurityEvent("otp_sent", {
-        phone: cleanPhone,
-        role: isAdminPhone ? "admin" : "resident",
-      });
+      setModalStep("resident_otp_verify");
+      setOtpCountdown(60);
+      setCanResendOTP(false);
     } catch (err) {
-      setError(err.message || "Failed to send verification SMS. Please try again later.");
+      setError(err.message || "Failed to send verification code. Please check your mobile number.");
     } finally {
       setLoading(false);
     }
@@ -1553,8 +1522,8 @@ const Login = ({ portalMode = null }) => {
 
   const handleResidentForgotVerifyOTP = async (e) => {
     if (e) e.preventDefault();
-    if (forgotOTP.length !== 6) {
-      setError("Verification code must be exactly 6 digits.");
+    if (!forgotOTP || forgotOTP.length !== 6) {
+      setError("Please enter the complete 6-digit verification code.");
       return;
     }
 
@@ -1562,15 +1531,15 @@ const Login = ({ portalMode = null }) => {
     setError(null);
 
     try {
-      await verifyOTP(forgotPhone, forgotOTP);
-      setModalStep("resident_forgot_newpass");
-      setError(null);
+      const cleanPhone = normalizeSmsPhone(forgotPhone);
+      verifyResidentForgotOTP(cleanPhone, forgotOTP);
       setNotice({
         type: "success",
-        text: "OTP verified! Please create your new account password below.",
+        text: "Code verified successfully! You may now set your new password.",
       });
+      setModalStep("resident_forgot_newpass");
     } catch (err) {
-      setError(err.message || "OTP code verification failed. Please try again.");
+      setError(err.message || "Invalid or expired verification code.");
     } finally {
       setLoading(false);
     }
@@ -1578,8 +1547,10 @@ const Login = ({ portalMode = null }) => {
 
   const handleResidentForgotResetPassword = async (e) => {
     if (e) e.preventDefault();
+    const cleanPhone = normalizeSmsPhone(forgotPhone);
+
     if (forgotNewPassword.length < 6) {
-      setError("Password must be at least 6 characters long.");
+      setError("New password must be at least 6 characters long.");
       return;
     }
     if (forgotNewPassword !== forgotConfirmPassword) {
@@ -1589,45 +1560,27 @@ const Login = ({ portalMode = null }) => {
 
     setLoading(true);
     setError(null);
+    setNotice(null);
 
     try {
-      const cleanPhone = normalizeSmsPhone(forgotPhone);
-      const settings = getSystemSettings();
-      const isAdminPhone =
-        normalizeSmsPhone(settings.officePhone) === cleanPhone ||
-        cleanPhone.includes("09306259795") ||
-        accessMode === "Admin";
-
-      if (isAdminPhone) {
-        try {
-          await resetPassword(settings.officeEmail || "calambarusseljay5@gmail.com");
-        } catch (adminErr) {
-          console.info("Admin reset notice:", adminErr);
-        }
-      } else {
-        await resetResidentPasswordByPhone(cleanPhone, forgotNewPassword);
-      }
+      await resetResidentPasswordByPhone(cleanPhone, forgotNewPassword);
+      setNotice({
+        type: "success",
+        text: "Password updated successfully! Please login with your new password.",
+      });
 
       logSecurityEvent("password_reset_completed", {
         phone: cleanPhone,
-        role: isAdminPhone ? "admin" : "resident",
+        role: "resident",
       });
 
-      setShowRecaptcha(true);
-      setCaptchaToken(null);
-
-      setNotice({
-        type: "success",
-        text: "Password updated successfully! Please login with your new credentials.",
-      });
-
-      setModalStep(isAdminPhone ? "admin_login" : "resident_login");
-      setForgotNewPassword("");
-      setForgotConfirmPassword("");
+      setModalStep(accessMode === "Admin" ? "admin_login" : "resident_login");
       setForgotPhone("");
       setForgotOTP("");
+      setForgotNewPassword("");
+      setForgotConfirmPassword("");
     } catch (err) {
-      setError(err.message || "Failed to complete password reset.");
+      setError(err.message || "Failed to update password. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -1640,7 +1593,7 @@ const Login = ({ portalMode = null }) => {
         <div className="relative flex flex-col items-center">
           <div className="relative h-20 w-20 sm:h-24 sm:w-24 rounded-2xl border-2 border-emerald-400/50 bg-gradient-to-b from-emerald-900/80 to-emerald-950 p-2 shadow-2xl shadow-emerald-950/80 ring-4 ring-emerald-500/20 animate-pulse">
             <img
-              src="/logo.png"
+              src={barangayLogo || "/logo.png"}
               alt="Barangay Upper Mingading Seal"
               className="h-full w-full object-contain"
             />
@@ -1680,7 +1633,7 @@ const Login = ({ portalMode = null }) => {
             <div className="flex items-center gap-3">
               <div className="h-11 w-11 sm:h-12 sm:w-12 rounded-full border border-slate-200 p-0.5 flex items-center justify-center shrink-0 bg-emerald-50/40">
                 <img
-                  src="/logo.png"
+                  src={barangayLogo || "/logo.png"}
                   alt="Barangay Logo"
                   className="h-full w-full object-contain"
                 />
@@ -1861,7 +1814,7 @@ const Login = ({ portalMode = null }) => {
       {/* Giant Clear Watermark Barangay Seal Logo in Background */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-0">
         <img
-          src="/logo.png"
+          src={barangayLogo || "/logo.png"}
           alt="Barangay Upper Mingading Seal Watermark"
           className="w-[680px] sm:w-[840px] md:w-[980px] max-w-none opacity-20 filter drop-shadow-[0_0_120px_rgba(16,185,129,0.35)] brightness-110 pointer-events-none"
         />
@@ -1914,7 +1867,7 @@ const Login = ({ portalMode = null }) => {
             <div className="relative flex items-center justify-center mb-3">
               <div className="relative h-20 w-20 sm:h-22 sm:w-22 rounded-2xl border-2 border-emerald-400/50 bg-gradient-to-b from-emerald-900/70 to-emerald-950/90 p-2 shadow-xl shadow-emerald-950/60 overflow-hidden ring-4 ring-emerald-500/20 flex items-center justify-center">
                 <img
-                  src="/logo.png"
+                  src={barangayLogo || "/logo.png"}
                   alt="Barangay Upper Mingading Seal"
                   className="h-full w-full object-contain"
                 />
@@ -1983,7 +1936,7 @@ const Login = ({ portalMode = null }) => {
                   onChange={handleInputChange}
                   placeholder={
                     modalStep === "admin_login" || accessMode === "Admin"
-                      ? "Enter admin username (e.g. kaagapai)"
+                      ? "Enter admin username"
                       : "Enter your mobile phone or username"
                   }
                   className="w-full h-12 rounded-xl bg-black/35 border border-emerald-400/30 pl-11 pr-4 outline-none text-xs font-semibold text-white placeholder-emerald-200/60 focus:border-emerald-400 focus:bg-black/50 focus:ring-2 focus:ring-emerald-400/30 transition-all duration-200 backdrop-blur-md"
@@ -2061,11 +2014,7 @@ const Login = ({ portalMode = null }) => {
                 onClick={() => {
                   setError(null);
                   setNotice(null);
-                  setModalStep(
-                    modalStep === "admin_login" || accessMode === "Admin"
-                      ? "admin_forgot_password"
-                      : "resident_forgot_phone"
-                  );
+                  setModalStep("forgot_password_verified");
                 }}
                 className="font-black text-emerald-300 hover:text-white hover:underline transition cursor-pointer"
               >
@@ -2205,17 +2154,20 @@ const Login = ({ portalMode = null }) => {
           </div>
         )}
 
-        {/* ─── FORGOT PASSWORD FLOW ─── */}
-        {(modalStep === "admin_forgot_password" || modalStep === "resident_forgot_phone") && (
+        {/* ─── RESIDENT PASSWORD RECOVERY: STEP 1 - PHONE INPUT ─── */}
+        {(modalStep === "resident_forgot_phone" ||
+          modalStep === "admin_forgot_password" ||
+          modalStep === "forgot_password_verified") && (
           <div className="w-full space-y-4 text-left">
             <button
               onClick={() =>
                 setModalStep(accessMode === "Admin" ? "admin_login" : "resident_login")
               }
-              className="flex items-center gap-1 text-xs font-bold text-emerald-300 hover:text-white transition mb-2 cursor-pointer"
+              className="flex items-center gap-1 text-xs font-bold text-emerald-300 hover:text-white transition mb-1 cursor-pointer"
             >
               <ChevronLeft size={16} /> Back to Sign In
             </button>
+
             <div className="flex items-center gap-3 border-b border-emerald-500/20 pb-3">
               <div className="h-11 w-11 rounded-2xl bg-emerald-900/60 text-emerald-300 flex items-center justify-center shrink-0 border border-emerald-400/40">
                 <Phone size={20} />
@@ -2223,16 +2175,18 @@ const Login = ({ portalMode = null }) => {
               <div>
                 <h4 className="text-base font-extrabold text-white">Password Recovery</h4>
                 <p className="text-[11px] text-emerald-200/80 font-medium">
-                  Enter registered SMS mobile number for TextBee OTP
+                  Enter mobile number
                 </p>
               </div>
             </div>
+
             {error && (
               <div className="flex items-start gap-2.5 rounded-2xl bg-rose-950/80 border border-rose-500/50 p-3.5 text-xs font-semibold text-rose-200">
                 <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-400" />
                 <span>{error}</span>
               </div>
             )}
+
             <form onSubmit={handleResidentForgotSendOTP} className="space-y-3.5">
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-emerald-300/80 uppercase tracking-wider block text-left">
@@ -2241,35 +2195,40 @@ const Login = ({ portalMode = null }) => {
                 <div className="relative">
                   <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300" size={16} />
                   <input
-                    type="text"
+                    type="tel"
+                    maxLength={11}
                     value={forgotPhone}
-                    onChange={(e) => setForgotPhone(e.target.value)}
-                    placeholder="e.g. 09306259795"
-                    className="w-full rounded-xl border border-emerald-400/30 bg-black/40 pl-12 pr-4 py-3 text-xs text-white outline-none focus:border-emerald-400 focus:bg-black/60 transition font-medium"
+                    onChange={(e) => setForgotPhone(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                    placeholder="Enter mobile number (e.g. 09306259795)"
+                    className="w-full h-12 rounded-xl border border-emerald-400/30 bg-black/40 pl-11 pr-4 text-xs text-white placeholder-emerald-200/50 outline-none focus:border-emerald-400 focus:bg-black/60 transition font-medium"
                     required
+                    autoFocus
                   />
                 </div>
               </div>
+
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-extrabold text-white shadow-md transition duration-200 disabled:opacity-50 cursor-pointer"
+                className="w-full h-12 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-extrabold text-white shadow-md transition duration-200 disabled:opacity-50 cursor-pointer mt-2"
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
-                {loading ? "Sending OTP SMS..." : "Send Verification Code"}
+                {loading ? "Sending verification code..." : "Send Verification Code"}
               </button>
             </form>
           </div>
         )}
 
+        {/* ─── RESIDENT PASSWORD RECOVERY: STEP 2 - OTP VERIFY ─── */}
         {modalStep === "resident_otp_verify" && (
           <div className="w-full space-y-4 text-left">
             <button
               onClick={() => setModalStep("resident_forgot_phone")}
-              className="flex items-center gap-1 text-xs font-bold text-emerald-300 hover:text-white transition mb-2 cursor-pointer"
+              className="flex items-center gap-1 text-xs font-bold text-emerald-300 hover:text-white transition mb-1 cursor-pointer"
             >
-              <ChevronLeft size={16} /> Back to Phone Input
+              <ChevronLeft size={16} /> Back to Mobile Number
             </button>
+
             <div className="flex items-center gap-3 border-b border-emerald-500/20 pb-3">
               <div className="h-11 w-11 rounded-2xl bg-emerald-900/60 text-emerald-300 flex items-center justify-center shrink-0 border border-emerald-400/40">
                 <Lock size={20} />
@@ -2277,42 +2236,65 @@ const Login = ({ portalMode = null }) => {
               <div>
                 <h4 className="text-base font-extrabold text-white">Enter Verification Code</h4>
                 <p className="text-[11px] text-emerald-200/80 font-medium">
-                  Provide 6-digit SMS OTP code sent to your number
+                  Provide 6-digit SMS code sent to your number
                 </p>
               </div>
             </div>
+
             {error && (
               <div className="flex items-start gap-2.5 rounded-2xl bg-rose-950/80 border border-rose-500/50 p-3.5 text-xs font-semibold text-rose-200">
                 <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-400" />
                 <span>{error}</span>
               </div>
             )}
+
             <form onSubmit={handleResidentForgotVerifyOTP} className="space-y-3.5">
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300" size={16} />
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={forgotOTP}
-                  onChange={(e) => setForgotOTP(e.target.value.replace(/\D/g, ""))}
-                  placeholder="Enter 6-digit code"
-                  className="w-full text-center tracking-[0.5em] rounded-xl border border-emerald-400/30 bg-black/40 py-3 text-sm text-white outline-none focus:border-emerald-400 focus:bg-black/60 transition font-bold"
-                  required
-                  autoFocus
-                />
+              <div className="space-y-1">
+                <label className="text-[11px] font-bold text-emerald-300/80 uppercase tracking-wider block text-left">
+                  6-Digit SMS Code *
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300" size={16} />
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={forgotOTP}
+                    onChange={(e) => setForgotOTP(e.target.value.replace(/\D/g, ""))}
+                    placeholder="Enter 6-digit code"
+                    className="w-full h-12 text-center tracking-[0.5em] rounded-xl border border-emerald-400/30 bg-black/40 pl-11 pr-4 text-sm text-white outline-none focus:border-emerald-400 focus:bg-black/60 transition font-bold"
+                    required
+                    autoFocus
+                  />
+                </div>
               </div>
+
+              <div className="flex items-center justify-between text-xs pt-1">
+                <span className="text-emerald-200/70 font-medium">
+                  {otpCountdown > 0 ? `Resend code in ${otpCountdown}s` : "Didn't receive code?"}
+                </span>
+                <button
+                  type="button"
+                  disabled={!canResendOTP || loading}
+                  onClick={handleResidentForgotSendOTP}
+                  className="font-bold text-emerald-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+                >
+                  Resend Code
+                </button>
+              </div>
+
               <button
                 type="submit"
                 disabled={loading || forgotOTP.length !== 6}
-                className="w-full flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-xs font-extrabold text-white shadow-md transition duration-200 disabled:opacity-50 cursor-pointer"
+                className="w-full h-12 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-extrabold text-white shadow-md transition duration-200 disabled:opacity-50 cursor-pointer mt-2"
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                {loading ? "Verifying..." : "Verify OTP Code"}
+                {loading ? "Verifying code..." : "Verify Code"}
               </button>
             </form>
           </div>
         )}
 
+        {/* ─── RESIDENT PASSWORD RECOVERY: STEP 3 - SET NEW PASSWORD ─── */}
         {modalStep === "resident_forgot_newpass" && (
           <div className="w-full space-y-4 text-left">
             <div className="flex items-center gap-3 border-b border-emerald-500/20 pb-3">
@@ -2326,12 +2308,14 @@ const Login = ({ portalMode = null }) => {
                 </p>
               </div>
             </div>
+
             {error && (
               <div className="flex items-start gap-2.5 rounded-2xl bg-rose-950/80 border border-rose-500/50 p-3.5 text-xs font-semibold text-rose-200">
                 <AlertCircle size={16} className="mt-0.5 shrink-0 text-rose-400" />
                 <span>{error}</span>
               </div>
             )}
+
             <form onSubmit={handleResidentForgotResetPassword} className="space-y-3.5">
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-emerald-300/80 uppercase tracking-wider block text-left">
@@ -2343,15 +2327,17 @@ const Login = ({ portalMode = null }) => {
                     type="password"
                     value={forgotNewPassword}
                     onChange={(e) => setForgotNewPassword(e.target.value)}
-                    placeholder="Min 6 characters"
-                    className="w-full rounded-xl border border-emerald-400/30 bg-black/40 pl-12 pr-4 py-3 text-xs text-white outline-none focus:border-emerald-400 focus:bg-black/60 transition font-medium"
+                    placeholder="Enter new password (min 6 characters)"
+                    className="w-full h-12 rounded-xl border border-emerald-400/30 bg-black/40 pl-11 pr-4 text-xs text-white placeholder-emerald-200/50 outline-none focus:border-emerald-400 focus:bg-black/60 transition font-medium"
                     required
+                    autoFocus
                   />
                 </div>
               </div>
+
               <div className="space-y-1">
                 <label className="text-[11px] font-bold text-emerald-300/80 uppercase tracking-wider block text-left">
-                  Confirm New Password *
+                  Confirm Password *
                 </label>
                 <div className="relative">
                   <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-300" size={16} />
@@ -2359,19 +2345,20 @@ const Login = ({ portalMode = null }) => {
                     type="password"
                     value={forgotConfirmPassword}
                     onChange={(e) => setForgotConfirmPassword(e.target.value)}
-                    placeholder="Re-enter new password"
-                    className="w-full rounded-xl border border-emerald-400/30 bg-black/40 pl-12 pr-4 py-3 text-xs text-white outline-none focus:border-emerald-400 focus:bg-black/60 transition font-medium"
+                    placeholder="Confirm new password"
+                    className="w-full h-12 rounded-xl border border-emerald-400/30 bg-black/40 pl-11 pr-4 text-xs text-white placeholder-emerald-200/50 outline-none focus:border-emerald-400 focus:bg-black/60 transition font-medium"
                     required
                   />
                 </div>
               </div>
+
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-xs font-extrabold text-white shadow-md transition duration-200 disabled:opacity-50 cursor-pointer"
+                className="w-full h-12 flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-xs font-extrabold text-white shadow-md transition duration-200 disabled:opacity-50 cursor-pointer mt-2"
               >
                 {loading ? <Loader2 size={16} className="animate-spin" /> : <FileCheck2 size={16} />}
-                {loading ? "Resetting password..." : "Update Password"}
+                {loading ? "Updating password..." : "Update Password"}
               </button>
             </form>
           </div>

@@ -4,6 +4,7 @@ import {
   syncKnowledgeFromLivelihood,
 } from "./knowledgeService";
 import { moveToRecycleBin } from "./recycleBinService";
+import { broadcastSyncEvent } from "./realtimeSyncService";
 
 const TABLE = "livelihood_posts";
 const SETUP_MESSAGE =
@@ -117,6 +118,7 @@ export async function createLivelihoodPost(postData) {
   syncKnowledgeFromLivelihood(data).catch((syncError) => {
     console.warn("Unable to sync livelihood post into AI knowledge:", syncError.message);
   });
+  broadcastSyncEvent("livelihood", data);
   return data;
 }
 
@@ -137,6 +139,7 @@ export async function updateLivelihoodPost(id, updates) {
   syncKnowledgeFromLivelihood(data).catch((syncError) => {
     console.warn("Unable to sync livelihood post into AI knowledge:", syncError.message);
   });
+  broadcastSyncEvent("livelihood", data);
   return data;
 }
 
@@ -160,6 +163,7 @@ export async function deleteLivelihoodPost(id) {
   deleteKnowledgeForSource("livelihood", id).catch((syncError) => {
     console.warn("Unable to delete livelihood AI knowledge:", syncError.message);
   });
+  broadcastSyncEvent("livelihood", { id });
   return true;
 }
 
@@ -194,6 +198,8 @@ export async function applyForLivelihood(livelihoodId, residentId) {
     .maybeSingle();
 
   if (error) throw normalizeSupabaseError(error);
+  broadcastSyncEvent("livelihood", data);
+  broadcastSyncEvent("notifications", { resident_id: residentId });
   return data;
 }
 
@@ -246,6 +252,8 @@ export async function updateLivelihoodApplicationStatus(id, newStatus, residentI
     }]);
   }
 
+  broadcastSyncEvent("livelihood", data);
+  broadcastSyncEvent("notifications", { resident_id: residentId });
   return data;
 }
 

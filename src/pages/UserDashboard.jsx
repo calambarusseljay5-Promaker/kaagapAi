@@ -136,6 +136,7 @@ import {
 import { getRealDocumentTemplateKey } from "../utils/realDocumentTemplates";
 import TypingIndicator from "../components/TypingIndicator";
 import FloatingModal from "../components/FloatingModal";
+import { useBarangayLogo } from "../services/logoService";
 
 const ANNOUNCEMENT_READ_KEY = "kaagapai_read_announcements";
 const LIVELIHOOD_READ_KEY = "kaagapai_read_livelihood_posts";
@@ -280,6 +281,16 @@ const primeSpeechSynthesis = () => {
   }
 };
 
+// Global listener to proactively prime audio context on any user tap/click on Mobile or Laptop
+if (typeof window !== "undefined") {
+  const handleInitialUserGesture = () => {
+    primeSpeechSynthesis();
+  };
+  window.addEventListener("touchstart", handleInitialUserGesture, { passive: true, once: true });
+  window.addEventListener("pointerdown", handleInitialUserGesture, { passive: true, once: true });
+  window.addEventListener("click", handleInitialUserGesture, { passive: true, once: true });
+}
+
 const isTagalogText = (text = "") => {
   if (!text) return false;
   const lower = text.toLowerCase();
@@ -289,7 +300,7 @@ const isTagalogText = (text = "") => {
     "namin", "tayo", "kami", "sino", "ilan", "ano", "paano", "kailan", "bakit", "batay",
     "rekord", "talaan", "residente", "barangay", "punong", "kapitan", "kagawad", "serbisyo",
     "tulong", "narito", "magandang", "araw", "salamat", "pwede", "kailangan", "makakuha",
-    "proseso", "mangyaring", "pumunta", "opisina", "bayaran", "pirma", "rehistro"
+    "proseso", "mangyaring", "pumunta", "opisina", "bayaran", "pirma", "rehistro", "hakbang"
   ];
   let matches = 0;
   for (const w of tagalogWords) {
@@ -336,41 +347,70 @@ const isNativeFilipinoVoice = (voice) => {
   );
 };
 
+// Conversational Voice Cleaner: makes text sound like a real person talking naturally to another person
 const cleanTextForSpeech = (str = "", isTagalog = false, isNativeVoice = false) => {
   if (!str) return "";
   let cleaned = String(str)
-    // Remove chart markers & markdown code blocks
+    // Strip image embeds completely: ![alt text](/url) -> ""
+    .replace(/!\[.*?\]\(.*?\)/gi, "")
+    // Strip markdown links: [text](url) -> text
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    // Strip chart tags & code blocks
     .replace(/\[CHART:.*?\]/gi, "")
     .replace(/```[\s\S]*?```/g, "")
     .replace(/`([^`]+)`/g, "$1")
-    // Replace markdown headings, horizontal rules, bold, italics
+    // Conversational divider pause
+    .replace(/^---+$/gm, ". ")
+    // Clean markdown headings, bold, italics
     .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^---+\s*$/gm, "")
     .replace(/\*\*(.*?)\*\*/g, "$1")
     .replace(/\*(.*?)\*/g, "$1")
     .replace(/__(.*?)__/g, "$1")
     .replace(/_(.*?)_/g, "$1")
-    // Clean list markers
+    // Clean document headers into friendly spoken intros
+    .replace(/^Kumpletong Gabay para sa/gmi, isTagalog ? "Narito ang gabay para sa" : "Here is the guide for")
+    .replace(/^Hakbang sa Pag-request \(Step-by-Step Procedure\):/gmi, isTagalog ? "Para sa hakbang sa pag-request:" : "For the request steps:")
+    .replace(/^Mga Pangunahing Requirements & Bayarin:/gmi, isTagalog ? "Para naman sa requirements at bayarin:" : "For the requirements and fees:")
+    // Clean bullet list markers
     .replace(/^[•\-\*]\s+/gm, "")
-    // Expand Philippine municipal and common terms for crystal clear pronunciation
+    // Convert numbered lists into natural spoken transitions
+    .replace(/^1\.\s*/gm, isTagalog ? "Una, " : "First, ")
+    .replace(/^2\.\s*/gm, isTagalog ? "Pangalawa, " : "Second, ")
+    .replace(/^3\.\s*/gm, isTagalog ? "Pangatlo, " : "Third, ")
+    .replace(/^4\.\s*/gm, isTagalog ? "Pang-apat, " : "Fourth, ")
+    .replace(/^5\.\s*/gm, isTagalog ? "Pang-lima, " : "Fifth, ")
+    .replace(/^6\.\s*/gm, isTagalog ? "Pang-anim, " : "Sixth, ")
+    .replace(/^7\.\s*/gm, isTagalog ? "Pang-pito, " : "Seventh, ")
+    // Expand titles and official abbreviations for human natural speech
+    .replace(/\bHon\.\s*/gi, "Honorable ")
     .replace(/\bBrgy\.?\b/gi, "Barangay")
+    .replace(/\bSK\b/g, "S.K.")
+    .replace(/\bLGU\b/g, "L.G.U.")
+    .replace(/\bTESDA\b/g, "Tesda")
+    .replace(/\bMRF\b/g, "M.R.F.")
+    .replace(/\bPWD\b/g, "P.W.D.")
+    .replace(/\bPWDs\b/g, "P.W.D.s")
+    .replace(/\bPWED\b/g, "P.W.D.")
+    .replace(/\bIDs\b/g, "I.D.s")
+    .replace(/\bID\b/g, "I.D.")
     .replace(/\bRef\.?\s*No\.?\b/gi, "Reference Number")
     .replace(/\bNo\.\b/gi, "Number")
-    .replace(/\be\.g\.?,?\b/gi, "for example,")
-    .replace(/\bi\.e\.?,?\b/gi, "that is,")
+    .replace(/\be\.g\.?,?\b/gi, isTagalog ? "halimbawa," : "for example,")
+    .replace(/\bi\.e\.?,?\b/gi, isTagalog ? "ibig sabihin," : "that is,")
     .replace(/\bvs\.?\b/gi, "versus")
-    .replace(/\bapprox\.?\b/gi, "approximately")
+    .replace(/\bapprox\.?\b/gi, isTagalog ? "tinatayang" : "approximately")
     .replace(/\b₱\s*(\d+)/g, "$1 pesos")
     .replace(/\bPhp\s*(\d+)/gi, "$1 pesos")
     .replace(/\bGovt\.?\b/gi, "Government")
     .replace(/\bKaagapA\.?I\b/gi, "Kaagapay")
     .replace(/\bKaagapAI\b/gi, "Kaagapay")
     .replace(/\bAI\b/g, "A.I.")
-    .replace(/\bIDs\b/g, "I.D.s")
-    .replace(/\bID\b/g, "I.D.")
-    // Remove emojis that cause speech engines to read verbose system labels
+    // Remove all emojis so speech engines don't read verbose system descriptions
     .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, "")
+    // Clean excessive spaces, double periods, and newlines
+    .replace(/\n+/g, ". ")
     .replace(/\s+/g, " ")
+    .replace(/\.{2,}/g, ".")
     .trim();
 
   // If speaking Tagalog through a non-native English synthesizer, apply minimal phonetic particle fix
@@ -402,53 +442,43 @@ const getProfessionalVoice = (isTagalog = false) => {
     const nativeFilipino = voices.find((v) => isNativeFilipinoVoice(v));
     if (nativeFilipino) return nativeFilipino;
 
-    // 2. English (Philippines) accent (sounds natural with Filipino terminology)
+    // 2. English (Philippines) accent - speaks Filipino & English with authentic natural Filipino cadence
     const phEnglish = voices.find((v) => {
       const l = (v.lang || "").toLowerCase();
       const n = (v.name || "").toLowerCase();
-      return l === "en-ph" || n.includes("philippines") || n.includes("philippine");
+      return (
+        l === "en-ph" ||
+        l === "en_ph" ||
+        l.startsWith("en-ph") ||
+        n.includes("philippines") ||
+        n.includes("philippine") ||
+        n.includes("filipino")
+      );
     });
     if (phEnglish) return phEnglish;
   }
 
-  // 3. Premium Natural English Voices (Microsoft Natural, Google US/UK, Samantha/Siri)
-  const msNaturalJenny = voices.find((v) => v.name.includes("Jenny") && v.name.includes("Natural"));
-  if (msNaturalJenny) return msNaturalJenny;
+  // 3. Premium Natural Voices across Windows, Android, iOS Safari & macOS
+  const preferredNaturalVoices = [
+    voices.find((v) => v.name.includes("Blessica")),
+    voices.find((v) => v.name.includes("Angelo")),
+    voices.find((v) => v.name.includes("Jenny") && v.name.includes("Natural")),
+    voices.find((v) => v.name.includes("Aria") && v.name.includes("Natural")),
+    voices.find((v) => v.name.includes("Guy") && v.name.includes("Natural")),
+    voices.find((v) => v.name.includes("Natural") && (v.lang || "").startsWith("en")),
+    voices.find((v) => v.name.includes("Google US English") || v.name.includes("Google English")),
+    voices.find((v) => v.name.includes("Google UK English Female") || v.name.includes("Google UK English")),
+    voices.find((v) => ["Samantha", "Karen", "Victoria", "Daniel", "Serena"].includes(v.name)),
+    voices.find((v) => v.name.includes("Zira")),
+    voices.find((v) => v.name.includes("David")),
+    voices.find((v) => (v.lang || "").toLowerCase().startsWith("en")),
+  ];
 
-  const msNaturalAria = voices.find((v) => v.name.includes("Aria") && v.name.includes("Natural"));
-  if (msNaturalAria) return msNaturalAria;
-
-  const msNaturalGuy = voices.find((v) => v.name.includes("Guy") && v.name.includes("Natural"));
-  if (msNaturalGuy) return msNaturalGuy;
-
-  const anyMsNaturalEn = voices.find((v) => v.name.includes("Natural") && ((v.lang || "").startsWith("en")));
-  if (anyMsNaturalEn) return anyMsNaturalEn;
-
-  const googleUS = voices.find((v) => v.name.includes("Google US English") || v.name.includes("Google English"));
-  if (googleUS) return googleUS;
-
-  const googleUK = voices.find((v) => v.name.includes("Google UK English Female") || v.name.includes("Google UK English"));
-  if (googleUK) return googleUK;
-
-  const siriSamantha = voices.find((v) => v.name === "Samantha" || v.name === "Karen" || v.name === "Victoria" || v.name === "Daniel");
-  if (siriSamantha) return siriSamantha;
-
-  const msZira = voices.find((v) => v.name.includes("Zira"));
-  if (msZira) return msZira;
-
-  const msDavid = voices.find((v) => v.name.includes("David"));
-  if (msDavid) return msDavid;
-
-  const standardEn = voices.find((v) => {
-    const l = (v.lang || "").toLowerCase();
-    return l === "en-us" || l === "en-gb" || l === "en-ca" || l === "en-au" || l.startsWith("en");
-  });
-  if (standardEn) return standardEn;
-
-  return voices[0] || null;
+  const foundVoice = preferredNaturalVoices.find(Boolean);
+  return foundVoice || voices[0] || null;
 };
 
-// Fallback: Native Web Speech Synthesis for Desktop or Offline
+// Universal Speech Synthesis Engine for Seamless Mobile & Laptop playback
 const speakViaSpeechSynthesis = (sentences, isTagalog, chosenVoice, speechToken, onStart, onEnd) => {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) {
     if (onEnd) onEnd();
@@ -459,7 +489,7 @@ const speakViaSpeechSynthesis = (sentences, isTagalog, chosenVoice, speechToken,
     window.speechSynthesis.cancel();
     window.speechSynthesis.resume();
 
-    // Heartbeat to prevent Chrome/Edge/Safari 15-second speech cutoff
+    // Heartbeat to prevent Mobile Safari / Chrome 15-second speech cutoff
     if (speechHeartbeatTimer) clearInterval(speechHeartbeatTimer);
     speechHeartbeatTimer = setInterval(() => {
       if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -467,7 +497,7 @@ const speakViaSpeechSynthesis = (sentences, isTagalog, chosenVoice, speechToken,
           window.speechSynthesis.resume();
         }
       }
-    }, 4000);
+    }, 3000);
 
     let currentIndex = 0;
     let started = false;
@@ -497,10 +527,11 @@ const speakViaSpeechSynthesis = (sentences, isTagalog, chosenVoice, speechToken,
         utterance.voice = chosenVoice;
         utterance.lang = chosenVoice.lang || (isNative ? "fil-PH" : "en-US");
       } else {
-        utterance.lang = "en-US";
+        utterance.lang = isTagalog ? "fil-PH" : "en-US";
       }
 
-      utterance.rate = isTagalog ? 0.94 : 0.98;
+      // Natural, relaxed conversational cadence (not rushed, warm rhythm)
+      utterance.rate = isTagalog ? 0.92 : 0.95;
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
 
@@ -522,7 +553,7 @@ const speakViaSpeechSynthesis = (sentences, isTagalog, chosenVoice, speechToken,
       };
 
       utterance.onerror = (e) => {
-        console.warn("Speech synthesis utterance error:", e?.error);
+        console.warn("Speech synthesis utterance event:", e?.error);
         if (activeSpeechToken !== speechToken || e?.error === "canceled" || e?.error === "interrupted") {
           return;
         }
@@ -539,7 +570,7 @@ const speakViaSpeechSynthesis = (sentences, isTagalog, chosenVoice, speechToken,
         window.speechSynthesis.resume();
         speakNextSentence();
       }
-    }, 60);
+    }, 50);
   } catch (err) {
     console.warn("Speech synthesis fallback error:", err);
     activeSpeechToken = null;
@@ -547,10 +578,10 @@ const speakViaSpeechSynthesis = (sentences, isTagalog, chosenVoice, speechToken,
   }
 };
 
-// Universal Hybrid Voice Assistant: Plays via High-Quality HTML5 Cloud Audio on Mobile & Desktop with Web Speech fallback
+// Universal Voice Assistant: Web Speech API for seamless Mobile & Desktop performance
 const speakAssistantText = (text, onStart = null, onEnd = null) => {
   stopAssistantSpeech();
-  if (!text || typeof window === "undefined") {
+  if (!text || typeof window === "undefined" || !("speechSynthesis" in window)) {
     if (onEnd) onEnd();
     return;
   }
@@ -568,14 +599,13 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
     return;
   }
 
-  // Split text into natural, digestible sentences (max 130 chars per chunk for 100% mobile compatibility)
+  // Split text into natural conversational sentence chunks
   const rawChunks = cleanText.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [cleanText];
   const sentences = [];
   rawChunks.forEach((chunk) => {
     const trimmed = chunk.trim();
     if (!trimmed) return;
-    if (trimmed.length > 130) {
-      // Split sub-clauses by comma or space
+    if (trimmed.length > 110) {
       const subClauses = trimmed.split(/,\s+/);
       subClauses.forEach((sc) => {
         if (sc.trim()) sentences.push(sc.trim());
@@ -590,77 +620,12 @@ const speakAssistantText = (text, onStart = null, onEnd = null) => {
     return;
   }
 
-  // Try HTML5 Cloud Audio first (Works on iOS Mobile Safari, Android Chrome, Samsung Internet & Tablets)
   try {
-    const player = getGlobalAudioPlayer();
-    if (player) {
-      let chunkIndex = 0;
-      let hasStarted = false;
-
-      const playNextAudioChunk = () => {
-        if (activeSpeechToken !== speechToken) {
-          return;
-        }
-
-        if (chunkIndex >= sentences.length) {
-          activeSpeechToken = null;
-          if (onEnd) onEnd();
-          return;
-        }
-
-        const currentSentence = sentences[chunkIndex];
-        chunkIndex++;
-
-        const langCode = isTagalog ? "tl" : "en";
-        const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(currentSentence)}&tl=${langCode}&client=tw-ob`;
-
-        player.src = ttsUrl;
-        player.volume = 1.0;
-
-        player.onplay = () => {
-          if (activeSpeechToken !== speechToken) {
-            player.pause();
-            return;
-          }
-          if (!hasStarted) {
-            hasStarted = true;
-            if (onStart) onStart();
-          }
-        };
-
-        player.onended = () => {
-          if (activeSpeechToken === speechToken) {
-            playNextAudioChunk();
-          }
-        };
-
-        player.onerror = () => {
-          console.warn("HTML5 audio playback error, falling back to Web Speech Synthesis");
-          if (activeSpeechToken === speechToken) {
-            speakViaSpeechSynthesis(sentences.slice(chunkIndex - 1), isTagalog, chosenVoice, speechToken, onStart, onEnd);
-          }
-        };
-
-        const playPromise = player.play();
-        if (playPromise !== undefined) {
-          playPromise.catch((err) => {
-            console.warn("Audio play promise rejected, switching to Speech Synthesis:", err);
-            if (activeSpeechToken === speechToken) {
-              speakViaSpeechSynthesis(sentences, isTagalog, chosenVoice, speechToken, onStart, onEnd);
-            }
-          });
-        }
-      };
-
-      playNextAudioChunk();
-      return;
-    }
+    speakViaSpeechSynthesis(sentences, isTagalog, chosenVoice, speechToken, onStart, onEnd);
   } catch (audioErr) {
-    console.warn("HTML5 Audio setup failed, using Web Speech API:", audioErr);
+    console.warn("Speech Synthesis call error:", audioErr);
+    if (onEnd) onEnd();
   }
-
-  // Direct Web Speech API fallback if audio element unavailable
-  speakViaSpeechSynthesis(sentences, isTagalog, chosenVoice, speechToken, onStart, onEnd);
 };
 
 const stopAssistantSpeech = () => {
@@ -1007,7 +972,7 @@ const TypewriterText = ({ text, speed = 8 }) => {
 const RenderChatChart = ({ text, isAi = true }) => {
   const match = text.match(/\[CHART:(PIE|BAR):(.*?)\]/);
   
-  // Format conversational text with bold highlights and clean paragraphs
+  // Format conversational text with bold highlights, clean paragraphs, and official photo cards
   const renderFormattedParagraphs = (raw) => {
     if (!raw) return null;
     const lines = raw.split("\n");
@@ -1016,6 +981,33 @@ const RenderChatChart = ({ text, isAi = true }) => {
         {lines.map((line, idx) => {
           if (!line.trim()) return <div key={idx} className="h-1" />;
           
+          // Check for image tag ![Alt](url)
+          const imgMatch = line.trim().match(/^!\[(.*?)\]\((.*?)\)$/);
+          if (imgMatch) {
+            const alt = imgMatch[1];
+            const src = imgMatch[2];
+            return (
+              <div key={idx} className="my-2.5 flex flex-col items-center sm:items-start">
+                <div className="relative group w-32 h-36 sm:w-36 sm:h-40 rounded-2xl overflow-hidden border-2 border-emerald-400/80 shadow-xl bg-gradient-to-b from-emerald-950/90 to-black ring-2 ring-emerald-500/30 transition hover:scale-105">
+                  <img
+                    src={src}
+                    alt={alt}
+                    className="w-full h-full object-cover object-top"
+                    onError={(e) => {
+                      e.currentTarget.onerror = null;
+                      e.currentTarget.src = "/logo.png";
+                    }}
+                  />
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/95 via-black/60 to-transparent pt-3 pb-1 px-1.5 text-center">
+                    <span className="text-[10px] font-black text-emerald-300 uppercase tracking-tight truncate block">
+                      {alt}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
           // Check for bullet list item
           if (/^[•\-\*]\s+/.test(line)) {
             const content = line.replace(/^[•\-\*]\s+/, "");
@@ -1416,10 +1408,18 @@ const UserDashboard = () => {
   const navigate = useNavigate();
   const { confirm } = useConfirm();
   const shouldReduceMotion = useReducedMotion();
+  const barangayLogo = useBarangayLogo();
 
-  // App Telemetry States
-  const [userData, setUserData] = useState(null);
-  const [resident, setResident] = useState(null);
+  // App Telemetry States (Synchronously initialized for instantaneous 0ms rendering)
+  const [userData, setUserData] = useState(() => {
+    const s = getResidentSession();
+    return s ? { user: { email: s.username || s.email }, profile: { role: "resident", resident_id: s.id } } : null;
+  });
+  const [resident, setResident] = useState(() => {
+    const s = getResidentSession();
+    return s ? { ...s, must_change_credentials: false } : null;
+  });
+  const [loading, setLoading] = useState(() => !getResidentSession());
   const [requests, setRequests] = useState([]);
   const [allSystemRequests, setAllSystemRequests] = useState([]);
   const [documentTemplates, setDocumentTemplates] = useState([]);
@@ -1787,6 +1787,40 @@ const UserDashboard = () => {
       )
       .subscribe();
 
+    const livelihoodChannel = supabase
+      .channel("livelihood-realtime-user")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "livelihood_posts",
+        },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            const oldId = payload.old?.id;
+            if (oldId) {
+              setOpportunities((current) => current.filter((o) => o.id !== oldId));
+            }
+            return;
+          }
+
+          const newPost = payload.new;
+          if (newPost && newPost.status === "Open") {
+            setOpportunities((current) => {
+              const exists = current.some((o) => o.id === newPost.id);
+              if (exists) {
+                return current.map((o) => (o.id === newPost.id ? newPost : o));
+              }
+              return [newPost, ...current];
+            });
+          } else if (newPost?.id) {
+            setOpportunities((current) => current.filter((o) => o.id !== newPost.id));
+          }
+        }
+      )
+      .subscribe();
+
     const notifChannel = supabase
       .channel(`resident-notifications-realtime-${resident.id}`)
       .on(
@@ -1811,6 +1845,7 @@ const UserDashboard = () => {
 
     return () => {
       supabase.removeChannel(announcementChannel);
+      supabase.removeChannel(livelihoodChannel);
       supabase.removeChannel(notifChannel);
     };
   }, [resident]);
@@ -1974,8 +2009,6 @@ const UserDashboard = () => {
   const [jobAppLoading, setJobAppLoading] = useState(false);
   const [jobAppSuccess, setJobAppSuccess] = useState(false);
   const [jobAppError, setJobAppError] = useState("");
-
-  const [loading, setLoading] = useState(true);
   const [requesting, setRequesting] = useState(false);
   const [refreshingRequests, setRefreshingRequests] = useState(false);
   const [requestMessage, setRequestMessage] = useState(null);
@@ -2396,11 +2429,30 @@ const UserDashboard = () => {
     }
   });
 
-  // Mounting load logic
+  // Mounting load logic (Ultra-fast non-blocking background hydration)
   useEffect(() => {
     let isMounted = true;
+
+    // Safety timeout: Never keep loading spinner active for more than 600ms
+    const safetyTimer = setTimeout(() => {
+      if (isMounted) setLoading(false);
+    }, 600);
+
     const loadDashboard = async () => {
       try {
+        const residentSession = getResidentSession();
+        if (residentSession) {
+          if (isMounted) {
+            setLoading(false);
+            setUserData({
+              user: { email: residentSession.username || residentSession.email },
+              profile: { role: "resident", resident_id: residentSession.id },
+            });
+            setResident((prev) => prev || { ...residentSession, must_change_credentials: false });
+          }
+        }
+
+        // Fire all critical & broadcast requests in parallel (non-blocking)
         const [templatesResult, announcementResult, opportunityResult, knowledgeResult, statsResult] = await Promise.allSettled([
           fetchDocumentTemplates(),
           fetchPublishedAnnouncements(8),
@@ -2417,32 +2469,31 @@ const UserDashboard = () => {
           setOpportunities(opportunityResult.status === "fulfilled" ? opportunityResult.value : []);
           setKnowledgeItems(knowledgeResult.status === "fulfilled" ? knowledgeResult.value : []);
           setResidentStats(statsResult.status === "fulfilled" ? statsResult.value : null);
+          setLoading(false);
         }
 
-        const residentSession = getResidentSession();
         if (residentSession) {
-          setUserData({
-            user: { email: residentSession.username || residentSession.email },
-            profile: { role: "resident", resident_id: residentSession.id },
-          });
-
           try {
             const residentData = await getResidentById(residentSession.id);
-            if (!isMounted) return;
-            setResident({
-              ...(residentData || {}),
-              account_id: residentSession.account_id,
-              username: residentSession.username || residentData?.portal_username || residentData?.username || "",
-              account_status: residentSession.account_status,
-              must_change_credentials: false,
-            });
+            if (isMounted && residentData) {
+              setResident({
+                ...(residentData || {}),
+                account_id: residentSession.account_id,
+                username: residentSession.username || residentData?.portal_username || residentData?.username || "",
+                account_status: residentSession.account_status,
+                must_change_credentials: false,
+              });
+            }
           } catch (err) {
-            setResident({ ...residentSession, must_change_credentials: false });
+            // Keep existing cached resident
           }
-          await refreshResidentActivity(residentSession.id);
+          if (isMounted) {
+            await refreshResidentActivity(residentSession.id);
+          }
           return;
         }
 
+        // Fallback for Supabase OAuth or direct user profile session
         const currentUser = await getCurrentUserWithProfile();
         if (!isMounted) return;
         setUserData(currentUser);
@@ -2466,6 +2517,7 @@ const UserDashboard = () => {
     loadDashboard();
     return () => {
       isMounted = false;
+      clearTimeout(safetyTimer);
     };
   }, []);
 
@@ -2549,6 +2601,7 @@ const UserDashboard = () => {
       created_at: n.created_at,
       is_read: n.is_read,
       isAnnouncement: false,
+      isLivelihood: false,
       original: n,
     }));
 
@@ -2564,15 +2617,33 @@ const UserDashboard = () => {
           created_at: (a.publish_date || a.created_at || "") + (String(a.publish_date || "").includes("T") ? "" : "T00:00:00Z"),
           is_read: isRead,
           isAnnouncement: true,
+          isLivelihood: false,
           announcement_id: a.id,
           original: a,
         };
       });
 
-    return [...systemNotifs, ...applicableAnn].sort(
+    const applicableLivelihood = opportunities
+      .filter((o) => o.status === "Open")
+      .map((o) => {
+        const isRead = livelihoodReadIds.includes(o.id);
+        return {
+          id: `livelihood-${o.id}`,
+          title: `💼 Livelihood: ${o.title}`,
+          message: o.description || `New ${o.category || "Livelihood"} program available. Deadline: ${o.deadline || "Open"}.`,
+          created_at: o.created_at || new Date().toISOString(),
+          is_read: isRead,
+          isAnnouncement: false,
+          isLivelihood: true,
+          livelihood_id: o.id,
+          original: o,
+        };
+      });
+
+    return [...systemNotifs, ...applicableAnn, ...applicableLivelihood].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
-  }, [notifications, publishedAnnouncements, resident, announcementReadIds]);
+  }, [notifications, publishedAnnouncements, opportunities, resident, announcementReadIds, livelihoodReadIds]);
 
   const unreadNotificationCount = useMemo(
     () => allNotificationsMerged.filter((notification) => !notification.is_read).length,
@@ -2585,6 +2656,12 @@ const UserDashboard = () => {
     const nextAnnReadIds = [...new Set([...announcementReadIds, ...allAnnIds])];
     saveStoredReadIds(`${ANNOUNCEMENT_READ_KEY}:${resident.id}`, nextAnnReadIds);
     setAnnouncementReadIds(nextAnnReadIds);
+
+    const allLivIds = opportunities.map((o) => o.id);
+    const nextLivReadIds = [...new Set([...livelihoodReadIds, ...allLivIds])];
+    saveStoredReadIds(`${LIVELIHOOD_READ_KEY}:${resident.id}`, nextLivReadIds);
+    setLivelihoodReadIds(nextLivReadIds);
+
     setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
     try {
       await markAllResidentNotificationsRead(resident.id);
@@ -2600,6 +2677,12 @@ const UserDashboard = () => {
       const next = [...new Set([...announcementReadIds, notif.announcement_id])];
       saveStoredReadIds(`${ANNOUNCEMENT_READ_KEY}:${resident?.id}`, next);
       setAnnouncementReadIds(next);
+      return;
+    }
+    if (notif.isLivelihood) {
+      const next = [...new Set([...livelihoodReadIds, notif.livelihood_id])];
+      saveStoredReadIds(`${LIVELIHOOD_READ_KEY}:${resident?.id}`, next);
+      setLivelihoodReadIds(next);
       return;
     }
     setNotifications((prev) => prev.filter((item) => String(item.id) !== String(notif.id)));
@@ -3010,11 +3093,10 @@ const UserDashboard = () => {
     setAssistantLoading(true);
 
     try {
-      const organizationOfficials = officials;
+      const organizationOfficials = getOrganizationOfficials();
       const answer = await askResidentAssistant(question, {
         announcements: publishedAnnouncements,
         documentTemplates,
-        knowledgeItems,
         opportunities,
         organizationOfficials,
         requests,
@@ -4369,12 +4451,12 @@ const UserDashboard = () => {
                   <div className="flex items-center gap-3 animate-fadeIn">
                     <div className="relative flex items-center justify-center shrink-0">
                       <img
-                        src="/logo.png"
+                        src={barangayLogo || "/logo.png"}
                         alt="Brgy. Seal"
                         className="h-10 w-10 shrink-0 object-contain rounded-full shadow-md relative z-10"
                         style={{ width: "40px", height: "40px", minWidth: "40px", minHeight: "40px" }}
                         onError={(e) => {
-                          e.target.src = "https://placehold.co/100x100/064e3b/ffffff?text=Seal";
+                          e.target.src = "/logo.png";
                         }}
                       />
                     </div>
@@ -4388,11 +4470,11 @@ const UserDashboard = () => {
                   <div className="flex justify-center w-full animate-fadeIn mb-2">
                     <div className="relative flex items-center justify-center shrink-0">
                       <img
-                        src="/logo.png"
+                        src={barangayLogo || "/logo.png"}
                         alt="Brgy. Seal"
                         className="h-9 w-9 object-contain rounded-full shadow-md relative z-10"
                         onError={(e) => {
-                          e.target.src = "https://placehold.co/100x100/064e3b/ffffff?text=Seal";
+                          e.target.src = "/logo.png";
                         }}
                       />
                     </div>
@@ -4493,11 +4575,11 @@ const UserDashboard = () => {
               <div className="flex items-center gap-2.5">
                 <div className="relative flex items-center justify-center shrink-0">
                   <img
-                    src="/logo.png"
+                    src={barangayLogo || "/logo.png"}
                     alt="Brgy. Seal"
                     className="h-9 w-9 shrink-0 object-contain rounded-full shadow-sm relative z-10"
                     onError={(e) => {
-                      e.target.src = "https://placehold.co/100x100/064e3b/ffffff?text=Seal";
+                      e.target.src = "/logo.png";
                     }}
                   />
                 </div>
@@ -4659,6 +4741,12 @@ const UserDashboard = () => {
                                     setAnnouncementReadIds(next);
                                     setShowNotificationMenu(false);
                                     openModule("announcements");
+                                  } else if (n.isLivelihood) {
+                                    const next = [...new Set([...livelihoodReadIds, n.livelihood_id])];
+                                    saveStoredReadIds(`${LIVELIHOOD_READ_KEY}:${resident?.id}`, next);
+                                    setLivelihoodReadIds(next);
+                                    setShowNotificationMenu(false);
+                                    openModule("livelihood");
                                   } else {
                                     handleMarkNotificationRead(n.original);
                                     setShowNotificationMenu(false);
@@ -4678,7 +4766,7 @@ const UserDashboard = () => {
                                 }`}
                               >
                                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
-                                  <FileText size={14} />
+                                  {n.isLivelihood ? <Briefcase size={14} /> : n.isAnnouncement ? <Megaphone size={14} /> : <FileText size={14} />}
                                 </span>
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-start justify-between gap-1.5">
@@ -5194,8 +5282,21 @@ const UserDashboard = () => {
                       </div>
                       <p className="text-[10.5px] sm:text-xs text-emerald-100/80 font-medium">For inquiries and assistance, you may contact the barangay office.</p>
                       <div className="pt-1.5 space-y-0.5 text-[10.5px] sm:text-xs font-bold text-emerald-300">
-                        <p className="flex items-center gap-1.5">📞 <span className="text-white font-extrabold">{systemSettings?.officePhone || "09306259795"}</span></p>
-                        <p className="flex items-center gap-1.5 truncate">✉ <span className="text-white font-extrabold truncate">{systemSettings?.officeEmail || "calambarusseljay5@gmail.com"}</span></p>
+                        {Boolean(systemSettings?.officePhone && systemSettings.officePhone.trim()) && (
+                          <p className="flex items-center gap-1.5">
+                            📞 <span className="text-white font-extrabold">{systemSettings.officePhone.trim()}</span>
+                          </p>
+                        )}
+                        {Boolean(systemSettings?.officeEmail && systemSettings.officeEmail.trim()) && (
+                          <p className="flex items-center gap-1.5 truncate">
+                            ✉ <span className="text-white font-extrabold truncate">{systemSettings.officeEmail.trim()}</span>
+                          </p>
+                        )}
+                        {!systemSettings?.officePhone?.trim() && !systemSettings?.officeEmail?.trim() && (
+                          <p className="text-[10px] text-emerald-200/70 italic">
+                            Official hotline details not provided. Please visit during office hours.
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-2xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center justify-center shrink-0 shadow-xs">
@@ -5622,558 +5723,6 @@ const UserDashboard = () => {
                     </p>
                   </div>
                 )}
-              </div>
-
-              {/* 5. BARANGAY OFFICIALS & LEADERSHIP - ORGANIZATIONAL CHART LAYOUT & DESIGN */}
-              <div className="bg-gradient-to-b from-[#e0f2fe]/90 via-[#f0f9ff] to-[#ffffff] border-2 border-sky-300 rounded-3xl sm:rounded-[2.2rem] p-3.5 sm:p-6 md:p-8 shadow-2xl hover:shadow-sky-900/20 transition-all duration-300 space-y-4 text-slate-900 relative overflow-hidden backdrop-blur-md">
-                {/* Subtle Grid Pattern */}
-                <div className="pointer-events-none absolute inset-0 rounded-3xl sm:rounded-[2.2rem] bg-[radial-gradient(#93c5fd_1px,transparent_1px)] [background-size:18px_18px] opacity-40" />
-
-                {/* Section Header Bar with Seals & View All Link */}
-                <div className="relative z-10 flex items-center justify-between gap-2 sm:gap-4 w-full mb-3 sm:mb-5 pb-2 px-1 sm:px-2 border-b border-sky-200/80">
-                  {/* Left Seal */}
-                  <div className="flex items-center shrink-0">
-                    <div className="flex h-10 w-10 sm:h-14 sm:w-14 md:h-16 md:w-16 items-center justify-center rounded-2xl bg-white/90 p-1 shadow-sm border border-sky-200">
-                      <img
-                        src="/aleosan.logo.png"
-                        alt="Municipality of Aleosan Seal"
-                        className="h-full w-full object-contain drop-shadow-xs"
-                        onError={(e) => {
-                          e.target.src = "/aleosan logo.png";
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Center Title */}
-                  <div className="flex flex-col items-center text-center flex-1 min-w-0 px-1">
-                    <h3 className="text-xs sm:text-lg md:text-2xl font-black uppercase tracking-normal sm:tracking-wide text-[#064e3b] leading-tight drop-shadow-2xs">
-                      BARANGAY UPPER MINGADING
-                    </h3>
-                    <h4 className="text-[8px] sm:text-xs md:text-sm font-black uppercase tracking-[0.1em] sm:tracking-[0.2em] text-[#16a34a] mt-0.5 sm:mt-1 flex items-center justify-center gap-1 sm:gap-2">
-                      <span className="h-0.5 w-2.5 sm:w-6 md:w-8 bg-[#16a34a] inline-block" />
-                      <span>OFFICIAL ORGANIZATIONAL CHART</span>
-                      <span className="h-0.5 w-2.5 sm:w-6 md:w-8 bg-[#16a34a] inline-block" />
-                    </h4>
-                  </div>
-
-                  {/* Right Seal & Action */}
-                  <div className="flex items-center gap-2 shrink-0">
-                    <div className="flex h-10 w-10 sm:h-14 sm:w-14 md:h-16 md:w-16 items-center justify-center rounded-2xl bg-white/90 p-1 shadow-sm border border-sky-200">
-                      <img
-                        src="/logo.png"
-                        alt="Barangay Upper Mingading Seal"
-                        className="h-full w-full object-contain drop-shadow-xs"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* ─── HIERARCHICAL FLOWCHART TREE ─── */}
-                <div className="relative z-10 flex flex-col items-center w-full mx-auto pb-2">
-                  {/* Level 1: Punong Barangay */}
-                  {captain && (
-                    <div className="relative flex flex-col items-center w-full">
-                      <article
-                        onClick={() => setSelectedOfficialForModal(captain)}
-                        className="group relative flex items-center gap-2.5 sm:gap-3.5 w-full max-w-[290px] sm:max-w-[340px] rounded-2xl bg-white border-2 border-[#166534] ring-2 ring-emerald-400/30 p-2.5 sm:p-3 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] select-none text-left"
-                        title={`Click to view profile of ${captain.name}`}
-                      >
-                        <div className="relative h-14 w-12 sm:h-16 sm:w-14 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
-                          {captain.photoUrl ? (
-                            <img
-                              src={captain.photoUrl}
-                              alt={captain.name}
-                              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs sm:text-sm">
-                              <Crown size={22} className="text-amber-400" />
-                            </div>
-                          )}
-                          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
-                            <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow">
-                              <Eye size={9} />
-                              <span>Details</span>
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex flex-col min-w-0 flex-1">
-                          <span className="inline-flex items-center gap-1 text-[8px] sm:text-[9px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-amber-100 text-amber-900 border-amber-300">
-                            <Crown size={10} className="text-amber-600" />
-                            <span>PUNONG BARANGAY</span>
-                          </span>
-                          <h4 className="font-black text-xs sm:text-[13.5px] text-slate-900 leading-tight truncate" title={captain.name}>
-                            {captain.name}
-                          </h4>
-                          <p className="text-[8.5px] sm:text-[9px] text-slate-500 font-semibold leading-tight mt-0.5 truncate">
-                            {captain.committee || "Executive Leadership"}
-                          </p>
-                        </div>
-                      </article>
-                    </div>
-                  )}
-
-                  {/* Central Stem Line from Captain */}
-                  <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
-
-                  {/* Level 2: Sangguniang Barangay (Desktop: Connected 4-Column Tree / Mobile: Responsive Grid) */}
-                  
-                  {/* ─── MOBILE VIEW (< lg): Roomy Responsive Grid with Connected Stems ─── */}
-                  <div className="flex lg:hidden flex-col items-center w-full max-w-[620px] px-0.5">
-                    <div className="w-full flex flex-col items-center mb-3">
-                      <span className="inline-block text-[9px] font-black uppercase tracking-wider text-emerald-900 bg-emerald-100/90 border border-emerald-300/80 px-3 py-0.5 rounded-full shadow-2xs">
-                        Sangguniang Barangay Council
-                      </span>
-                      <div className="w-[2px] h-3 bg-[#166534] mt-1" />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
-                      {[...leftWingOfficials, ...rightWingOfficials].map((off) => {
-                        const isSK = off.id?.includes("sk") || off.level === "sk";
-                        return (
-                          <article
-                            key={off.id || off.name}
-                            onClick={() => setSelectedOfficialForModal(off)}
-                            className="group relative flex items-center gap-2.5 rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] select-none text-left w-full"
-                            title={`Click to view profile of ${off.name}`}
-                          >
-                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
-                              {off.photoUrl ? (
-                                <img
-                                  src={off.photoUrl}
-                                  alt={off.name}
-                                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
-                                  <User size={18} className="text-slate-300" />
-                                </div>
-                              )}
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
-                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wider text-slate-900 shadow">
-                                  <Eye size={8} />
-                                  <span>Details</span>
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span
-                                className={`inline-flex items-center gap-1 text-[8px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border ${
-                                  isSK
-                                    ? "bg-sky-100 text-sky-900 border-sky-300"
-                                    : "bg-emerald-100 text-emerald-900 border-emerald-300"
-                                }`}
-                              >
-                                {off.position || (isSK ? "SK CHAIRMAN" : "BARANGAY KAGAWAD")}
-                              </span>
-                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={off.name}>
-                                {off.name}
-                              </h4>
-                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={off.committee}>
-                                {off.committee || (isSK ? "Sangguniang Kabataan" : "Council Member")}
-                              </p>
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* ─── DESKTOP VIEW (>= lg): Connected 4-Column Flowchart Tree ─── */}
-                  <div className="hidden lg:flex items-start justify-center w-full max-w-[980px]">
-                    {/* LEFT WING: Col 1 & Col 2 */}
-                    <div className="relative flex items-start gap-3">
-                      {/* Continuous Horizontal Bus from Col 1 center to Right edge of Left Wing */}
-                      <div className="absolute top-0 left-[102.5px] xl:left-[110px] right-0 h-[2px] bg-[#166534]" />
-
-                      {/* Column 1: Wilson Boy -> Juanito */}
-                      <div className="flex flex-col items-center">
-                        <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
-                        {leftWingOfficials[0] && (
-                          <article
-                            onClick={() => setSelectedOfficialForModal(leftWingOfficials[0])}
-                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
-                            title={`Click to view profile of ${leftWingOfficials[0].name}`}
-                          >
-                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
-                              {leftWingOfficials[0].photoUrl ? (
-                                <img src={leftWingOfficials[0].photoUrl} alt={leftWingOfficials[0].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
-                              )}
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
-                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
-                              </div>
-                            </div>
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{leftWingOfficials[0].position || "BARANGAY KAGAWAD"}</span>
-                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={leftWingOfficials[0].name}>{leftWingOfficials[0].name}</h4>
-                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={leftWingOfficials[0].committee}>{leftWingOfficials[0].committee || "Council Member"}</p>
-                            </div>
-                          </article>
-                        )}
-                        <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
-                        {leftWingOfficials[2] && (
-                          <article
-                            onClick={() => setSelectedOfficialForModal(leftWingOfficials[2])}
-                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
-                            title={`Click to view profile of ${leftWingOfficials[2].name}`}
-                          >
-                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
-                              {leftWingOfficials[2].photoUrl ? (
-                                <img src={leftWingOfficials[2].photoUrl} alt={leftWingOfficials[2].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
-                              )}
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
-                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
-                              </div>
-                            </div>
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{leftWingOfficials[2].position || "BARANGAY KAGAWAD"}</span>
-                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={leftWingOfficials[2].name}>{leftWingOfficials[2].name}</h4>
-                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={leftWingOfficials[2].committee}>{leftWingOfficials[2].committee || "Council Member"}</p>
-                            </div>
-                          </article>
-                        )}
-                      </div>
-
-                      {/* Column 2: Garry -> Loreto */}
-                      <div className="flex flex-col items-center">
-                        <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
-                        {leftWingOfficials[1] && (
-                          <article
-                            onClick={() => setSelectedOfficialForModal(leftWingOfficials[1])}
-                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
-                            title={`Click to view profile of ${leftWingOfficials[1].name}`}
-                          >
-                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
-                              {leftWingOfficials[1].photoUrl ? (
-                                <img src={leftWingOfficials[1].photoUrl} alt={leftWingOfficials[1].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
-                              )}
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
-                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
-                              </div>
-                            </div>
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{leftWingOfficials[1].position || "BARANGAY KAGAWAD"}</span>
-                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={leftWingOfficials[1].name}>{leftWingOfficials[1].name}</h4>
-                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={leftWingOfficials[1].committee}>{leftWingOfficials[1].committee || "Council Member"}</p>
-                            </div>
-                          </article>
-                        )}
-                        <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
-                        {leftWingOfficials[3] && (
-                          <article
-                            onClick={() => setSelectedOfficialForModal(leftWingOfficials[3])}
-                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
-                            title={`Click to view profile of ${leftWingOfficials[3].name}`}
-                          >
-                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
-                              {leftWingOfficials[3].photoUrl ? (
-                                <img src={leftWingOfficials[3].photoUrl} alt={leftWingOfficials[3].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
-                              )}
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
-                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
-                              </div>
-                            </div>
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{leftWingOfficials[3].position || "BARANGAY KAGAWAD"}</span>
-                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={leftWingOfficials[3].name}>{leftWingOfficials[3].name}</h4>
-                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={leftWingOfficials[3].committee}>{leftWingOfficials[3].committee || "Council Member"}</p>
-                            </div>
-                          </article>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* CENTRAL CONNECTOR AISLE */}
-                    <div className="flex flex-col items-center justify-between self-stretch px-3 relative min-w-[36px] sm:min-w-[48px]">
-                      {/* Horizontal Bus Bridge */}
-                      <div className="absolute top-0 left-0 right-0 h-[2px] bg-[#166534]" />
-                      {/* Continuous Vertical Central Trunk */}
-                      <div className="absolute top-0 bottom-0 w-[2px] bg-[#166534]" />
-                    </div>
-
-                    {/* RIGHT WING: Col 3 & Col 4 */}
-                    <div className="relative flex items-start gap-3">
-                      {/* Continuous Horizontal Bus from Left edge to Col 4 center */}
-                      <div className="absolute top-0 left-0 right-[102.5px] xl:right-[110px] h-[2px] bg-[#166534]" />
-
-                      {/* Column 3: Judy -> Mercy Joy */}
-                      <div className="flex flex-col items-center">
-                        <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
-                        {rightWingOfficials[0] && (
-                          <article
-                            onClick={() => setSelectedOfficialForModal(rightWingOfficials[0])}
-                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
-                            title={`Click to view profile of ${rightWingOfficials[0].name}`}
-                          >
-                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
-                              {rightWingOfficials[0].photoUrl ? (
-                                <img src={rightWingOfficials[0].photoUrl} alt={rightWingOfficials[0].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
-                              )}
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
-                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
-                              </div>
-                            </div>
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{rightWingOfficials[0].position || "BARANGAY KAGAWAD"}</span>
-                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={rightWingOfficials[0].name}>{rightWingOfficials[0].name}</h4>
-                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={rightWingOfficials[0].committee}>{rightWingOfficials[0].committee || "Council Member"}</p>
-                            </div>
-                          </article>
-                        )}
-                        <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
-                        {rightWingOfficials[2] && (
-                          <article
-                            onClick={() => setSelectedOfficialForModal(rightWingOfficials[2])}
-                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
-                            title={`Click to view profile of ${rightWingOfficials[2].name}`}
-                          >
-                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
-                              {rightWingOfficials[2].photoUrl ? (
-                                <img src={rightWingOfficials[2].photoUrl} alt={rightWingOfficials[2].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
-                              )}
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
-                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
-                              </div>
-                            </div>
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{rightWingOfficials[2].position || "BARANGAY KAGAWAD"}</span>
-                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={rightWingOfficials[2].name}>{rightWingOfficials[2].name}</h4>
-                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={rightWingOfficials[2].committee}>{rightWingOfficials[2].committee || "Council Member"}</p>
-                            </div>
-                          </article>
-                        )}
-                      </div>
-
-                      {/* Column 4: Ruben / Kobi -> Chrystophyr SK */}
-                      <div className="flex flex-col items-center">
-                        <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
-                        {rightWingOfficials[1] && (
-                          <article
-                            onClick={() => setSelectedOfficialForModal(rightWingOfficials[1])}
-                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
-                            title={`Click to view profile of ${rightWingOfficials[1].name}`}
-                          >
-                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
-                              {rightWingOfficials[1].photoUrl ? (
-                                <img src={rightWingOfficials[1].photoUrl} alt={rightWingOfficials[1].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
-                              )}
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
-                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
-                              </div>
-                            </div>
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">{rightWingOfficials[1].position || "BARANGAY KAGAWAD"}</span>
-                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={rightWingOfficials[1].name}>{rightWingOfficials[1].name}</h4>
-                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={rightWingOfficials[1].committee}>{rightWingOfficials[1].committee || "Council Member"}</p>
-                            </div>
-                          </article>
-                        )}
-                        <div className="w-[2px] h-3.5 sm:h-4.5 bg-[#166534]" />
-                        {rightWingOfficials[3] && (
-                          <article
-                            onClick={() => setSelectedOfficialForModal(rightWingOfficials[3])}
-                            className="group relative flex items-center gap-3 w-[205px] xl:w-[220px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
-                            title={`Click to view profile of ${rightWingOfficials[3].name}`}
-                          >
-                            <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
-                              {rightWingOfficials[3].photoUrl ? (
-                                <img src={rightWingOfficials[3].photoUrl} alt={rightWingOfficials[3].name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs"><User size={18} className="text-slate-300" /></div>
-                              )}
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-2xs">
-                                <span className="inline-flex items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wider text-slate-900 shadow"><Eye size={9} /><span>Details</span></span>
-                              </div>
-                            </div>
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className="inline-flex items-center gap-1 text-[8.5px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-sky-100 text-sky-900 border-sky-300">{rightWingOfficials[3].position || "SK CHAIRMAN"}</span>
-                              <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={rightWingOfficials[3].name}>{rightWingOfficials[3].name}</h4>
-                              <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={rightWingOfficials[3].committee}>{rightWingOfficials[3].committee || "Sangguniang Kabataan"}</p>
-                            </div>
-                          </article>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Central Stem Line passing down to Staff */}
-                  <div className="w-[2px] h-5 sm:h-6 bg-[#166534]" />
-
-                  {/* Level 3: Secretary & Treasurer */}
-                  
-                  {/* ─── MOBILE VIEW (< lg): Responsive Staff Grid with Connected Stems ─── */}
-                  <div className="flex lg:hidden flex-col items-center w-full max-w-[620px] px-0.5">
-                    <div className="w-full flex flex-col items-center mb-3">
-                      <span className="inline-block text-[9px] font-black uppercase tracking-wider text-emerald-900 bg-emerald-100/90 border border-emerald-300/80 px-3 py-0.5 rounded-full shadow-2xs">
-                        Appointed Barangay Officials
-                      </span>
-                      <div className="w-[2px] h-3 bg-[#166534] mt-1" />
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full">
-                      {secretary && (
-                        <article
-                          onClick={() => setSelectedOfficialForModal(secretary)}
-                          className="group relative flex items-center gap-2.5 rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] select-none text-left w-full"
-                          title={`Click to view profile of ${secretary.name}`}
-                        >
-                          <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
-                            {secretary.photoUrl ? (
-                              <img
-                                src={secretary.photoUrl}
-                                alt={secretary.name}
-                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
-                                <User size={18} className="text-slate-300" />
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-col min-w-0 flex-1">
-                            <span className="inline-flex items-center gap-1 text-[8px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">
-                              {secretary.position || "BARANGAY SECRETARY"}
-                            </span>
-                            <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={secretary.name}>
-                              {secretary.name}
-                            </h4>
-                            <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={secretary.committee}>
-                              {secretary.committee || "Administrative Records"}
-                            </p>
-                          </div>
-                        </article>
-                      )}
-
-                      {treasurer && (
-                        <article
-                          onClick={() => setSelectedOfficialForModal(treasurer)}
-                          className="group relative flex items-center gap-2.5 rounded-2xl bg-white border-2 border-[#166534] p-2.5 shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] select-none text-left w-full"
-                          title={`Click to view profile of ${treasurer.name}`}
-                        >
-                          <div className="relative h-14 w-12 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
-                            {treasurer.photoUrl ? (
-                              <img
-                                src={treasurer.photoUrl}
-                                alt={treasurer.name}
-                                className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                              />
-                            ) : (
-                              <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
-                                <User size={18} className="text-slate-300" />
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-col min-w-0 flex-1">
-                            <span className="inline-flex items-center gap-1 text-[8px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">
-                              {treasurer.position || "BARANGAY TREASURER"}
-                            </span>
-                            <h4 className="font-black text-xs text-slate-900 leading-tight truncate" title={treasurer.name}>
-                              {treasurer.name}
-                            </h4>
-                            <p className="text-[8.5px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={treasurer.committee}>
-                              {treasurer.committee || "Finance & Accounting"}
-                            </p>
-                          </div>
-                        </article>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* ─── DESKTOP VIEW (>= lg): Side-by-side with Connected Branch Line ─── */}
-                  <div className="hidden lg:flex flex-col items-center w-full">
-                    <div className="relative flex items-start gap-6 sm:gap-8">
-                      {/* Horizontal Bus linking Secretary center and Treasurer center */}
-                      <div className="absolute top-0 left-[105px] sm:left-[120px] right-[105px] sm:right-[120px] h-[2px] bg-[#166534]" />
-
-                      {/* Secretary Column */}
-                      {secretary && (
-                        <div className="flex flex-col items-center">
-                          <div className="w-[2px] h-4 sm:h-5 bg-[#166534]" />
-                          <article
-                            onClick={() => setSelectedOfficialForModal(secretary)}
-                            className="group relative flex items-center gap-3 w-[210px] sm:w-[240px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 sm:p-3 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
-                            title={`Click to view profile of ${secretary.name}`}
-                          >
-                            <div className="relative h-14 w-12 sm:h-16 sm:w-14 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
-                              {secretary.photoUrl ? (
-                                <img
-                                  src={secretary.photoUrl}
-                                  alt={secretary.name}
-                                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
-                                  <User size={18} className="text-slate-300" />
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className="inline-flex items-center gap-1 text-[8.5px] sm:text-[9px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">
-                                {secretary.position || "BARANGAY SECRETARY"}
-                              </span>
-                              <h4 className="font-black text-[11px] sm:text-xs text-slate-900 leading-tight truncate" title={secretary.name}>
-                                {secretary.name}
-                              </h4>
-                              <p className="text-[8.5px] sm:text-[9px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={secretary.committee}>
-                                {secretary.committee || "Administrative Records"}
-                              </p>
-                            </div>
-                          </article>
-                        </div>
-                      )}
-
-                      {/* Treasurer Column */}
-                      {treasurer && (
-                        <div className="flex flex-col items-center">
-                          <div className="w-[2px] h-4 sm:h-5 bg-[#166534]" />
-                          <article
-                            onClick={() => setSelectedOfficialForModal(treasurer)}
-                            className="group relative flex items-center gap-3 w-[210px] sm:w-[240px] rounded-2xl bg-white border-2 border-[#166534] p-2.5 sm:p-3 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer hover:-translate-y-1 active:scale-[0.98] select-none text-left"
-                            title={`Click to view profile of ${treasurer.name}`}
-                          >
-                            <div className="relative h-14 w-12 sm:h-16 sm:w-14 shrink-0 overflow-hidden rounded-xl border-[1.5px] border-[#166534] bg-slate-100 shadow-xs">
-                              {treasurer.photoUrl ? (
-                                <img
-                                  src={treasurer.photoUrl}
-                                  alt={treasurer.name}
-                                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-slate-800 text-white font-black text-xs">
-                                  <User size={18} className="text-slate-300" />
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className="inline-flex items-center gap-1 text-[8.5px] sm:text-[9px] font-black uppercase px-2 py-0.5 rounded-md w-fit leading-none mb-1 border bg-emerald-100 text-emerald-900 border-emerald-300">
-                                {treasurer.position || "BARANGAY TREASURER"}
-                              </span>
-                              <h4 className="font-black text-[11px] sm:text-xs text-slate-900 leading-tight truncate" title={treasurer.name}>
-                                {treasurer.name}
-                              </h4>
-                              <p className="text-[8.5px] sm:text-[9px] text-slate-500 font-semibold leading-tight mt-0.5 truncate" title={treasurer.committee}>
-                                {treasurer.committee || "Finance & Accounting"}
-                              </p>
-                            </div>
-                          </article>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
               </div>
 
             </div>
@@ -7089,7 +6638,7 @@ const UserDashboard = () => {
                 <div className="flex items-center shrink-0">
                   <div className="flex h-11 w-11 sm:h-16 sm:w-16 md:h-20 md:w-20 items-center justify-center rounded-2xl bg-white/90 p-1 shadow-sm border border-sky-200">
                     <img
-                      src="/logo.png"
+                      src={barangayLogo || "/logo.png"}
                       alt="Barangay Upper Mingading Seal"
                       className="h-full w-full object-contain drop-shadow-xs"
                     />
@@ -8240,11 +7789,11 @@ const UserDashboard = () => {
               /* Enlarged Clean Animated Barangay Seal Logo Button */
               <div className="flex h-12 w-12 sm:h-14 sm:w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#064E3B] via-[#047857] to-[#022C22] text-white shrink-0 shadow-2xl border-2 border-emerald-300 ring-2 ring-emerald-400/40 drop-shadow-[0_0_15px_rgba(52,211,153,0.6)] transition-all duration-300 hover:ring-emerald-300">
                 <img
-                  src="/logo.png"
+                  src={barangayLogo || "/logo.png"}
                   alt="Barangay Seal"
                   className="h-8.5 w-8.5 sm:h-10 sm:w-10 object-contain rounded-full drop-shadow-md"
                   onError={(e) => {
-                    e.target.src = "https://placehold.co/100x100/14532d/ffffff?text=Brgy";
+                    e.target.src = "/logo.png";
                   }}
                 />
               </div>
@@ -8256,10 +7805,10 @@ const UserDashboard = () => {
       {/* Floating AI Assistant Window (Sleek Floating Card Widget) */}
       <AnimatePresence>
         {assistantOpen && (
-          <div className="fixed inset-0 z-[9995] flex items-center sm:items-end justify-center sm:justify-end p-2 sm:p-5 pointer-events-none">
-            {/* Backdrop */}
+          <div className="fixed inset-0 z-[9998] flex items-center sm:items-end justify-center sm:justify-end p-2 sm:p-5 pointer-events-none">
+            {/* Backdrop: Visible only on mobile screens, non-blocking on laptop/desktop */}
             <motion.div
-              className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs pointer-events-auto"
+              className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs pointer-events-auto sm:hidden"
               onClick={() => setAssistantOpen(false)}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -8267,7 +7816,7 @@ const UserDashboard = () => {
             />
             {/* Floating Chat Container */}
             <motion.div
-              className="relative z-10 flex h-[calc(100vh-5.5rem)] max-h-[680px] w-full sm:w-[430px] flex-col overflow-hidden rounded-3xl border border-emerald-500/30 bg-[#042015]/95 shadow-2xl backdrop-blur-2xl pointer-events-auto ring-1 ring-emerald-500/20 mb-14 sm:mb-0"
+              className="relative z-10 flex h-[min(650px,calc(100dvh-4.5rem))] max-h-[calc(100dvh-4.5rem)] w-full sm:w-[430px] flex-col overflow-hidden rounded-3xl border border-emerald-500/30 bg-[#042015]/95 shadow-2xl backdrop-blur-2xl pointer-events-auto ring-1 ring-emerald-500/20 mb-14 sm:mb-0"
               initial={{ opacity: 0, scale: 0.92, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.92, y: 20 }}

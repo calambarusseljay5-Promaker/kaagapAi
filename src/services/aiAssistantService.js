@@ -406,7 +406,8 @@ Official Political History & Leadership Timeline of Barangay Upper Mingading:
 7. Hon. Sito Calician (1991–1994) - Barangay Captain. Organized Civilian Volunteer Officers (CVO).
 8. Hon. Mamerto Garito (1994–2004) - Barangay Captain. Constructed Barangay Hall, Health Center, Water System, Day Care Center, All-Weather Road. Organized CAFGU, cooperatives, Farmer Association. Electrification & streetlights.
 9. Hon. Myrna Garito (2004–2007) - Punong Barangay. Constructed MRF and water system in Puroks Malipayon & Motor. Opened Brgy Road from Payhod to Buklod. Bacolod Annex Primary School in Purok Muslim. New Barangay Hall funded by Cong. Em "Lala" Taliño-Mendoza. Box Culvert & 2 classrooms.
-10. Hon. Wilson Caponpon (2007–Present) - Current Punong Barangay. Implemented government programs, maintained peace and order, improved roads. Awards: Model Barangay in Solid Waste Management, Best Performing Barangay at Provincial level, Best Recycling Innovation, Special Award Nominee at National level.
+10. Hon. Wilson Caponpon (2007–2023) - Former Punong Barangay (now Kagawad). Implemented major programs, maintained peace and order, improved roads. Won Model Barangay in Solid Waste Management, Best Performing Barangay, and Best Recycling Innovation.
+11. Hon. Mamerto C. Clarito (2023–Present) - Current Punong Barangay (Barangay Captain). Leads the Sangguniang Barangay, community public services, and KaagapAI digital administration.
 
 Official Policies & Ordinances of Barangay Upper Mingading:
 1. Curfew for Minors (below 18): 10:00 PM to 4:00 AM daily.
@@ -509,7 +510,8 @@ function buildLocalFallbackAnswer(question, snapshot) {
       "7. Hon. Sito Calician (1991–1994) - Barangay Captain. Organized Civilian Volunteer Officers (CVO).",
       "8. Hon. Mamerto Garito (1994–2004) - Barangay Captain. Built Barangay Hall, Health Center, Water System, Day Care Center, All-Weather Road. Organized CAFGU, cooperatives, Farmer Association. Electrification & streetlights.",
       "9. Hon. Myrna Garito (2004–2007) - Punong Barangay. Built MRF & water system in Puroks Malipayon & Motor. Opened Brgy Road Payhod-Buklod, Bacolod Annex Primary School in Purok Muslim. Built new Barangay Hall. Box Culvert & 2 classrooms.",
-      "10. Hon. Wilson Caponpon (2007–Present) - Current Punong Barangay. Implemented major programs, maintained peace and order, improved roads. Won Model Barangay in Solid Waste Management, Best Performing Barangay, and Best Recycling Innovation."
+      "10. Hon. Wilson Caponpon (2007–2023) - Former Punong Barangay (now Kagawad). Implemented major programs, maintained peace and order, improved roads. Won Model Barangay in Solid Waste Management, Best Performing Barangay, and Best Recycling Innovation.",
+      "11. Hon. Mamerto C. Clarito (2023–Present) - Current Punong Barangay (Barangay Captain). Leads the Sangguniang Barangay, community public services, and KaagapAI digital administration."
     ].join("\n");
   } else if (wantsPending && wantsDocuments) {
     lines.push(`Pending document requests: ${snapshot.pendingRequests.length}`);
@@ -703,9 +705,9 @@ Answer:`;
     }
   }
 
-  // Realistic AI Thinking & Processing Delay (3 to 4.5 seconds)
+  // Responsive natural delay (300ms to 600ms)
   const elapsed = Date.now() - startTime;
-  const targetThinkingTime = Math.floor(Math.random() * 1200) + 3200;
+  const targetThinkingTime = Math.floor(Math.random() * 300) + 300;
   if (elapsed < targetThinkingTime) {
     await new Promise((resolve) => setTimeout(resolve, targetThinkingTime - elapsed));
   }

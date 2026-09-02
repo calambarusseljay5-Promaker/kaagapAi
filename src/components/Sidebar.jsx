@@ -20,6 +20,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { fetchResidentActivationRequests } from "../services/residentActivationService";
 import { fetchPendingLivelihoodApplicationsCount } from "../services/livelihoodService";
 import { subscribeAdminNotificationChanges } from "../services/adminNotificationService";
+import { useBarangayLogo } from "../services/logoService";
 
 const navigationGroups = [
   {
@@ -56,47 +57,50 @@ const iconMap = {
   Trash2: <Trash2 size={17} className="stroke-[2]" />,
 };
 
-const AdminOrbitLogo = () => (
-  <div className="relative flex h-12 w-12 shrink-0 items-center justify-center">
-    {/* Tighter & Snug React 3-Loop Atomic Orbit SVG */}
-    <svg
-      className="absolute -inset-1.5 h-[calc(100%+12px)] w-[calc(100%+12px)] pointer-events-none drop-shadow-sm"
-      viewBox="0 0 100 100"
-    >
-      <defs>
-        <linearGradient id="sidebarOrbitGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#38BDF8" />
-          <stop offset="100%" stopColor="#818CF8" />
-        </linearGradient>
-        <linearGradient id="sidebarOrbitGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#EC4899" />
-          <stop offset="100%" stopColor="#F43F5E" />
-        </linearGradient>
-        <linearGradient id="sidebarOrbitGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#10B981" />
-          <stop offset="100%" stopColor="#F59E0B" />
-        </linearGradient>
-      </defs>
-      <ellipse cx="50" cy="50" rx="34" ry="12" fill="none" stroke="url(#sidebarOrbitGrad1)" strokeWidth="3" opacity="0.95" />
-      <g transform="rotate(60 50 50)">
-        <ellipse cx="50" cy="50" rx="34" ry="12" fill="none" stroke="url(#sidebarOrbitGrad2)" strokeWidth="3" opacity="0.95" />
-      </g>
-      <g transform="rotate(120 50 50)">
-        <ellipse cx="50" cy="50" rx="34" ry="12" fill="none" stroke="url(#sidebarOrbitGrad3)" strokeWidth="3" opacity="0.95" />
-      </g>
-    </svg>
+const AdminOrbitLogo = () => {
+  const logoUrl = useBarangayLogo();
+  return (
+    <div className="relative flex h-12 w-12 shrink-0 items-center justify-center">
+      {/* Tighter & Snug React 3-Loop Atomic Orbit SVG */}
+      <svg
+        className="absolute -inset-1.5 h-[calc(100%+12px)] w-[calc(100%+12px)] pointer-events-none drop-shadow-sm"
+        viewBox="0 0 100 100"
+      >
+        <defs>
+          <linearGradient id="sidebarOrbitGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#38BDF8" />
+            <stop offset="100%" stopColor="#818CF8" />
+          </linearGradient>
+          <linearGradient id="sidebarOrbitGrad2" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#EC4899" />
+            <stop offset="100%" stopColor="#F43F5E" />
+          </linearGradient>
+          <linearGradient id="sidebarOrbitGrad3" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#10B981" />
+            <stop offset="100%" stopColor="#F59E0B" />
+          </linearGradient>
+        </defs>
+        <ellipse cx="50" cy="50" rx="34" ry="12" fill="none" stroke="url(#sidebarOrbitGrad1)" strokeWidth="3" opacity="0.95" />
+        <g transform="rotate(60 50 50)">
+          <ellipse cx="50" cy="50" rx="34" ry="12" fill="none" stroke="url(#sidebarOrbitGrad2)" strokeWidth="3" opacity="0.95" />
+        </g>
+        <g transform="rotate(120 50 50)">
+          <ellipse cx="50" cy="50" rx="34" ry="12" fill="none" stroke="url(#sidebarOrbitGrad3)" strokeWidth="3" opacity="0.95" />
+        </g>
+      </svg>
 
-    {/* Larger Seal Logo Image */}
-    <img
-      src="/logo.png"
-      alt="Barangay Upper Mingading Logo"
-      className="relative z-10 h-10 w-10 sm:h-11 sm:w-11 object-contain drop-shadow-md"
-      onError={(e) => {
-        e.target.src = "https://placehold.co/100x100/064e3b/ffffff?text=Seal";
-      }}
-    />
-  </div>
-);
+      {/* Larger Seal Logo Image */}
+      <img
+        src={logoUrl || "/logo.png"}
+        alt="Barangay Upper Mingading Logo"
+        className="relative z-10 h-10 w-10 sm:h-11 sm:w-11 object-contain drop-shadow-md"
+        onError={(e) => {
+          e.target.src = "/logo.png";
+        }}
+      />
+    </div>
+  );
+};
 
 const COLLAPSE_DELAY = 300; // ms before collapsing after mouse leaves
 const EXPAND_DELAY = 80;   // ms before expanding on mouse enter

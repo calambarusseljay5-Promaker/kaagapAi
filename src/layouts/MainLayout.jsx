@@ -80,31 +80,30 @@ const MainLayout = () => {
     <div className="admin-shell-bg min-h-screen flex bg-slate-50" data-admin-theme={adminTheme}>
       <Sidebar isCollapsed={effectiveCollapsed} setIsCollapsed={setIsCollapsed} />
 
-      <motion.main
-        className="relative flex-1 min-w-0 min-h-screen overflow-x-hidden"
-        initial={false}
-        animate={{ paddingLeft: effectiveCollapsed ? 76 : 240 }}
-        transition={
-          shouldReduceMotion
-            ? { duration: 0 }
-            : { type: "spring", stiffness: 260, damping: 30, mass: 0.75 }
-        }
+      <main
+        className={`relative flex-1 min-w-0 min-h-screen overflow-x-hidden transition-[padding-left] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-[padding-left] ${
+          effectiveCollapsed ? "pl-[76px]" : "pl-[240px]"
+        }`}
       >
         <div className="system-page-area min-h-screen w-full bg-transparent overflow-x-hidden">
           <AnimatePresence mode="wait">
             <motion.div
               key={location.pathname}
-              initial={{ opacity: 0, y: 15 }}
+              initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              transition={shouldReduceMotion ? { duration: 0 } : { duration: 0.25, ease: "easeInOut" }}
-              className="w-full min-h-screen"
+              exit={{ opacity: 0, y: -8 }}
+              transition={
+                shouldReduceMotion
+                  ? { duration: 0 }
+                  : { duration: 0.18, ease: [0.16, 1, 0.3, 1] }
+              }
+              className="w-full min-h-screen transform-gpu"
             >
               <Outlet context={{ isCollapsed }} />
             </motion.div>
           </AnimatePresence>
         </div>
-      </motion.main>
+      </main>
     </div>
   );
 };

@@ -1335,9 +1335,41 @@ export const REAL_DOCUMENT_CSS = `
 
 export const getRealDocumentMarkup = ({ fields = {}, template = null, editable = false } = {}) => {
   const safeFields = fields || {};
-  const title = getDocumentTitle(template);
+  const headerCfg = template?.header_config || {};
+  const title = headerCfg.title || getDocumentTitle(template);
   const paragraphs = getDocumentBodyHtml(safeFields, template);
   const printSettings = getPrintSettings(safeFields, template);
+
+  const logoUrl = headerCfg.logoUrl || BARANGAY_SEAL_SRC;
+  const logoAlign = headerCfg.logoAlignment || "left";
+  const logoSize = headerCfg.logoSize ? `${headerCfg.logoSize}px` : "1.18in";
+  const showLogo = headerCfg.showLogo !== false;
+  const secondaryUrl = headerCfg.secondaryUrl || "/aleosan.logo.png";
+  const secondarySize = headerCfg.secondarySize ? `${headerCfg.secondarySize}px` : "1.18in";
+  const isDual = logoAlign === "dual" || Boolean(headerCfg.secondaryVisible);
+
+  let sealHtml = "";
+  if (showLogo) {
+    if (logoAlign === "center") {
+      sealHtml = `<div style="display:flex; justify-content:center; margin-bottom:8px;"><img src="${logoUrl}" alt="Barangay Seal" style="width:${logoSize}; height:${logoSize}; aspect-ratio:1/1; border-radius:50%; object-fit:contain;" /></div>`;
+    } else if (logoAlign === "right") {
+      sealHtml = `<img class="real-doc-seal" src="${logoUrl}" alt="Barangay Seal" style="left:auto; right:0.1in; width:${logoSize}; height:${logoSize};" />`;
+    } else if (isDual) {
+      sealHtml = `
+        <img class="real-doc-seal" src="${logoUrl}" alt="Barangay Seal" style="left:0.1in; width:${logoSize}; height:${logoSize};" />
+        <img class="real-doc-seal" src="${secondaryUrl}" alt="Municipal Seal" style="left:auto; right:0.1in; width:${secondarySize}; height:${secondarySize};" />
+      `;
+    } else {
+      sealHtml = `<img class="real-doc-seal" src="${logoUrl}" alt="Barangay Seal" style="left:0.1in; width:${logoSize}; height:${logoSize};" />`;
+    }
+  }
+
+  const country = headerCfg.country || "Republic of the Philippines";
+  const province = headerCfg.province || "Province of Cotabato";
+  const municipality = headerCfg.municipality || "Municipality of Aleosan";
+  const barangay = headerCfg.barangay || "Barangay of Upper Mingading";
+  const office = headerCfg.office || "OFFICE OF THE PUNONG BARANGAY";
+  const salutation = headerCfg.salutation || "TO WHOM IT MAY CONCERN:";
 
   return `
     <style>${REAL_DOCUMENT_CSS}</style>
@@ -1346,18 +1378,18 @@ export const getRealDocumentMarkup = ({ fields = {}, template = null, editable =
         class="real-doc-page real-doc-${getRealDocumentTemplateKey(template)}"
         style="--doc-font-family: ${printSettings.fontFamily}; --doc-body-font-size: ${printSettings.bodyFontSizePt}pt; --doc-line-height: ${printSettings.lineHeight}; --doc-paragraph-gap: ${printSettings.paragraphGap}in; --doc-padding: ${printSettings.padding};"
       >
-        <div class="real-doc-header">
-          <img class="real-doc-seal" src="${BARANGAY_SEAL_SRC}" alt="" />
+        <div class="real-doc-header" style="${logoAlign === 'center' ? 'padding-top: 4px;' : ''}">
+          ${sealHtml}
           <div class="real-doc-header-text">
-            <div>Republic of the Philippines</div>
-            <div>Province of Cotabato</div>
-            <div>Municipality of Aleosan</div>
-            <div>Barangay of Upper Mingading</div>
-            <div class="real-doc-office">OFFICE OF THE PUNONG BARANGAY</div>
+            <div>${country}</div>
+            <div>${province}</div>
+            <div>${municipality}</div>
+            <div>${barangay}</div>
+            <div class="real-doc-office">${office}</div>
           </div>
         </div>
         <h1 class="real-doc-title">${title}</h1>
-        <p class="real-doc-to">TO WHOM IT MAY CONCERN:</p>
+        <p class="real-doc-to">${salutation}</p>
         <section class="real-doc-body" ${getEditableBodyAttributes(editable)}>${paragraphs}</section>
         ${getDocumentFooter(safeFields, template, editable)}
         ${getDocumentExtras(safeFields, template, editable)}

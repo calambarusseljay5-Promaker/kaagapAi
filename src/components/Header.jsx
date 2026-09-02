@@ -23,6 +23,7 @@ import MyAccountModal from "./modals/MyAccountModal";
 import AccountSecurityModal from "./modals/AccountSecurityModal";
 import SystemSettingsModal from "./modals/SystemSettingsModal";
 import { useRealtimeSync } from "../services/realtimeSyncService";
+import { useBarangayLogo } from "../services/logoService";
 
 const getDisplayName = (user, account) =>
   account?.profile?.full_name ||
@@ -120,6 +121,36 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
       if (timer) clearTimeout(timer);
     };
   }, []);
+
+  const barangayLogo = useBarangayLogo();
+  const [profileSyncKey, setProfileSyncKey] = useState(0);
+  const [imgLoadError, setImgLoadError] = useState(false);
+
+  const reloadAdminAccount = useCallback(() => {
+    getCurrentUserWithProfile().then((acc) => {
+      setAccount(acc);
+      setProfileSyncKey((k) => k + 1);
+      setImgLoadError(false);
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const handleProfileUpdate = () => {
+      reloadAdminAccount();
+    };
+
+    window.addEventListener(PROFILE_UPDATED_EVENT, handleProfileUpdate);
+    window.addEventListener("admin_profile_updated", handleProfileUpdate);
+    window.addEventListener("kaagapai:system-settings-updated", handleProfileUpdate);
+    window.addEventListener("storage", handleProfileUpdate);
+
+    return () => {
+      window.removeEventListener(PROFILE_UPDATED_EVENT, handleProfileUpdate);
+      window.removeEventListener("admin_profile_updated", handleProfileUpdate);
+      window.removeEventListener("kaagapai:system-settings-updated", handleProfileUpdate);
+      window.removeEventListener("storage", handleProfileUpdate);
+    };
+  }, [reloadAdminAccount]);
 
   const unreadCount = notifications.filter((notification) => !notification.is_read).length;
   const displayName = getDisplayName(account?.user, account);
@@ -438,7 +469,7 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                       <div className="relative w-full max-w-[420px] rounded-[1.1rem] border border-white/20 bg-white/95 p-5 shadow-[0_24px_70px_rgba(0,0,0,0.28)] backdrop-blur-xl">
                         <div className="rounded-[0.85rem] bg-gradient-to-br from-rose-50 to-rose-100 p-3">
                           <div className="flex items-center gap-3">
-                            <img src="/logo.png" alt="Barangay logo" className="h-10 w-10 object-contain drop-shadow-md shrink-0" />
+                            <img src={barangayLogo || "/logo.png"} alt="Barangay logo" className="h-10 w-10 object-contain drop-shadow-md shrink-0" />
                             <div>
                               <div className="text-sm font-extrabold text-rose-800">Sign out</div>
                               <div className="mt-1 text-sm font-semibold text-slate-800">Are you sure you want to sign out?</div>
@@ -646,18 +677,16 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                     borderStyle: 'solid',
                   }}
                 >
-                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/20 text-white ring-2 ring-emerald-300/50 overflow-hidden">
-                    {profilePhotoUrl ? (
+                  <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-950/80 border border-emerald-400/50 text-emerald-200 ring-2 ring-emerald-400/40 overflow-hidden shadow-sm">
+                    {profilePhotoUrl && !imgLoadError ? (
                       <img
                         src={profilePhotoUrl}
                         alt="Admin Profile"
                         className="h-full w-full rounded-full object-cover"
-                        onError={(e) => {
-                          e.currentTarget.style.display = "none";
-                        }}
+                        onError={() => setImgLoadError(true)}
                       />
                     ) : (
-                      <User size={16} className="text-white" />
+                      <User size={15} className="text-emerald-200" />
                     )}
                   </span>
                   <div className="hidden text-left sm:block leading-tight">
@@ -672,18 +701,16 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                     <div className="fixed inset-0 z-[99990]" onClick={() => setShowProfile(false)} />
                     <div className="absolute right-0 top-full z-[99999] mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl backdrop-blur-xl text-slate-900" style={{ width: 'min(16rem, calc(100vw - 2rem))' }}>
                     <div className="flex items-center gap-3 border-b border-slate-100 px-2 pb-3 pt-1">
-                      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00552E]/10 text-[#00552E] ring-2 ring-[#00552E]/20 overflow-hidden">
-                        {profilePhotoUrl ? (
+                      <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-950/80 border border-emerald-400/50 text-emerald-200 ring-2 ring-emerald-400/30 overflow-hidden shadow-sm">
+                        {profilePhotoUrl && !imgLoadError ? (
                           <img
                             src={profilePhotoUrl}
                             alt="Admin Profile"
                             className="h-full w-full rounded-full object-cover"
-                            onError={(e) => {
-                              e.currentTarget.style.display = "none";
-                            }}
+                            onError={() => setImgLoadError(true)}
                           />
                         ) : (
-                          <User size={20} className="text-[#00552E]" />
+                          <User size={20} className="text-emerald-200" />
                         )}
                       </span>
                       <div className="min-w-0">

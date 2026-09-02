@@ -52,6 +52,25 @@
   --kaagap-barangay-bg-position: center;
   --kaagap-barangay-bg-attachment: fixed;
   --kaagap-barangay-bg-repeat: no-repeat;
+  --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 60fps / 120fps Hardware-Accelerated Performance Enhancements */
+*, ::before, ::after {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.transform-gpu {
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+.smooth-transition {
+  transition: all 250ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
 }
 
 /* Glassmorphism Utilities */
@@ -60,7 +79,8 @@
   border: 1px solid var(--kaagap-border);
   box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
   border-radius: 20px;
-  transition: all 200ms ease;
+  transition: transform 250ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 250ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
 }
 
 .premium-card {
@@ -6188,18 +6208,6 @@ input.transparent-search-input:focus,
 
 .admin-shell-bg .grid > * {
   min-width: 0;
-}
-
-/* Modal safety on all screen sizes */
-.admin-shell-bg [class*="fixed inset-0"] {
-  overflow-y: auto;
-}
-
-/* Float modal responsive safety */
-.admin-shell-bg .fixed.inset-0 > [class*="max-w-"] {
-  max-width: calc(100vw - 2rem) !important;
-  max-height: calc(100vh - 2rem) !important;
-  overflow-y: auto;
 }
 
 /* Animated Color-Shifting Circuit System */

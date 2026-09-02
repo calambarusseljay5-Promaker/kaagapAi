@@ -111,11 +111,9 @@ class GlobalErrorBoundary extends React.Component {
 }
 
 createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <GlobalErrorBoundary>
-      <MotionConfig reducedMotion="user">
-        <App />
-      </MotionConfig>
-    </GlobalErrorBoundary>
-  </StrictMode>,
+  <GlobalErrorBoundary>
+    <MotionConfig reducedMotion="user">
+      <App />
+    </MotionConfig>
+  </GlobalErrorBoundary>
 )

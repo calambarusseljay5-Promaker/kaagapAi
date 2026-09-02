@@ -356,6 +356,162 @@ export const standardOccupationOptions = [
   "Others (Please Specify)",
 ];
 
+export const normalizeOccupationValue = (raw) => {
+  if (!raw) return "";
+  const occ = String(raw).trim();
+  if (!occ) return "";
+
+  // Filter out placeholder / invalid entries
+  const lower = occ.toLowerCase().replace(/[._-]+$/, "").trim();
+  const junk = new Set([
+    "none", "occupation", "n/a", "na", "-", "--", "---", "null", "undefined",
+    "others", "others (please specify)", "applicant", "armor", "on-temporary", "soldering"
+  ]);
+  if (junk.has(lower)) return "";
+
+  // Standardize common typos, casing, and equivalent terms
+  if (lower === "sudent" || lower === "student" || lower === "estudyante") return "Student";
+  if (
+    lower === "house wife" ||
+    lower === "housewife" ||
+    lower === "house keeper" ||
+    lower === "housekeeper" ||
+    lower === "housemaid" ||
+    lower === "house helper" ||
+    lower === "kasambahay" ||
+    lower === "homemaker"
+  ) {
+    return "Housewife / Homemaker";
+  }
+  if (lower === "sales lady" || lower === "saleslady" || lower === "sales boy" || lower === "sales staff" || lower === "sales boy / ukay-ukay") {
+    return "Sales Staff / Retail";
+  }
+  if (lower === "farmer" || lower === "farming" || lower === "magsasaka" || lower === "farmer / housekeeper") {
+    return "Farmer";
+  }
+  if (lower === "farmer / ofw") {
+    return "Farmer / OFW";
+  }
+  if (lower === "farmer / driver") {
+    return "Farmer / Driver";
+  }
+  if (
+    lower === "driver" ||
+    lower === "passenger jeepney driver" ||
+    lower === "truck driver" ||
+    lower === "habal-habal driver" ||
+    lower === "tricycle driver" ||
+    lower === "delivery man"
+  ) {
+    return "Driver / Delivery";
+  }
+  if (lower === "ofw" || lower === "ofw seaman" || lower === "seaman") {
+    return "OFW (Overseas Filipino Worker)";
+  }
+  if (
+    lower === "goverment employee" ||
+    lower === "government employee" ||
+    lower === "brgy. leader / gov't employee" ||
+    lower === "government employee / official" ||
+    lower === "barangay kagawad" ||
+    lower === "barangay treasurer" ||
+    lower === "office of municipal" ||
+    lower === "dswd staff"
+  ) {
+    return "Government / Barangay Worker";
+  }
+  if (lower === "cafgo" || lower === "cafgu") return "CAFGU";
+  if (
+    lower === "business man" ||
+    lower === "business man0" ||
+    lower === "businessman" ||
+    lower === "business woman" ||
+    lower === "businesswoman"
+  ) {
+    return "Businessman / Businesswoman";
+  }
+  if (
+    lower === "sari-sari store" ||
+    lower === "sari-sari store owner" ||
+    lower === "improvised business / sari-sari store"
+  ) {
+    return "Sari-sari Store Owner";
+  }
+  if (lower === "police officer" || lower === "police" || lower === "retired police") {
+    return "Police Officer";
+  }
+  if (lower === "soldier" || lower === "retired soldier") {
+    return "Soldier / Military";
+  }
+  if (lower === "guard" || lower === "security guard") {
+    return "Security Guard";
+  }
+  if (lower === "carpenter" || lower === "framer") {
+    return "Carpenter";
+  }
+  if (
+    lower === "construction" ||
+    lower === "construction worker" ||
+    lower === "builder" ||
+    lower === "laborer" ||
+    lower === "laborer / employment" ||
+    lower === "laborer / farm worker" ||
+    lower === "plantation worker" ||
+    lower === "factory worker"
+  ) {
+    return "Construction Worker / Laborer";
+  }
+  if (
+    lower === "vendor" ||
+    lower === "fruit vendor" ||
+    lower === "bag vendor" ||
+    lower === "bag supplier" ||
+    lower === "seller" ||
+    lower === "online seller"
+  ) {
+    return "Vendor / Merchant";
+  }
+  if (
+    lower === "job order staff" ||
+    lower === "intelligence staff" ||
+    lower === "procurement staff" ||
+    lower === "work at office" ||
+    lower === "employee" ||
+    lower === "private employee" ||
+    lower === "merchandising supervisor" ||
+    lower === "bakery worker" ||
+    lower === "day care worker" ||
+    lower === "resort promoter" ||
+    lower === "homebased" ||
+    lower === "intern"
+  ) {
+    return "Private / Office Employee";
+  }
+
+  // Proper Title Case for any other custom occupations
+  return occ
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+};
+
+export const getUniqueCleanOccupations = (sourceList = []) => {
+  const map = new Map();
+
+  sourceList.forEach((item) => {
+    const raw = typeof item === "string" ? item : item?.occupation;
+    if (!raw) return;
+    const clean = normalizeOccupationValue(raw);
+    if (!clean) return;
+    const key = clean.toLowerCase();
+    if (!map.has(key)) {
+      map.set(key, clean);
+    }
+  });
+
+  return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+};
+
 export const categoryFilterOptions = [
   { value: "", label: "All categories" },
   { value: "senior", label: "Senior citizens" },
@@ -544,4 +700,38 @@ export function residentMatchesCategory(resident = {}, category = "") {
   if (category === "pwd") return Boolean(resident.is_pwd);
 
   return true;
+}
+
+export function getPortalUsername(resident) {
+  if (!resident) return "-";
+  let username =
+    resident.portal_username ||
+    resident.resident_account?.username ||
+    resident.username ||
+    (resident.email ? resident.email.split("@")[0] : "") ||
+    resident.phone ||
+    "";
+
+  if (typeof username === "string" && username.includes("@")) {
+    username = username.split("@")[0];
+  }
+
+  username = String(username || "").trim().toLowerCase();
+  return username || "-";
+}
+
+export function getResidentPortalPassword(resident) {
+  if (!resident) return "";
+  return (
+    resident.portal_password ||
+    resident.plain_password ||
+    resident.resident_account?.plain_password ||
+    (Array.isArray(resident.resident_accounts) && resident.resident_accounts[0]?.plain_password) ||
+    resident.password ||
+    ""
+  );
+}
+
+export function getPortalAccountStatus(resident) {
+  return resident?.portal_account_status || resident?.resident_account?.account_status || "Active";
 }

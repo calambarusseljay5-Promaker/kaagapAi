@@ -1,6 +1,8 @@
 import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
+import { useBarangayLogo } from "../services/logoService";
 
 const widthMap = {
   "max-w-sm": "384px",
@@ -26,6 +28,7 @@ const FloatingModal = ({
 }) => {
   const isModalOpen = Boolean(open ?? isOpen);
   const resolvedMaxWidth = widthMap[maxWidth] || (maxWidth.includes("px") || maxWidth.includes("rem") ? maxWidth : undefined);
+  const barangayLogo = useBarangayLogo();
 
   useEffect(() => {
     if (!isModalOpen) return;
@@ -41,12 +44,12 @@ const FloatingModal = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isModalOpen, onClose]);
 
-  if (!isModalOpen) return null;
+  if (!isModalOpen || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isModalOpen && (
-        <div className="fixed inset-0 z-[999998] flex items-start justify-center p-4 sm:p-6 overflow-y-auto">
+        <div className="fixed inset-0 z-[999998] flex items-center justify-center p-3 sm:p-4 overflow-hidden pointer-events-auto">
           {/* Light Glassmorphism Backdrop Overlay */}
           <motion.div
             initial={{ opacity: 0 }}
@@ -63,13 +66,13 @@ const FloatingModal = ({
             exit={{ opacity: 0, scale: 0.95, y: 12 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
             style={{ maxWidth: resolvedMaxWidth }}
-            className={`relative z-10 flex my-auto max-h-[90vh] w-full flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)] backdrop-blur-2xl text-slate-900`}
+            className={`relative z-10 flex max-h-[88vh] w-full flex-col overflow-hidden rounded-3xl border border-white/80 bg-white/95 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.3)] backdrop-blur-2xl text-slate-900`}
           >
             {/* Sticky Modal Header - Sleek Dark Green */}
             <header className="sticky top-0 z-20 flex shrink-0 items-center justify-between gap-3 border-b border-emerald-400/30 bg-gradient-to-r from-[#033E2A] via-[#045438] to-[#03442E] text-white px-4 sm:px-6 py-3 sm:py-4 shadow-md relative overflow-hidden">
               <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-transparent pointer-events-none" />
               <div className="flex items-center gap-2.5 relative z-10 min-w-0">
-                <img src="/logo.png" alt="Seal" className="h-9 w-9 sm:h-10 sm:w-10 object-contain drop-shadow-md shrink-0" />
+                <img src={barangayLogo || "/logo.png"} alt="Seal" className="h-9 w-9 sm:h-10 sm:w-10 object-contain drop-shadow-md shrink-0" />
                 <div className="min-w-0">
                   {eyebrow ? (
                     <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-emerald-200 truncate">
@@ -108,7 +111,8 @@ const FloatingModal = ({
           </motion.section>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };
 

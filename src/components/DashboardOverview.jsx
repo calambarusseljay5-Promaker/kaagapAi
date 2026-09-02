@@ -37,6 +37,7 @@ import {
 } from "recharts";
 import { buildPurokSummary, getResidentAge } from "../utils/residentProfile";
 import { motion } from "framer-motion";
+import ResidentProfileModal from "./modals/ResidentProfileModal";
 
 const formatCount = (value) => Number(value || 0).toLocaleString();
 
@@ -63,22 +64,6 @@ const itemVariants = {
   },
 };
 
-// Population Growth Data over 12 Months
-const POPULATION_GROWTH_DATA = [
-  { label: "Jan", residents: 1200 },
-  { label: "Feb", residents: 1320 },
-  { label: "Mar", residents: 1450 },
-  { label: "Apr", residents: 1580 },
-  { label: "May", residents: 1720 },
-  { label: "Jun", residents: 1860 },
-  { label: "Jul", residents: 2213 },
-  { label: "Aug", residents: 2250 },
-  { label: "Sep", residents: 2310 },
-  { label: "Oct", residents: 2380 },
-  { label: "Nov", residents: 2450 },
-  { label: "Dec", residents: 2520 },
-];
-
 const DEMOGRAPHICS_COLORS = ["#EC4899", "#6366F1", "#F59E0B", "#A855F7", "#10B981"];
 
 const formatDate = (value) => {
@@ -103,6 +88,8 @@ const DashboardOverview = ({
 }) => {
   const navigate = useNavigate();
   const [time, setTime] = useState(new Date());
+  const [selectedResidentForView, setSelectedResidentForView] = useState(null);
+  const [showResidentModal, setShowResidentModal] = useState(false);
 
   // Ticking local digital clock
   useEffect(() => {
@@ -204,8 +191,9 @@ const DashboardOverview = ({
 
   // Population per Purok Bar Data dynamically computed from safeResidents
   const purokBarData = useMemo(() => {
-    const summary = safeResidents && safeResidents.length > 0 ? buildPurokSummary(safeResidents, { includeOther: false }) : [];
-    const computed = summary
+    if (!safeResidents || safeResidents.length === 0) return [];
+    const summary = buildPurokSummary(safeResidents, { includeOther: false });
+    return summary
       .map((item) => ({
         purok: item.label,
         count: item.residents,
@@ -213,76 +201,51 @@ const DashboardOverview = ({
       }))
       .filter((item) => item.count > 0)
       .sort((a, b) => b.count - a.count);
-
-    if (computed.length > 0) {
-      return computed;
-    }
-
-    return [
-      { purok: "Kamonsil", count: 412, fill: "#2563EB" },
-      { purok: "Payhod", count: 385, fill: "#16A34A" },
-      { purok: "Muslim", count: 360, fill: "#F59E0B" },
-      { purok: "Malipayon", count: 338, fill: "#7C3AED" },
-      { purok: "Purok-3", count: 290, fill: "#DC2626" },
-      { purok: "Buklod", count: 245, fill: "#0891B2" },
-      { purok: "Azucena", count: 184, fill: "#DB2777" },
-    ];
   }, [safeResidents]);
 
   // Real registered residents mapping for Resident List table
   const displayResidents = useMemo(() => {
     if (safeResidents && safeResidents.length > 0) {
-      return safeResidents.slice(0, 5).map((r, idx) => ({
+      return safeResidents.slice(0, 8).map((r, idx) => ({
         id: r.id || idx,
+        raw: r,
         name: r.full_name || `${r.first_name || ""} ${r.last_name || ""}`.trim() || "Resident",
         purok: r.purok || "Purok 1",
-        age: getResidentAge(r) ?? (r.age || 28),
+        age: getResidentAge(r) ?? (r.age || "-"),
         gender: String(r.sex || r.gender || "M").charAt(0).toUpperCase(),
-        status: r.voter_status || r.status || "Active Voter",
+        status: r.voter_status || r.status || "Active",
         date: formatDate(r.created_at || r.registered_at),
       }));
     }
-    return [
-      { id: 1, name: "Maria Clara Santos", purok: "Muslim", age: 24, gender: "F", status: "Active Voter", date: "May 24, 2026" },
-      { id: 2, name: "Juan Dela Cruz", purok: "Payhod", age: 35, gender: "M", status: "Active Voter", date: "May 24, 2026" },
-      { id: 3, name: "Ana Patricia Flores", purok: "Kamonsil", age: 29, gender: "F", status: "Active Voter", date: "May 23, 2026" },
-      { id: 4, name: "Ricardo Dalisay", purok: "Malipayon", age: 42, gender: "M", status: "Active Voter", date: "May 22, 2026" },
-      { id: 5, name: "Elena Ramos", purok: "Azucena", age: 19, gender: "F", status: "Youth Resident", date: "May 21, 2026" },
-    ];
+    return [];
   }, [safeResidents]);
 
-  // Filter real pending requests matching screenshot format
+  // Filter real pending requests
   const displayRequests = useMemo(() => {
-    const pending = safeRequests.filter((r) => r.status === "Pending" || r.status === "For Review");
-    if (pending.length > 0) {
-      return pending.slice(0, 5).map((r) => ({
+    if (safeRequests && safeRequests.length > 0) {
+      const pending = safeRequests.filter((r) => r.status === "Pending" || r.status === "For Review");
+      return pending.slice(0, 6).map((r) => ({
         id: r.id,
-        name: r.residents?.full_name || "Unknown Resident",
+        name: r.residents?.full_name || r.resident_name || "Resident",
         type: r.document_type || "Document Request",
         date: formatDate(r.created_at),
         status: r.status,
         statusClass:
           r.status === "Pending"
-            ? "bg-amber-50 text-amber-700 border-amber-200"
-            : "bg-blue-50 text-blue-700 border-blue-200",
+            ? "bg-amber-100 text-amber-900 border-amber-300 font-bold"
+            : "bg-blue-100 text-blue-900 border-blue-300 font-bold",
       }));
     }
-    return [
-      { id: 1, name: "Maria Santos", type: "Barangay Clearance", date: "May 24, 2026", status: "Pending", statusClass: "bg-amber-50 text-amber-700 border-amber-200" },
-      { id: 2, name: "Pedro Dela Cruz", type: "Indigency Certificate", date: "May 24, 2026", status: "Pending", statusClass: "bg-amber-50 text-amber-700 border-amber-200" },
-      { id: 3, name: "Ana Flores", type: "Business Permit", date: "May 24, 2026", status: "For Review", statusClass: "bg-blue-50 text-blue-700 border-blue-200" },
-      { id: 4, name: "John Rey Climaco", type: "Certificate of Residency", date: "May 24, 2026", status: "Approved", statusClass: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-      { id: 5, name: "Liza Marcelo", type: "Barangay Clearance", date: "May 24, 2026", status: "Pending", statusClass: "bg-amber-50 text-amber-700 border-amber-200" },
-    ];
+    return [];
   }, [safeRequests]);
 
-  // Real announcements mapping matching screenshot dates & titles
+  // Real announcements mapping
   const displayAnnouncements = useMemo(() => {
     if (safeAnnouncements && safeAnnouncements.length > 0) {
-      return safeAnnouncements.slice(0, 3).map((ann) => {
+      return safeAnnouncements.slice(0, 4).map((ann) => {
         const dateObj = new Date(ann.publish_date || ann.created_at);
-        const day = dateObj.toLocaleDateString(undefined, { day: "2-digit" });
-        const month = dateObj.toLocaleDateString(undefined, { month: "short" }).toUpperCase();
+        const day = !isNaN(dateObj.getTime()) ? dateObj.toLocaleDateString(undefined, { day: "2-digit" }) : "01";
+        const month = !isNaN(dateObj.getTime()) ? dateObj.toLocaleDateString(undefined, { month: "short" }).toUpperCase() : "SEP";
         return {
           id: ann.id,
           title: ann.title || "Announcement",
@@ -292,14 +255,10 @@ const DashboardOverview = ({
         };
       });
     }
-    return [
-      { id: 1, title: "Clean-Up Drive", desc: "Join us this coming July 12, 2026 for the monthly clean-up drive...", day: "07", month: "JUL" },
-      { id: 2, title: "Free Medical Check-up", desc: "Free medical check-up for senior citizens on July 15, 2026...", day: "05", month: "JUL" },
-      { id: 3, title: "Barangay Assembly", desc: "Please be informed that the Barangay Assembly will be on...", day: "01", month: "JUL" },
-    ];
+    return [];
   }, [safeAnnouncements]);
 
-  // Real activities mapping matching screenshot items
+  // Real activities mapping
   const displayActivities = useMemo(() => {
     if (safeActivities && safeActivities.length > 0) {
       return safeActivities.slice(0, 5).map((act, idx) => ({
@@ -315,13 +274,7 @@ const DashboardOverview = ({
             : "bg-slate-50 text-slate-700 border-slate-100",
       }));
     }
-    return [
-      { id: 1, title: "Juan Dela Cruz registered a new resident", time: "May 24, 2026 • 10:15 AM", category: "Residents", badge: "bg-emerald-50 text-emerald-600 border border-emerald-200" },
-      { id: 2, title: "Document \"Barangay Clearance\" generated", time: "May 24, 2026 • 09:45 AM", category: "Documents", badge: "bg-purple-50 text-purple-600 border border-purple-200" },
-      { id: 3, title: "New announcement posted", time: "May 24, 2026 • 09:30 AM", category: "Announcements", badge: "bg-amber-50 text-amber-600 border border-amber-200" },
-      { id: 4, title: "Resident database backup completed", time: "May 23, 2026 • 11:00 PM", category: "System", badge: "bg-slate-50 text-slate-600 border border-slate-200" },
-      { id: 5, title: "Job opening post updated", time: "May 23, 2026 • 04:15 PM", category: "Livelihood", badge: "bg-cyan-50 text-cyan-600 border border-cyan-200" },
-    ];
+    return [];
   }, [safeActivities]);
 
   return (
@@ -707,44 +660,57 @@ const DashboardOverview = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {displayResidents.map((res) => (
-                  <tr key={res.id} className="hover:bg-emerald-50/50 transition duration-150 group">
-                    <td className="py-2.5 px-3.5 flex items-center gap-2.5">
-                      <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-white text-[11px] font-black flex items-center justify-center shrink-0 shadow-xs border border-white">
-                        {res.name.charAt(0)}
-                      </div>
-                      <span className="font-black text-slate-900 text-xs group-hover:text-emerald-800 transition">{res.name}</span>
-                    </td>
-                    <td className="py-2.5 px-3.5">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black bg-slate-100 text-slate-800 border border-slate-200 shadow-2xs">
-                        <MapPin size={11} className="text-emerald-600 shrink-0" />
-                        {res.purok}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3.5 text-slate-800 font-bold text-xs">
-                      {res.age} yrs old • {res.gender === "M" || res.gender === "Male" ? "Male" : "Female"}
-                    </td>
-                    <td className="py-2.5 px-3.5">
-                      <span className="inline-block rounded-full px-3 py-1 text-[10px] font-black border leading-none bg-emerald-100 text-emerald-800 border-emerald-300 shadow-2xs">
-                        ● {res.status}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3.5 text-slate-700 font-bold text-xs whitespace-nowrap">
-                      {res.date}
-                    </td>
-                    <td className="py-2.5 px-3.5 text-right">
-                      <button
-                        type="button"
-                        onClick={() => navigate("/residents")}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 transition duration-150 cursor-pointer shadow-sm"
-                        title="View profile"
-                      >
-                        <Eye size={13} />
-                        <span>Profile</span>
-                      </button>
+                {displayResidents.length > 0 ? (
+                  displayResidents.map((res) => (
+                    <tr key={res.id} className="hover:bg-emerald-50/50 transition duration-150 group">
+                      <td className="py-2.5 px-3.5 flex items-center gap-2.5">
+                        <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-emerald-600 to-teal-500 text-white text-[11px] font-black flex items-center justify-center shrink-0 shadow-xs border border-white">
+                          {res.name.charAt(0)}
+                        </div>
+                        <span className="font-black text-slate-900 text-xs group-hover:text-emerald-800 transition">{res.name}</span>
+                      </td>
+                      <td className="py-2.5 px-3.5">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-black bg-slate-100 text-slate-800 border border-slate-200 shadow-2xs">
+                          <MapPin size={11} className="text-emerald-600 shrink-0" />
+                          {res.purok}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3.5 text-slate-800 font-bold text-xs">
+                        {res.age !== "-" ? `${res.age} yrs old` : "-"} • {res.gender === "M" || res.gender === "Male" ? "Male" : "Female"}
+                      </td>
+                      <td className="py-2.5 px-3.5">
+                        <span className="inline-block rounded-full px-3 py-1 text-[10px] font-black border leading-none bg-emerald-100 text-emerald-800 border-emerald-300 shadow-2xs">
+                          ● {res.status}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3.5 text-slate-700 font-bold text-xs whitespace-nowrap">
+                        {res.date}
+                      </td>
+                      <td className="py-2.5 px-3.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const fullRes = safeResidents.find((r) => r.id === res.id) || res.raw || res;
+                            setSelectedResidentForView(fullRes);
+                            setShowResidentModal(true);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 transition duration-150 cursor-pointer shadow-sm active:scale-95"
+                          title="View official profile sheet"
+                        >
+                          <Eye size={13} />
+                          <span>Profile</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-slate-500 font-bold text-xs">
+                      <Users size={28} className="mx-auto text-slate-300 mb-1.5" />
+                      No registered residents found in database.
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -777,28 +743,37 @@ const DashboardOverview = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white">
-                {displayRequests.map((req) => (
-                  <tr key={req.id} className="hover:bg-slate-50/80 transition duration-150">
-                    <td className="py-2 px-2 font-black text-slate-900 truncate max-w-[120px]">{req.name}</td>
-                    <td className="py-2 px-2 text-slate-700 font-bold truncate max-w-[120px]">{req.type}</td>
-                    <td className="py-2 px-2 text-slate-600 font-semibold whitespace-nowrap text-[11px]">{req.date}</td>
-                    <td className="py-2 px-2">
-                      <span className={`rounded-full px-2.5 py-0.5 text-[9px] font-black border leading-none whitespace-nowrap shadow-2xs ${req.statusClass}`}>
-                        {req.status}
-                      </span>
-                    </td>
-                    <td className="py-2 px-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => navigate("/documents")}
-                        className="text-slate-400 hover:text-emerald-700 transition cursor-pointer p-1"
-                        title="View details"
-                      >
-                        <Eye size={14} />
-                      </button>
+                {displayRequests.length > 0 ? (
+                  displayRequests.map((req) => (
+                    <tr key={req.id} className="hover:bg-slate-50/80 transition duration-150">
+                      <td className="py-2 px-2 font-black text-slate-900 truncate max-w-[120px]">{req.name}</td>
+                      <td className="py-2 px-2 text-slate-700 font-bold truncate max-w-[120px]">{req.type}</td>
+                      <td className="py-2 px-2 text-slate-600 font-semibold whitespace-nowrap text-[11px]">{req.date}</td>
+                      <td className="py-2 px-2">
+                        <span className={`rounded-full px-2.5 py-0.5 text-[9px] font-black border leading-none whitespace-nowrap shadow-2xs ${req.statusClass}`}>
+                          {req.status}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => navigate("/documents")}
+                          className="text-slate-400 hover:text-emerald-700 transition cursor-pointer p-1"
+                          title="View details"
+                        >
+                          <Eye size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-500 font-bold text-xs">
+                      <FileText size={24} className="mx-auto text-slate-300 mb-1.5" />
+                      No pending document requests at this time.
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -817,35 +792,42 @@ const DashboardOverview = ({
           </div>
 
           <div className="my-1.5 space-y-1.5 flex-1 flex flex-col justify-center">
-            {displayAnnouncements.map((ann, idx) => {
-              const icons = [Users, FileText, Megaphone];
-              const AnnouncementIcon = icons[idx % icons.length];
-              const badgeColors = [
-                "bg-emerald-50 text-emerald-600 border-emerald-200",
-                "bg-purple-50 text-purple-600 border-purple-200",
-                "bg-amber-50 text-amber-600 border-amber-200"
-              ];
-              return (
-                <div key={ann.id} className="flex items-center gap-4 py-2 hover:bg-slate-50/80 transition duration-150 border-b border-slate-100 last:border-0 text-left px-1">
-                  {/* Date Block */}
-                  <div className="flex flex-col items-center shrink-0 w-8 text-center">
-                    <span className="text-[9.5px] font-bold text-slate-500 uppercase tracking-wider leading-none">{ann.month}</span>
-                    <span className="text-sm font-black text-slate-900 tracking-tight mt-0.5 leading-none">{ann.day}</span>
-                  </div>
+            {displayAnnouncements.length > 0 ? (
+              displayAnnouncements.map((ann, idx) => {
+                const icons = [Users, FileText, Megaphone];
+                const AnnouncementIcon = icons[idx % icons.length];
+                const badgeColors = [
+                  "bg-emerald-50 text-emerald-600 border-emerald-200",
+                  "bg-purple-50 text-purple-600 border-purple-200",
+                  "bg-amber-50 text-amber-600 border-amber-200"
+                ];
+                return (
+                  <div key={ann.id} className="flex items-center gap-4 py-2 hover:bg-slate-50/80 transition duration-150 border-b border-slate-100 last:border-0 text-left px-1">
+                    {/* Date Block */}
+                    <div className="flex flex-col items-center shrink-0 w-8 text-center">
+                      <span className="text-[9.5px] font-bold text-slate-500 uppercase tracking-wider leading-none">{ann.month}</span>
+                      <span className="text-sm font-black text-slate-900 tracking-tight mt-0.5 leading-none">{ann.day}</span>
+                    </div>
 
-                  {/* Icon Circle */}
-                  <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border shadow-2xs ${badgeColors[idx % badgeColors.length]}`}>
-                    <AnnouncementIcon size={14} />
-                  </span>
+                    {/* Icon Circle */}
+                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border shadow-2xs ${badgeColors[idx % badgeColors.length]}`}>
+                      <AnnouncementIcon size={14} />
+                    </span>
 
-                  {/* Title and Description */}
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-black text-slate-900 leading-tight truncate">{ann.title}</p>
-                    <p className="text-[10.5px] text-slate-600 font-bold line-clamp-1 mt-0.5 leading-tight">{ann.desc}</p>
+                    {/* Title and Description */}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-black text-slate-900 leading-tight truncate">{ann.title}</p>
+                      <p className="text-[10.5px] text-slate-600 font-bold line-clamp-1 mt-0.5 leading-tight">{ann.desc}</p>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })
+            ) : (
+              <div className="py-8 text-center text-slate-500 font-bold text-xs">
+                <Megaphone size={24} className="mx-auto text-slate-300 mb-1.5" />
+                No recent announcements published.
+              </div>
+            )}
           </div>
 
           <div className="border-t border-slate-100 pt-1.5 flex items-center justify-center">
@@ -859,6 +841,20 @@ const DashboardOverview = ({
         </motion.div>
       </section>
       </div>
+
+      {/* Official Resident Profile Sheet Modal */}
+      <ResidentProfileModal
+        isOpen={showResidentModal && Boolean(selectedResidentForView)}
+        onClose={() => {
+          setShowResidentModal(false);
+          setSelectedResidentForView(null);
+        }}
+        resident={selectedResidentForView}
+        onEdit={() => {
+          setShowResidentModal(false);
+          navigate("/residents");
+        }}
+      />
     </motion.div>
   );
 };

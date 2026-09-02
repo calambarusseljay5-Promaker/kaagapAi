@@ -2192,17 +2192,6 @@ const DocumentManagement = () => {
                       </div>
                     )}
                   </div>
-
-                  {/* Direct "Manage Templates" Button */}
-                  <button
-                    type="button"
-                    onClick={() => navigate("/document-templates")}
-                    className="inline-flex h-[38px] items-center justify-center gap-1.5 rounded-xl border border-emerald-200/80 bg-emerald-50/70 hover:bg-emerald-100/80 px-3.5 text-xs font-bold text-emerald-800 transition shadow-2xs cursor-pointer"
-                    title="Open Document Template Studio"
-                  >
-                    <FileText size={14} className="text-emerald-700" />
-                    <span>Manage Templates</span>
-                  </button>
                 </div>
               </div>
             </div>

@@ -115,6 +115,11 @@ const MyAccountModal = ({ isOpen, onClose }) => {
     error: "",
     loading: false,
   });
+  const [photoConfirmModal, setPhotoConfirmModal] = useState({
+    isOpen: false,
+    dataUrl: "",
+    file: null,
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedPhotoFile, setSelectedPhotoFile] = useState(null);
@@ -132,13 +137,13 @@ const MyAccountModal = ({ isOpen, onClose }) => {
       setCurrentUser(data);
       const creds = getAdminCredentials();
       const settings = getSystemSettings();
-      const savedPhoto = typeof window !== "undefined" ? localStorage.getItem("kaagapai_admin_profile_photo") : null;
-      const finalPhoto = creds.profilePhotoUrl || data?.profile?.profile_photo_url || data?.user?.user_metadata?.avatar_url || savedPhoto || "";
+      const savedPhoto = (typeof window !== "undefined" ? localStorage.getItem("kaagapai_admin_profile_photo") : null) || creds.profilePhotoUrl || settings.adminProfilePhotoUrl || data?.profile?.profile_photo_url || data?.user?.user_metadata?.avatar_url || "";
+      const finalPhoto = savedPhoto || "";
 
       const activeFullName = creds.fullName || settings.adminFullName || data?.profile?.full_name || data?.user?.user_metadata?.full_name || "Barangay Administrator";
       const activeUsername = creds.username || settings.adminUsername || data?.user?.user_metadata?.username || "kaagapai";
-      const activeEmail = creds.email || settings.officeEmail || data?.user?.email || "uppermingading@gmail.com";
-      const activePhone = creds.phone || settings.officePhone || data?.profile?.phone || "09306259795";
+      const activeEmail = creds.email !== undefined ? creds.email : (settings.officeEmail || data?.user?.email || "");
+      const activePhone = creds.phone !== undefined ? creds.phone : (settings.officePhone || data?.profile?.phone || "");
 
       setForm({
         fullName: activeFullName,
@@ -192,11 +197,30 @@ const MyAccountModal = ({ isOpen, onClose }) => {
       return;
     }
 
-    setSaving(true);
-
     try {
       const compressedDataUrl = await compressProfilePhoto(file);
+      setPhotoConfirmModal({
+        isOpen: true,
+        dataUrl: compressedDataUrl,
+        file,
+      });
+    } catch (photoPrepError) {
+      setError(photoPrepError.message || "Unable to process selected photo.");
+    } finally {
+      if (photoInputRef.current) {
+        photoInputRef.current.value = "";
+      }
+    }
+  };
 
+  const handleConfirmPhotoUpload = async () => {
+    const { dataUrl: compressedDataUrl, file } = photoConfirmModal;
+    if (!compressedDataUrl) return;
+
+    setSaving(true);
+    setPhotoConfirmModal({ isOpen: false, dataUrl: "", file: null });
+
+    try {
       if (typeof window !== "undefined") {
         try {
           localStorage.setItem("kaagapai_admin_profile_photo", compressedDataUrl);
@@ -211,15 +235,17 @@ const MyAccountModal = ({ isOpen, onClose }) => {
       setPhotoPreviewUrl(compressedDataUrl);
       updateField("profilePhotoUrl", compressedDataUrl);
       setSelectedPhotoFile(file);
-      setSelectedPhotoName(file.name);
+      setSelectedPhotoName(file?.name || "profile.jpg");
       setPhotoWasRemoved(false);
 
       if (currentUser?.user?.id) {
         let cloudPhotoUrl = compressedDataUrl;
-        try {
-          cloudPhotoUrl = await uploadProfilePhoto(currentUser.user.id, file);
-        } catch (uploadErr) {
-          console.warn("Cloud photo upload notice (using compressed data URL):", uploadErr.message);
+        if (file) {
+          try {
+            cloudPhotoUrl = await uploadProfilePhoto(currentUser.user.id, file);
+          } catch (uploadErr) {
+            console.warn("Cloud photo upload notice (using compressed data URL):", uploadErr.message);
+          }
         }
 
         const updatedProfile = await updateUserProfile(currentUser.user.id, {
@@ -236,19 +262,21 @@ const MyAccountModal = ({ isOpen, onClose }) => {
         notifyProfileUpdated(nextAccount);
       }
 
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("admin_profile_updated"));
+        window.dispatchEvent(new CustomEvent("kaagapai:system-settings-updated"));
+      }
+
       showAdminSystemToast({
         type: "success",
         title: "Profile Photo Saved",
-        text: "Your admin profile photo has been updated permanently.",
+        text: "Your admin profile photo has been updated and saved permanently.",
       });
       setMessage("Profile photo updated and saved permanently.");
     } catch (photoSaveError) {
       setError(photoSaveError.message || "Unable to save profile photo.");
     } finally {
       setSaving(false);
-      if (photoInputRef.current) {
-        photoInputRef.current.value = "";
-      }
     }
   };
 
@@ -385,17 +413,22 @@ const MyAccountModal = ({ isOpen, onClose }) => {
       saveAdminCredentials({
         fullName: form.fullName.trim() || "Barangay Administrator",
         username: form.username.trim() || "kaagapai",
-        email: form.email.trim() || "uppermingading@gmail.com",
-        phone: cleanPhone || "09306259795",
+        email: form.email.trim(),
+        phone: cleanPhone,
         profilePhotoUrl: nextProfilePhotoUrl || "",
       });
 
       saveSystemSettings({
         adminUsername: form.username.trim() || "kaagapai",
-        officeEmail: form.email.trim() || "uppermingading@gmail.com",
-        officePhone: cleanPhone || "09306259795",
+        officeEmail: form.email.trim(),
+        officePhone: cleanPhone,
         adminFullName: form.fullName.trim() || "Barangay Administrator",
       });
+
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("admin_profile_updated"));
+        window.dispatchEvent(new CustomEvent("kaagapai:system-settings-updated"));
+      }
 
       if (form.username.trim() && form.username.trim() !== (getSystemSettings().adminUsername || "")) {
         await updateAdminUsername(form.username.trim());
@@ -816,6 +849,70 @@ const MyAccountModal = ({ isOpen, onClose }) => {
                       </button>
                     </div>
                   </form>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
+
+      {/* ─── Profile Photo Confirmation Modal ─── */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {photoConfirmModal.isOpen && (
+              <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setPhotoConfirmModal({ isOpen: false, dataUrl: "", file: null })}
+                  className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
+                />
+
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                  className="relative z-10 w-full max-w-sm overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl"
+                >
+                  <div className="flex flex-col items-center text-center">
+                    <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border-4 border-emerald-400 bg-emerald-950/90 shadow-xl mb-4">
+                      {photoConfirmModal.dataUrl ? (
+                        <img
+                          src={photoConfirmModal.dataUrl}
+                          alt="New Profile Preview"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <UserRound size={48} className="text-emerald-300" />
+                      )}
+                    </div>
+
+                    <h3 className="text-base font-black text-slate-900">Set Admin Profile Photo</h3>
+                    <p className="mt-1.5 text-xs text-slate-500 max-w-xs">
+                      Are you sure you want to set this image as your official permanent admin profile picture?
+                    </p>
+                  </div>
+
+                  <div className="mt-6 flex gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setPhotoConfirmModal({ isOpen: false, dataUrl: "", file: null })}
+                      className="flex-1 rounded-xl border border-slate-200 bg-white py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition cursor-pointer text-center"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmPhotoUpload}
+                      disabled={saving}
+                      className="flex-1 rounded-xl bg-[#00552E] hover:bg-[#004224] py-2.5 text-xs font-black text-white transition flex items-center justify-center gap-1.5 shadow-md active:scale-95 cursor-pointer disabled:opacity-60"
+                    >
+                      {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                      <span>Save Photo</span>
+                    </button>
+                  </div>
                 </motion.div>
               </div>
             )}

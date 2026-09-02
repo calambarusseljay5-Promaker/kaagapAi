@@ -9,16 +9,49 @@ export const DEFAULT_SYSTEM_SETTINGS = {
   systemName: "KaagapAI",
   barangayName: "Barangay Upper Mingading",
   adminUsername: "kaagapai",
-  officeEmail: "uppermingading@gmail.com",
-  officePhone: "09306259795",
+  officeEmail: "",
+  officePhone: "",
   officeHours: "Monday to Friday, 8:00 AM - 5:00 PM",
   adminTheme: "favorite",
   residentPortalEnabled: true,
   aiAssistantEnabled: true,
   documentNotificationsEnabled: true,
+  geminiApiKey: "",
 };
 
 const SETTINGS_UPDATED_EVENT = "kaagapai:system-settings-updated";
+
+// ─── Supabase Realtime WebSocket Global Bus (Syncs across Port 5173, 5174, & Devices) ───
+let globalSystemChannel = null;
+if (typeof window !== "undefined") {
+  try {
+    globalSystemChannel = supabase.channel("kaagapai_system_global_bus");
+    globalSystemChannel
+      .on("broadcast", { event: "system_settings_updated" }, ({ payload }) => {
+        if (payload && typeof payload === "object") {
+          const storage = getStorage();
+          if (storage) {
+            storage.setItem(SETTINGS_KEY, JSON.stringify(payload));
+          }
+          notifySettingsUpdated(payload);
+        }
+      })
+      .on("broadcast", { event: "barangay_logo_updated" }, ({ payload }) => {
+        if (payload?.logoUrl) {
+          try {
+            localStorage.setItem("kaagapai_barangay_logo", payload.logoUrl);
+          } catch {}
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("kaagapai_barangay_logo_changed", { detail: payload.logoUrl }));
+            window.dispatchEvent(new CustomEvent(SETTINGS_UPDATED_EVENT));
+          }
+        }
+      })
+      .subscribe();
+  } catch (e) {
+    console.warn("Global system bus init error:", e);
+  }
+}
 
 const getStorage = () => {
   if (typeof window === "undefined") return null;
@@ -61,9 +94,11 @@ const getStoredObject = (key, fallback) => {
   if (!storage) return fallback;
 
   try {
+    const item = storage.getItem(key);
+    if (!item) return fallback;
     return {
       ...fallback,
-      ...JSON.parse(storage.getItem(key) || "{}"),
+      ...JSON.parse(item),
     };
   } catch {
     return fallback;
@@ -125,20 +160,54 @@ export function subscribeSystemSettings(callback) {
   return () => window.removeEventListener(SETTINGS_UPDATED_EVENT, handler);
 }
 
+export function broadcastSystemSettings(settings) {
+  if (globalSystemChannel) {
+    try {
+      globalSystemChannel.send({
+        type: "broadcast",
+        event: "system_settings_updated",
+        payload: settings,
+      });
+    } catch (e) {}
+  }
+}
+
+export function broadcastBarangayLogo(logoUrl) {
+  if (globalSystemChannel) {
+    try {
+      globalSystemChannel.send({
+        type: "broadcast",
+        event: "barangay_logo_updated",
+        payload: { logoUrl },
+      });
+    } catch (e) {}
+  }
+}
+
 export function saveSystemSettings(settings) {
+  const current = getStoredObject(SETTINGS_KEY, DEFAULT_SYSTEM_SETTINGS);
   const nextSettings = {
     ...DEFAULT_SYSTEM_SETTINGS,
+    ...current,
     ...settings,
-    adminTheme: settings?.adminTheme === "light" ? "light" : "favorite",
+    adminTheme: (settings?.adminTheme || current?.adminTheme) === "light" ? "light" : "favorite",
     updatedAt: new Date().toISOString(),
   };
 
   const storage = getStorage();
   if (storage) {
     storage.setItem(SETTINGS_KEY, JSON.stringify(nextSettings));
+    if (nextSettings.geminiApiKey !== undefined) {
+      if (nextSettings.geminiApiKey?.trim()) {
+        storage.setItem("kaagapai_gemini_api_key", nextSettings.geminiApiKey.trim());
+      } else {
+        storage.removeItem("kaagapai_gemini_api_key");
+      }
+    }
   }
 
   notifySettingsUpdated(nextSettings);
+  broadcastSystemSettings(nextSettings);
 
   recordAuditEvent({
     module: "System Settings",
@@ -154,6 +223,7 @@ export function resetSystemSettings() {
   const storage = getStorage();
   if (storage) {
     storage.removeItem(SETTINGS_KEY);
+    storage.removeItem("kaagapai_gemini_api_key");
   }
 
   notifySettingsUpdated(DEFAULT_SYSTEM_SETTINGS);

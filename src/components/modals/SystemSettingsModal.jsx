@@ -27,10 +27,12 @@ import {
   Bell,
   Briefcase,
   Megaphone,
-  Brain,
   Loader2,
   RefreshCw,
   X,
+  Pencil,
+  Lock,
+  Brain,
 } from "lucide-react";
 import FloatingModal from "../FloatingModal";
 import { useConfirm } from "../../context/ConfirmContext";
@@ -40,6 +42,7 @@ import {
   resetSystemSettings,
   saveSystemSettings,
 } from "../../services/adminActivityService";
+import { getBarangayLogo, setBarangayLogo } from "../../services/logoService";
 import {
   createAndUploadBackup,
   getBackupHistory,
@@ -81,7 +84,9 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
 
   const [activeTab, setActiveTab] = useState("general"); // "general" | "backup"
   const [settings, setSettings] = useState(() => getSystemSettings());
-  const [logoPreview, setLogoPreview] = useState("/logo.png");
+  const [logoPreview, setLogoPreview] = useState(() => getBarangayLogo());
+  const [isEditingGeneral, setIsEditingGeneral] = useState(false);
+  const [logoConfirmModal, setLogoConfirmModal] = useState({ isOpen: false, dataUrl: "", file: null });
   const [savedMessage, _setSavedMessage] = useState("");
   const setSavedMessage = useCallback((msg) => {
     if (msg) {
@@ -149,16 +154,35 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
   const handleLogoUpload = (event) => {
     const file = event.target.files?.[0];
     if (file) {
-      const url = URL.createObjectURL(file);
-      setLogoPreview(url);
-      setSavedMessage("Barangay logo preview updated. Click 'Save Changes' to apply.");
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = String(e.target?.result || "");
+        setLogoConfirmModal({ isOpen: true, dataUrl, file });
+      };
+      reader.readAsDataURL(file);
+      event.target.value = "";
     }
+  };
+
+  const handleConfirmLogoUpdate = () => {
+    if (logoConfirmModal.dataUrl) {
+      setBarangayLogo(logoConfirmModal.dataUrl);
+      setLogoPreview(logoConfirmModal.dataUrl);
+      updateField("barangayLogoUrl", logoConfirmModal.dataUrl);
+      showAdminSystemToast({
+        type: "success",
+        title: "Barangay Logo Updated",
+        text: "Official Barangay Logo updated successfully across all admin and resident portals.",
+      });
+    }
+    setLogoConfirmModal({ isOpen: false, dataUrl: "", file: null });
   };
 
   const handleSave = async (event) => {
     event?.preventDefault();
     const saved = saveSystemSettings(settings);
     setSettings(saved);
+    setIsEditingGeneral(false);
     setSavedMessage("System settings saved successfully!");
     showAdminSystemToast({
       type: "success",
@@ -407,15 +431,34 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
             /* ═══════════════════════════════════════════════════════════════════ */
             <form onSubmit={handleSave} className="space-y-3.5">
               <section className="rounded-xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-2xs">
-                <div className="flex items-center gap-2.5 border-b border-slate-100 pb-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#00552E]/10 text-[#00552E] shrink-0">
-                    <Building2 size={16} />
-                  </span>
-                  <div>
-                    <h3 className="text-xs sm:text-sm font-extrabold text-slate-900">General Information</h3>
-                    <p className="text-[11px] text-slate-500">
-                      Official contact information and branding for Barangay Upper Mingading.
-                    </p>
+                <div className="flex items-center justify-between gap-2.5 border-b border-slate-100 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#00552E]/10 text-[#00552E] shrink-0">
+                      <Building2 size={16} />
+                    </span>
+                    <div>
+                      <h3 className="text-xs sm:text-sm font-extrabold text-slate-900">General Information</h3>
+                      <p className="text-[11px] text-slate-500">
+                        Official contact information and branding for Barangay Upper Mingading.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {!isEditingGeneral ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingGeneral(true)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 text-[#00552E] px-3 py-1.5 text-xs font-black shadow-2xs transition active:scale-95 cursor-pointer"
+                      >
+                        <Pencil size={12} />
+                        <span>Edit Settings</span>
+                      </button>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-900 border border-amber-300 px-3 py-1 text-[11px] font-black animate-pulse">
+                        <Lock size={12} /> Editing Mode
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -424,11 +467,11 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
                     <div className="flex items-center gap-3">
                       <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border border-emerald-200 bg-white p-0.5 shadow-xs">
-                        <img src={logoPreview} alt="Barangay Logo" className="h-full w-full rounded-full object-cover" />
+                        <img src={logoPreview || "/logo.png"} alt="Barangay Logo" className="h-full w-full rounded-full object-cover" />
                       </span>
                       <div>
                         <p className="text-xs font-bold text-slate-800">Barangay Logo</p>
-                        <p className="text-[10px] text-slate-500">Official seal displayed on documents & headers.</p>
+                        <p className="text-[10px] text-slate-500">Official seal displayed on documents, resident dashboard & headers.</p>
                       </div>
                     </div>
 
@@ -443,7 +486,7 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
                       <button
                         type="button"
                         onClick={() => logoInputRef.current?.click()}
-                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#00552E] px-3 py-1.5 text-xs font-bold text-white shadow-2xs transition hover:bg-[#004224] cursor-pointer"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-[#00552E] px-3 py-1.5 text-xs font-bold text-white shadow-2xs transition hover:bg-[#004224] cursor-pointer active:scale-95"
                       >
                         <ImageIcon size={12} />
                         Change Logo
@@ -457,10 +500,15 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
                       Barangay Name
                       <input
                         type="text"
+                        disabled={!isEditingGeneral}
                         value={settings.barangayName || "Barangay Upper Mingading"}
                         onChange={(e) => updateField("barangayName", e.target.value)}
                         placeholder="Enter barangay name"
-                        className="mt-1 w-full h-8.5 rounded-lg border border-slate-200 bg-slate-50/60 px-3 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#00552E] focus:bg-white focus:ring-2 focus:ring-[#00552E]/20"
+                        className={`mt-1 w-full h-8.5 rounded-lg border px-3 text-xs font-semibold outline-none transition ${
+                          !isEditingGeneral
+                            ? "border-slate-200 bg-slate-100/70 text-slate-600 cursor-not-allowed select-none"
+                            : "border-slate-300 bg-white text-slate-900 focus:border-[#00552E] focus:ring-2 focus:ring-[#00552E]/20"
+                        }`}
                       />
                     </label>
 
@@ -468,10 +516,15 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
                       Office Email
                       <input
                         type="email"
-                        value={settings.officeEmail || "mingading.aleosan@gmail.com"}
+                        disabled={!isEditingGeneral}
+                        value={settings.officeEmail || ""}
                         onChange={(e) => updateField("officeEmail", e.target.value)}
-                        placeholder="office@barangay.gov.ph"
-                        className="mt-1 w-full h-8.5 rounded-lg border border-slate-200 bg-slate-50/60 px-3 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#00552E] focus:bg-white focus:ring-2 focus:ring-[#00552E]/20"
+                        placeholder="e.g. uppermingading@gmail.com (leave blank to hide)"
+                        className={`mt-1 w-full h-8.5 rounded-lg border px-3 text-xs font-semibold outline-none transition ${
+                          !isEditingGeneral
+                            ? "border-slate-200 bg-slate-100/70 text-slate-600 cursor-not-allowed select-none"
+                            : "border-slate-300 bg-white text-slate-900 focus:border-[#00552E] focus:ring-2 focus:ring-[#00552E]/20"
+                        }`}
                       />
                     </label>
 
@@ -480,10 +533,15 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
                       <input
                         type="tel"
                         maxLength={11}
-                        value={settings.officePhone || "09306259795"}
+                        disabled={!isEditingGeneral}
+                        value={settings.officePhone || ""}
                         onChange={(e) => updateField("officePhone", e.target.value.replace(/\D/g, "").slice(0, 11))}
-                        placeholder="09XXXXXXXXX"
-                        className="mt-1 w-full h-8.5 rounded-lg border border-slate-200 bg-slate-50/60 px-3 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#00552E] focus:bg-white focus:ring-2 focus:ring-[#00552E]/20 font-mono tracking-wide"
+                        placeholder="e.g. 09306259795 (leave blank to hide)"
+                        className={`mt-1 w-full h-8.5 rounded-lg border px-3 text-xs font-semibold font-mono tracking-wide outline-none transition ${
+                          !isEditingGeneral
+                            ? "border-slate-200 bg-slate-100/70 text-slate-600 cursor-not-allowed select-none"
+                            : "border-slate-300 bg-white text-slate-900 focus:border-[#00552E] focus:ring-2 focus:ring-[#00552E]/20"
+                        }`}
                       />
                     </label>
 
@@ -491,10 +549,15 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
                       Office Hours
                       <input
                         type="text"
+                        disabled={!isEditingGeneral}
                         value={settings.officeHours || "Monday to Friday, 8:00 AM - 5:00 PM"}
                         onChange={(e) => updateField("officeHours", e.target.value)}
                         placeholder="e.g. Monday to Friday, 8:00 AM - 5:00 PM"
-                        className="mt-1 w-full h-8.5 rounded-lg border border-slate-200 bg-slate-50/60 px-3 text-xs font-semibold text-slate-900 outline-none transition focus:border-[#00552E] focus:bg-white focus:ring-2 focus:ring-[#00552E]/20"
+                        className={`mt-1 w-full h-8.5 rounded-lg border px-3 text-xs font-semibold outline-none transition ${
+                          !isEditingGeneral
+                            ? "border-slate-200 bg-slate-100/70 text-slate-600 cursor-not-allowed select-none"
+                            : "border-slate-300 bg-white text-slate-900 focus:border-[#00552E] focus:ring-2 focus:ring-[#00552E]/20"
+                        }`}
                       />
                     </label>
                   </div>
@@ -511,13 +574,36 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
                   Reset Defaults
                 </button>
 
-                <button
-                  type="submit"
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#00552E] px-4 py-1.5 text-xs font-bold text-white shadow-2xs transition hover:bg-[#004224] cursor-pointer active:scale-98"
-                >
-                  <Save size={13} />
-                  Save Changes
-                </button>
+                {isEditingGeneral ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSettings(getSystemSettings());
+                        setIsEditingGeneral(false);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 shadow-2xs transition hover:bg-slate-50 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#00552E] px-4 py-1.5 text-xs font-bold text-white shadow-2xs transition hover:bg-[#004224] cursor-pointer active:scale-98"
+                    >
+                      <Save size={13} />
+                      Save Changes
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingGeneral(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-[#00552E] px-4 py-1.5 text-xs font-bold text-white shadow-2xs transition hover:bg-[#004224] cursor-pointer active:scale-98"
+                  >
+                    <Pencil size={13} />
+                    Edit Information
+                  </button>
+                )}
               </div>
             </form>
           ) : (
@@ -949,6 +1035,52 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
             </div>
           </div>
         ) : null}
+      </FloatingModal>
+
+      {/* ─── Change Logo Confirmation Modal ─── */}
+      <FloatingModal
+        open={logoConfirmModal.isOpen}
+        onClose={() => setLogoConfirmModal({ isOpen: false, dataUrl: "", file: null })}
+        title="Confirm Official Seal Update"
+        eyebrow="Barangay Branding"
+        description="Verify the new seal before applying it across the entire system"
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-4">
+          <div className="flex flex-col items-center justify-center p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200">
+            <div className="relative flex h-28 w-28 items-center justify-center overflow-hidden rounded-full border-4 border-emerald-400 bg-white p-1 shadow-lg">
+              <img
+                src={logoConfirmModal.dataUrl}
+                alt="New Logo Preview"
+                className="h-full w-full rounded-full object-contain"
+              />
+            </div>
+            <p className="mt-3 text-xs font-black text-slate-800 text-center">
+              New Official Barangay Seal
+            </p>
+            <p className="mt-1 text-[11px] text-slate-500 text-center max-w-xs">
+              This logo will immediately appear on all document templates, admin headers, sidebar navigation, and resident portals.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+            <button
+              type="button"
+              onClick={() => setLogoConfirmModal({ isOpen: false, dataUrl: "", file: null })}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmLogoUpdate}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#00552E] px-4 py-2 text-xs font-black text-white shadow-md hover:bg-[#004224] transition active:scale-95 cursor-pointer"
+            >
+              <CheckCircle2 size={14} />
+              Confirm & Apply Logo
+            </button>
+          </div>
+        </div>
       </FloatingModal>
     </>
   );
