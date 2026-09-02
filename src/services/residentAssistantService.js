@@ -2620,6 +2620,58 @@ const cleanAnswerText = (aText) =>
     .replace(/^[:\-\s]+/, "")
     .trim();
 
+export const parseAllKnowledgeBlocks = (content) => {
+  const blocks = [];
+  if (!content) return blocks;
+
+  // Normalize markdown bold/italic decorators around Q and A labels
+  const clean = content
+    .replace(/\*\*(Q|Question|Tanong|A|Answer|Sagot)\s*[:\.]?\*\*/gi, "$1:")
+    .replace(/\*(Q|Question|Tanong|A|Answer|Sagot)\s*[:\.]?\*/gi, "$1:");
+
+  // Pattern 1: Any Q: ... A: ... block, with optional numbers or ### before Q
+  const qaPattern = /(?:^|\n)\s*(?:(?:###?\s*)?\d*[\.\)]?\s*)?(?:(?:Q\d*|Question|Tanong)\s*[:\.\-]\s*)([^\n]+)\n\s*(?:(?:\d+[\.\)]\s*)?(?:A\d*|Answer|Sagot)\s*[:\.\-]\s*)([^\n]+(?:\n(?!\s*(?:(?:###?\s*)?\d*[\.\)]?\s*)?(?:Q\d*|Question|Tanong)\s*[:\.\-]).*)*)/gi;
+
+  let m;
+  while ((m = qaPattern.exec(clean)) !== null) {
+    const qText = m[1].trim().replace(/^\*+|\*+$/g, "").replace(/^[:\-\s]+/, "").trim();
+    const aText = cleanAnswerText(m[2]);
+    if (qText && aText) {
+      blocks.push({ type: "qa", q: qText, a: aText });
+    }
+  }
+
+  // Pattern 2: Markdown Headings (e.g. ### Curfew Ordinance\n... or ### Location\n...)
+  const headingRegex = /^(#{1,4})\s+(.+)$/;
+  const rawLines = content.split("\n");
+  let currentTitle = "";
+  let currentBody = [];
+
+  for (const line of rawLines) {
+    const hMatch = line.match(headingRegex);
+    if (hMatch) {
+      if (currentTitle && currentBody.length) {
+        const bodyStr = cleanAnswerText(currentBody.join("\n"));
+        if (bodyStr) {
+          blocks.push({ type: "heading", q: currentTitle, a: bodyStr });
+        }
+      }
+      currentTitle = hMatch[2].trim();
+      currentBody = [];
+    } else {
+      currentBody.push(line);
+    }
+  }
+  if (currentTitle && currentBody.length) {
+    const bodyStr = cleanAnswerText(currentBody.join("\n"));
+    if (bodyStr) {
+      blocks.push({ type: "heading", q: currentTitle, a: bodyStr });
+    }
+  }
+
+  return blocks;
+};
+
 export const findSmartAnswerInKnowledge = (question, relevantKnowledge = [], language = "tagalog") => {
   if (!relevantKnowledge || !relevantKnowledge.length) return "";
 
@@ -2634,140 +2686,47 @@ export const findSmartAnswerInKnowledge = (question, relevantKnowledge = [], lan
     const content = item.content || "";
     if (!content) continue;
 
-    // Clean markdown bold/italic decorators around Q and A labels like **Question:** or **Answer:**
-    const clean = content.replace(/\*\*(Question|Answer|Tanong|Sagot|Q\d*|A\d*)\s*[:\.]?\*\*/gi, "$1:");
+    const blocks = parseAllKnowledgeBlocks(content);
 
-    // Pattern 1: Robust Structured Q&A blocks (Question: ... Answer: ...)
-    const qaRegex = /(?:^|\n)\s*(?:###?\s*\d*[\.\)]?\s*)?(?:(?:Q\d*|Question|Tanong)\s*[:\.\-]\s*)([^\n]+(?:\n(?!(?:Answer|Sagot|A\b\s*[:\.\-])).*)*)\n\s*(?:(?:Answer|Sagot|A\b)\s*[:\.\-]\s*)([\s\S]*?)(?=(?:\n\s*(?:###?\s*\d*[\.\)]?\s*)?(?:Q\d*|Question|Tanong)\s*[:\.\-])|$)/gi;
-
-    let match;
-    while ((match = qaRegex.exec(clean)) !== null) {
-      const qText = match[1].trim().replace(/^\*+|\*+$/g, "").trim();
-      const aText = cleanAnswerText(match[2]);
-
-      const normBlockQ = normalizeText(qText);
+    for (const b of blocks) {
+      const normBlockQ = normalizeText(b.q);
       const blockMeaningfulWords = normBlockQ.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
       const matchingWords = meaningfulQWords.filter((w) => blockMeaningfulWords.includes(w));
 
       let score = 0;
-      if (normQ === normBlockQ) score += 100;
-      else if (normQ.includes(normBlockQ) || normBlockQ.includes(normQ)) score += 50;
+      if (normQ === normBlockQ) {
+        score += 150; // Exact question match
+      } else if (normQ.includes(normBlockQ) || normBlockQ.includes(normQ)) {
+        score += 80;
+      }
 
-      score += matchingWords.length * 20;
+      // Word matching score
+      score += matchingWords.length * 25;
 
-      // Check distinctive words match (e.g. solo, parent, rsbsa, indigency, residency)
-      blockMeaningfulWords.forEach((bw) => {
-        if (meaningfulQWords.includes(bw)) score += 15;
-      });
-
+      // Overlap ratio boost
       if (blockMeaningfulWords.length > 0) {
-        const matchRatio = matchingWords.length / blockMeaningfulWords.length;
-        if (matchRatio >= 0.5) score += 25;
+        const ratio = matchingWords.length / blockMeaningfulWords.length;
+        if (ratio >= 0.6) score += 35;
       }
 
       if (score > globalHighestScore && matchingWords.length >= 1) {
         globalHighestScore = score;
-        globalBestAnswer = aText;
+        globalBestAnswer = b.a;
       }
     }
 
-    // Pattern 2: Explicit Key-Value / Single QA lines
-    const lines = content.split(/\n+/);
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-
-      const singleQAMatch = trimmed.match(
-        /^(?:tanong|question|q\d*)\s*[:\-]\s*(.*?)\s*(?:sagot|answer|a\d*)\s*[:\-]\s*(.*)$/i
-      );
-      if (singleQAMatch) {
-        const qText = singleQAMatch[1];
-        const aText = cleanAnswerText(singleQAMatch[2]);
-        const normKey = normalizeText(qText);
-        const keyWords = normKey.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
-        const matchingKeyWords = meaningfulQWords.filter((w) => keyWords.includes(w));
-
-        let score = 0;
-        if (normQ === normKey) score += 90;
-        else if (normQ.includes(normKey) || normKey.includes(normQ)) score += 45;
-        score += matchingKeyWords.length * 20;
-
-        if (score > globalHighestScore && matchingKeyWords.length >= 1) {
-          globalHighestScore = score;
-          globalBestAnswer = aText;
-        }
-      }
-    }
-
-    // Pattern 3: Heading-based Sections (e.g. ### 1. Barangay Clearance or ### Curfew Ordinance)
-    const headingRegex = /^(#{1,4})\s+(.+)$/;
-    const rawLines = content.split("\n");
-    let currentTitle = "";
-    let currentBody = [];
-
-    for (const line of rawLines) {
-      const hMatch = line.match(headingRegex);
-      if (hMatch) {
-        if (currentTitle && currentBody.length) {
-          const normHeading = normalizeText(currentTitle);
-          const headingWords = normHeading.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
-          const matchingHW = meaningfulQWords.filter((w) => headingWords.includes(w));
-          let hScore = 0;
-          if (normQ.includes(normHeading) || normHeading.includes(normQ)) hScore += 40;
-          hScore += matchingHW.length * 20;
-
-          if (hScore > globalHighestScore && matchingHW.length >= 1) {
-            const bodyStr = cleanAnswerText(currentBody.join("\n"));
-            if (bodyStr) {
-              globalHighestScore = hScore;
-              globalBestAnswer = bodyStr;
-            }
-          }
-        }
-        currentTitle = hMatch[2].trim();
-        currentBody = [];
-      } else {
-        currentBody.push(line);
-      }
-    }
-
-    // End of lines check for last section
-    if (currentTitle && currentBody.length) {
-      const normHeading = normalizeText(currentTitle);
-      const headingWords = normHeading.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
-      const matchingHW = meaningfulQWords.filter((w) => headingWords.includes(w));
-      let hScore = 0;
-      if (normQ.includes(normHeading) || normHeading.includes(normQ)) hScore += 40;
-      hScore += matchingHW.length * 20;
-
-      if (hScore > globalHighestScore && matchingHW.length >= 1) {
-        const bodyStr = cleanAnswerText(currentBody.join("\n"));
-        if (bodyStr) {
-          globalHighestScore = hScore;
-          globalBestAnswer = bodyStr;
-        }
-      }
-    }
-
-    // Pattern 4: Fallback for short single non-QA article
-    const isMultiQA = /(?:Q\d*|Question|Tanong)\s*[:\.\-]/i.test(content);
-    if (!isMultiQA && (!currentTitle || globalHighestScore < 20)) {
+    // Fallback: If no structured QA block matched, check entire single short content
+    if (blocks.length === 0 && content.length < 800) {
       const normTitle = normalizeText(item.title);
       const titleWords = normTitle.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
       const matchingTW = meaningfulQWords.filter((w) => titleWords.includes(w));
       let tScore = 0;
-      if (normQ.includes(normTitle) || normTitle.includes(normQ)) tScore += 50;
-      tScore += matchingTW.length * 25;
+      if (normQ.includes(normTitle) || normTitle.includes(normQ)) tScore += 60;
+      tScore += matchingTW.length * 30;
 
       if (tScore > globalHighestScore && matchingTW.length >= 1) {
-        let cleanBody = cleanAnswerText(content);
-        if (normTitle && normalizeText(cleanBody).startsWith(normTitle)) {
-          cleanBody = cleanBody.slice(item.title.length).replace(/^[\s:\-\=]+/, "").trim();
-        }
-        if (cleanBody && cleanBody.length < 800) {
-          globalHighestScore = tScore;
-          globalBestAnswer = cleanBody;
-        }
+        globalHighestScore = tScore;
+        globalBestAnswer = cleanAnswerText(content);
       }
     }
   }
@@ -3444,14 +3403,17 @@ export async function askResidentAssistant(question, context = {}) {
     answer = buildSafetyAndEthicsAnswer(language);
   } else if (isAdminPasswordOrSecurityQuestion(normalizedQ)) {
     answer = buildAdminPasswordSecurityAnswer(language);
-  } else if (isOutOfBarangayScopeQuestion(normalizedQ)) {
-    answer = buildOutOfScopeLimitationAnswer(language);
   } else if (isApprovalOrRecordModificationQuestion(normalizedQ)) {
     answer = buildApprovalOrRecordModificationAnswer(language);
   } else if (isAdminPortalQuestion(normalizedQ)) {
     answer = buildAdminPortalAnswer(language);
   } else if (isThirdPartyPrivacyQuestion(normalizedQ)) {
     answer = buildPrivacyLimitationAnswer(language);
+  } else if (findSmartAnswerInKnowledge(trimmedQuestion, context.knowledgeItems || [], language)) {
+    // Top Priority: Trained knowledge from AI Knowledge & Chatbot Trainer
+    answer = findSmartAnswerInKnowledge(trimmedQuestion, context.knowledgeItems || [], language);
+  } else if (isOutOfBarangayScopeQuestion(normalizedQ)) {
+    answer = buildOutOfScopeLimitationAnswer(language);
   } else if (isGreetingMessage(trimmedQuestion)) {
     answer = buildGreetingAnswer(trimmedQuestion, resident);
   } else if (isApologyMessage(trimmedQuestion)) {
@@ -3474,8 +3436,6 @@ export async function askResidentAssistant(question, context = {}) {
       }
     }
     answer = buildResidentStatsAnswer(trimmedQuestion, context.residentStats, language);
-  } else if (findSmartAnswerInKnowledge(trimmedQuestion, context.knowledgeItems || [], language)) {
-    answer = findSmartAnswerInKnowledge(trimmedQuestion, context.knowledgeItems || [], language);
   } else if (wantsDocuments || Boolean(documentFocus)) {
     answer = buildComprehensiveDocumentAnswer(trimmedQuestion, documentFocus, context, language);
   } else if (wantsCedula && !documentFocus) {
