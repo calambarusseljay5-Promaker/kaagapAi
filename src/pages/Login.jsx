@@ -37,8 +37,6 @@ import {
   Compass,
   ArrowRight,
   Briefcase,
-  Shield,
-  Home,
 } from "lucide-react";
 import { useBarangayLogo } from "../services/logoService";
 import { supabase } from "../lib/supabaseClient";
@@ -147,15 +145,9 @@ const Login = ({ portalMode = null }) => {
     portalMode === "resident" ||
     currentPath.includes("resident") ||
     currentPath.includes("portal");
-  const isExplicitAdminRoute =
-    portalMode === "admin" ||
-    currentPath.includes("admin") ||
-    currentPath.includes("staff");
 
-  // Direct portal paths (e.g. /admin, /admin-login, /resident, /resident-login, /portal) open login directly
-  const isExplicitPortalPath = isExplicitAdminRoute || isExplicitResidentRoute;
-
-  const [currentView, setCurrentView] = useState(() => (isExplicitPortalPath ? "login" : "landing"));
+  // View state: ALWAYS start at 'landing' (Home Page) so user sees Home Page first
+  const [currentView, setCurrentView] = useState("landing");
 
   const [modalStep, setModalStep] = useState(() =>
     isTargetAdmin ? "admin_login" : "resident_login"
@@ -165,18 +157,14 @@ const Login = ({ portalMode = null }) => {
   );
 
   useEffect(() => {
-    if (isExplicitAdminRoute) {
+    if (isTargetAdmin) {
       setAccessMode("Admin");
       setModalStep("admin_login");
-      setCurrentView("login");
     } else if (isExplicitResidentRoute) {
       setAccessMode("Resident");
       setModalStep("resident_login");
-      setCurrentView("login");
-    } else if (currentPath === "/" || currentPath === "/login") {
-      setCurrentView("landing");
     }
-  }, [isExplicitAdminRoute, isExplicitResidentRoute, currentPath]);
+  }, [isTargetAdmin, isExplicitResidentRoute]);
 
   const [residentAuthMode, setResidentAuthMode] = useState("signin");
   const [registrationProof, setRegistrationProof] = useState(null);
@@ -492,16 +480,6 @@ const Login = ({ portalMode = null }) => {
     setError(null);
     setNotice(null);
     setCurrentView("login");
-
-    if (type === "admin_login") {
-      if (currentPath !== "/admin-login" && currentPath !== "/admin") {
-        navigate("/admin-login");
-      }
-    } else {
-      if (currentPath !== "/resident-login" && currentPath !== "/portal" && currentPath !== "/resident") {
-        navigate("/resident-login");
-      }
-    }
   };
 
   const goToLanding = () => {
@@ -509,9 +487,6 @@ const Login = ({ portalMode = null }) => {
     setError(null);
     setNotice(null);
     setMobileMenuOpen(false);
-    if (currentPath !== "/" && currentPath !== "/login") {
-      navigate("/");
-    }
   };
 
   // Session check & redirect (Supports both Admin and Resident portals on deployed link)
@@ -1693,80 +1668,26 @@ const Login = ({ portalMode = null }) => {
             </div>
           </div>
 
-          {/* 3. DUAL SEPARATE PORTALS (RESIDENT vs ADMIN & STAFF) */}
-          <div className="w-full max-w-3xl mx-auto pt-2 sm:pt-3 pb-3 px-3 sm:px-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 items-stretch">
-              
-              {/* RESIDENT PORTAL CARD BUTTON */}
-              <div className="relative group">
-                <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-emerald-600/40 via-teal-500/40 to-emerald-600/40 blur-md opacity-70 group-hover:opacity-100 transition-all duration-500 animate-pulse pointer-events-none" />
-                <motion.button
-                  type="button"
-                  whileHover={{ scale: 1.02, y: -2 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => openLoginView("resident_login")}
-                  className="relative w-full h-full py-3.5 px-4 sm:px-5 rounded-2xl bg-gradient-to-r from-[#0B5D3B] via-[#0D7349] to-[#08452B] hover:brightness-110 text-white shadow-lg hover:shadow-emerald-900/40 transition-all duration-300 active:scale-95 cursor-pointer text-left flex items-center justify-between gap-3 overflow-hidden border border-emerald-400/50"
-                >
-                  <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12 -translate-x-full group-hover:translate-x-[300%] transition-transform duration-1000 ease-out pointer-events-none" />
-                  
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-xl bg-emerald-800/80 border border-emerald-400/40 flex items-center justify-center text-emerald-300 shrink-0 shadow-inner group-hover:scale-105 group-hover:bg-emerald-700 transition-all">
-                      <Home size={20} className="stroke-[2.5]" />
-                    </div>
-                    <div>
-                      <span className="inline-block text-[9.5px] font-black uppercase tracking-wider text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/30 mb-0.5">
-                        Citizen Services
-                      </span>
-                      <h3 className="text-xs sm:text-sm font-black text-white tracking-wide flex items-center gap-1.5 leading-tight">
-                        RESIDENT PORTAL
-                      </h3>
-                      <p className="text-[10.5px] sm:text-[11px] text-emerald-100/85 font-medium leading-tight mt-0.5">
-                        Barangay ID • Requests • AI Chatbot
-                      </p>
-                    </div>
-                  </div>
+          {/* 3. SEPARATE "LOG IN NOW" BUTTON SECTION */}
+          <div className="w-full flex justify-center pt-2.5 sm:pt-3.5 pb-3 px-4">
+            <div className="relative group">
+              {/* Pulsing ambient glow aura behind button */}
+              <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-emerald-600/30 via-teal-500/30 to-emerald-600/30 blur-md opacity-70 group-hover:opacity-100 transition-all duration-500 animate-pulse pointer-events-none" />
 
-                  <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center text-emerald-200 group-hover:bg-white group-hover:text-emerald-900 group-hover:translate-x-1 transition-all shrink-0">
-                    <ArrowRight size={15} className="stroke-[2.5]" />
-                  </div>
-                </motion.button>
-              </div>
+              <motion.button
+                type="button"
+                whileHover={{ scale: 1.04, y: -2 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => openLoginView(isTargetAdmin ? "admin_login" : "resident_login")}
+                className="relative w-full min-w-[220px] sm:min-w-[260px] max-w-[300px] py-3 px-6 rounded-2xl bg-gradient-to-r from-[#0B5D3B] via-[#0D7349] to-[#08452B] hover:brightness-110 text-white font-black text-xs sm:text-sm tracking-wider shadow-lg hover:shadow-emerald-900/30 transition-all duration-300 active:scale-95 cursor-pointer text-center flex items-center justify-center gap-2 overflow-hidden border border-emerald-400/40"
+              >
+                {/* Continuous light sheen sweep on hover */}
+                <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/25 to-transparent -skew-x-12 -translate-x-full group-hover:translate-x-[300%] transition-transform duration-1000 ease-out pointer-events-none" />
 
-              {/* ADMIN & STAFF PORTAL CARD BUTTON */}
-              <div className="relative group">
-                <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-amber-500/30 via-emerald-600/30 to-teal-500/30 blur-md opacity-60 group-hover:opacity-100 transition-all duration-500 pointer-events-none" />
-                <motion.button
-                  type="button"
-                  whileHover={{ scale: 1.02, y: -2 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => openLoginView("admin_login")}
-                  className="relative w-full h-full py-3.5 px-4 sm:px-5 rounded-2xl bg-gradient-to-r from-[#02281B] via-[#043E2B] to-[#011B12] hover:brightness-110 text-white shadow-lg hover:shadow-black/50 transition-all duration-300 active:scale-95 cursor-pointer text-left flex items-center justify-between gap-3 overflow-hidden border border-amber-400/50"
-                >
-                  <span className="absolute inset-0 w-1/2 h-full bg-gradient-to-r from-transparent via-white/15 to-transparent -skew-x-12 -translate-x-full group-hover:translate-x-[300%] transition-transform duration-1000 ease-out pointer-events-none" />
-                  
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-300 shrink-0 shadow-inner group-hover:scale-105 group-hover:bg-amber-500/30 transition-all">
-                      <Shield size={20} className="stroke-[2.5]" />
-                    </div>
-                    <div>
-                      <span className="inline-block text-[9.5px] font-black uppercase tracking-wider text-amber-300 bg-black/50 px-2 py-0.5 rounded-full border border-amber-500/30 mb-0.5">
-                        Official Governance
-                      </span>
-                      <h3 className="text-xs sm:text-sm font-black text-white tracking-wide flex items-center gap-1.5 leading-tight">
-                        ADMIN &amp; STAFF PORTAL
-                      </h3>
-                      <p className="text-[10.5px] sm:text-[11px] text-amber-100/85 font-medium leading-tight mt-0.5">
-                        Barangay Officials &amp; Database
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="h-8 w-8 rounded-full bg-white/10 flex items-center justify-center text-amber-200 group-hover:bg-amber-400 group-hover:text-slate-950 group-hover:translate-x-1 transition-all shrink-0">
-                    <ArrowRight size={15} className="stroke-[2.5]" />
-                  </div>
-                </motion.button>
-              </div>
-
+                <LogIn size={16} className="text-emerald-300 group-hover:-translate-x-0.5 transition-transform" />
+                <span>LOG IN NOW</span>
+                <ArrowRight size={16} className="text-emerald-300 group-hover:translate-x-1.5 transition-transform duration-200" />
+              </motion.button>
             </div>
           </div>
 
@@ -2102,7 +2023,7 @@ const Login = ({ portalMode = null }) => {
             </div>
 
             {modalStep === "resident_login" && (
-              <div className="pt-3 border-t border-white/15 space-y-2">
+              <div className="pt-3 border-t border-white/15">
                 <p className="text-xs text-emerald-200/90 font-medium">
                   New resident of Barangay Upper Mingading?{" "}
                   <button
@@ -2115,31 +2036,6 @@ const Login = ({ portalMode = null }) => {
                     className="font-black text-amber-300 hover:text-white hover:underline transition cursor-pointer"
                   >
                     Register Account Online
-                  </button>
-                </p>
-                <p className="text-[11px] text-slate-300/80 pt-0.5">
-                  Barangay Official or Staff?{" "}
-                  <button
-                    type="button"
-                    onClick={() => openLoginView("admin_login")}
-                    className="font-bold text-amber-300 hover:text-white hover:underline transition cursor-pointer inline-flex items-center gap-1"
-                  >
-                    <Shield size={11} /> Admin &amp; Staff Login &rarr;
-                  </button>
-                </p>
-              </div>
-            )}
-
-            {modalStep === "admin_login" && (
-              <div className="pt-3 border-t border-white/15">
-                <p className="text-[11px] text-slate-300/80">
-                  Are you a Barangay Resident?{" "}
-                  <button
-                    type="button"
-                    onClick={() => openLoginView("resident_login")}
-                    className="font-bold text-emerald-300 hover:text-white hover:underline transition cursor-pointer inline-flex items-center gap-1"
-                  >
-                    <Home size={11} /> Resident Portal Login &rarr;
                   </button>
                 </p>
               </div>
