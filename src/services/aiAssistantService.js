@@ -1,4 +1,5 @@
 import { generateText } from "./geminiService";
+import { findSmartAnswerInKnowledge } from "./residentAssistantService";
 import { supabase } from "../lib/supabaseClient";
 import { fetchResidents } from "./adminService";
 import {
@@ -467,6 +468,15 @@ function stripSuggestedQuestions(answer) {
 
 function buildLocalFallbackAnswer(question, snapshot) {
   const wantsAssistantPurpose = isAssistantMetaQuestion(question);
+  if (wantsAssistantPurpose) {
+    return buildAssistantPurposeAnswer();
+  }
+
+  const smartKnowledge = findSmartAnswerInKnowledge(question, snapshot.knowledgeItems || []);
+  if (smartKnowledge) {
+    return smartKnowledge;
+  }
+
   const wantsHistory = includesAny(question, [
     "history", "kasaysayan", "pinagmulan", "origin", "political", "politika", "pulitika",
     "leader", "leaders", "kapitan", "captain", "teniente", "catenas", "bolivar", "garito",

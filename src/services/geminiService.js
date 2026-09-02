@@ -41,7 +41,7 @@ export function setCustomGeminiApiKey(key) {
 }
 
 export function getActiveGeminiModel() {
-  let model = "gemini-2.0-flash";
+  let model = "gemini-2.5-flash";
   if (typeof window !== "undefined") {
     const customModel = window.localStorage.getItem("kaagapai_gemini_model");
     if (customModel && customModel.trim()) model = customModel.trim();
@@ -51,8 +51,9 @@ export function getActiveGeminiModel() {
   }
 
   // Normalize deprecated model names to prevent 404s
-  if (model === "gemini-1.5-flash") return "gemini-2.0-flash";
-  if (model === "gemini-1.5-flash-8b") return "gemini-2.0-flash";
+  if (model === "gemini-1.5-flash" || model === "gemini-1.5-flash-8b" || model === "gemini-2.0-flash") {
+    return "gemini-2.5-flash";
+  }
   return model;
 }
 

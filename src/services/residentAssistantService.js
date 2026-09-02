@@ -2609,95 +2609,171 @@ const QA_STOP_WORDS = new Set([
   "in", "on", "at", "to", "for", "of", "with", "by", "from", "my", "your", "can", "i", "you", "he", "she",
   "it", "they", "we", "this", "that", "these", "those", "base", "based", "according",
   "sino", "ano", "saan", "kailan", "bakit", "paano", "ang", "ng", "sa", "mga", "ay", "na",
-  "may", "meron", "ba", "po", "opo", "ko", "mo", "natin", "inyo", "namin", "basta"
+  "may", "meron", "ba", "po", "opo", "ko", "mo", "natin", "inyo", "namin", "basta", "do", "does", "did"
 ]);
 
-const findSmartAnswerInKnowledge = (question, relevantKnowledge, language = "tagalog") => {
+const cleanAnswerText = (aText) =>
+  String(aText || "")
+    .replace(/\n\s*---\s*[\s\S]*$/g, "")
+    .replace(/\n\s*#{1,4}\s+[^\n]+$/g, "")
+    .replace(/\n\s*This keeps all[\s\S]*$/i, "")
+    .replace(/^[:\-\s]+/, "")
+    .trim();
+
+export const findSmartAnswerInKnowledge = (question, relevantKnowledge = [], language = "tagalog") => {
   if (!relevantKnowledge || !relevantKnowledge.length) return "";
 
   const normQ = normalizeText(question);
   const qWords = normQ.split(" ").filter((w) => w.length >= 2);
   const meaningfulQWords = qWords.filter((w) => !QA_STOP_WORDS.has(w));
 
+  let globalBestAnswer = "";
+  let globalHighestScore = 0;
+
   for (const item of relevantKnowledge) {
     const content = item.content || "";
     if (!content) continue;
 
-    // Pattern 1: Parse multi-QA blocks (e.g. Q1, Q2, Question: ... Answer: ...)
-    const qaBlockRegex = /(?:Q\d+|Question|\bQ\b)\s*[:\.]?\s*([^\n\?]+[\?]?)\s*(?:Answer|\bA\b)\s*[:\.]?\s*([\s\S]*?)(?=(?:Q\d+|Question|\bQ\b)\s*[:\.]?|$)/gi;
-    let qaBlock;
-    while ((qaBlock = qaBlockRegex.exec(content)) !== null) {
-      const qText = qaBlock[1]?.trim();
-      const aText = qaBlock[2]?.trim();
-      if (qText && aText) {
-        const normBlockQ = normalizeText(qText);
-        const blockMeaningfulWords = normBlockQ.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
-        const matchingWords = meaningfulQWords.filter((w) => blockMeaningfulWords.includes(w));
+    // Clean markdown bold/italic decorators around Q and A labels like **Question:** or **Answer:**
+    const clean = content.replace(/\*\*(Question|Answer|Tanong|Sagot|Q\d*|A\d*)\s*[:\.]?\*\*/gi, "$1:");
 
-        const hasDirectInclusion = normBlockQ.length > 8 && (normQ.includes(normBlockQ) || normBlockQ.includes(normQ));
-        const hasStrongWordOverlap =
-          meaningfulQWords.length > 0 &&
-          matchingWords.length >= Math.max(2, Math.ceil(meaningfulQWords.length * 0.6));
+    // Pattern 1: Robust Structured Q&A blocks (Question: ... Answer: ...)
+    const qaRegex = /(?:^|\n)\s*(?:###?\s*\d*[\.\)]?\s*)?(?:(?:Q\d*|Question|Tanong)\s*[:\.\-]\s*)([^\n]+(?:\n(?!(?:Answer|Sagot|A\b\s*[:\.\-])).*)*)\n\s*(?:(?:Answer|Sagot|A\b)\s*[:\.\-]\s*)([\s\S]*?)(?=(?:\n\s*(?:###?\s*\d*[\.\)]?\s*)?(?:Q\d*|Question|Tanong)\s*[:\.\-])|$)/gi;
 
-        if (hasDirectInclusion || hasStrongWordOverlap) {
-          return aText.replace(/^[:\-\s]+/, "").trim();
-        }
+    let match;
+    while ((match = qaRegex.exec(clean)) !== null) {
+      const qText = match[1].trim().replace(/^\*+|\*+$/g, "").trim();
+      const aText = cleanAnswerText(match[2]);
+
+      const normBlockQ = normalizeText(qText);
+      const blockMeaningfulWords = normBlockQ.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
+      const matchingWords = meaningfulQWords.filter((w) => blockMeaningfulWords.includes(w));
+
+      let score = 0;
+      if (normQ === normBlockQ) score += 100;
+      else if (normQ.includes(normBlockQ) || normBlockQ.includes(normQ)) score += 50;
+
+      score += matchingWords.length * 20;
+
+      // Check distinctive words match (e.g. solo, parent, rsbsa, indigency, residency)
+      blockMeaningfulWords.forEach((bw) => {
+        if (meaningfulQWords.includes(bw)) score += 15;
+      });
+
+      if (blockMeaningfulWords.length > 0) {
+        const matchRatio = matchingWords.length / blockMeaningfulWords.length;
+        if (matchRatio >= 0.5) score += 25;
+      }
+
+      if (score > globalHighestScore && matchingWords.length >= 1) {
+        globalHighestScore = score;
+        globalBestAnswer = aText;
       }
     }
 
-    // Pattern 2: Explicit Key-Value/QA lines (e.g. Tanong: ... Sagot: ... or Q: ... A: ...)
+    // Pattern 2: Explicit Key-Value / Single QA lines
     const lines = content.split(/\n+/);
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed) continue;
 
-      const qaMatch = trimmed.match(
-        /(?:tanong|question|q)\s*[:\-]\s*(.*?)\s*(?:sagot|answer|a)\s*[:\-]\s*(.*)/i
+      const singleQAMatch = trimmed.match(
+        /^(?:tanong|question|q\d*)\s*[:\-]\s*(.*?)\s*(?:sagot|answer|a\d*)\s*[:\-]\s*(.*)$/i
       );
-      if (qaMatch) {
-        const qText = qaMatch[1];
-        const aText = qaMatch[2];
+      if (singleQAMatch) {
+        const qText = singleQAMatch[1];
+        const aText = cleanAnswerText(singleQAMatch[2]);
         const normKey = normalizeText(qText);
-        const keyMeaningfulWords = normKey.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
-        const matchingKeyWords = meaningfulQWords.filter((w) => keyMeaningfulWords.includes(w));
+        const keyWords = normKey.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
+        const matchingKeyWords = meaningfulQWords.filter((w) => keyWords.includes(w));
 
-        if (
-          normKey &&
-          (normQ.includes(normKey) ||
-            normKey.includes(normQ) ||
-            (meaningfulQWords.length > 0 && matchingKeyWords.length >= Math.max(2, Math.ceil(meaningfulQWords.length * 0.6))))
-        ) {
-          return aText.trim();
+        let score = 0;
+        if (normQ === normKey) score += 90;
+        else if (normQ.includes(normKey) || normKey.includes(normQ)) score += 45;
+        score += matchingKeyWords.length * 20;
+
+        if (score > globalHighestScore && matchingKeyWords.length >= 1) {
+          globalHighestScore = score;
+          globalBestAnswer = aText;
         }
       }
     }
 
-    // Pattern 3: If single article without multi-QA structure, check keyword matches
-    const isMultiQA = /Q\d+|Question:|Tanong:/i.test(content);
-    if (!isMultiQA) {
-      const sentences = content.split(/(?<=[.!?])\s+|\n+/);
-      for (const sentence of sentences) {
-        const normS = normalizeText(sentence);
-        if (normS && qWords.length > 0 && qWords.every((w) => normS.includes(w))) {
-          let cleanSentence = sentence.trim();
-          const normTitle = normalizeText(item.title);
-          if (normTitle && normalizeText(cleanSentence).startsWith(normTitle)) {
-            cleanSentence = cleanSentence.slice(item.title.length).replace(/^[\s:\-\=]+/, "").trim();
+    // Pattern 3: Heading-based Sections (e.g. ### 1. Barangay Clearance or ### Curfew Ordinance)
+    const headingRegex = /^(#{1,4})\s+(.+)$/;
+    const rawLines = content.split("\n");
+    let currentTitle = "";
+    let currentBody = [];
+
+    for (const line of rawLines) {
+      const hMatch = line.match(headingRegex);
+      if (hMatch) {
+        if (currentTitle && currentBody.length) {
+          const normHeading = normalizeText(currentTitle);
+          const headingWords = normHeading.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
+          const matchingHW = meaningfulQWords.filter((w) => headingWords.includes(w));
+          let hScore = 0;
+          if (normQ.includes(normHeading) || normHeading.includes(normQ)) hScore += 40;
+          hScore += matchingHW.length * 20;
+
+          if (hScore > globalHighestScore && matchingHW.length >= 1) {
+            const bodyStr = cleanAnswerText(currentBody.join("\n"));
+            if (bodyStr) {
+              globalHighestScore = hScore;
+              globalBestAnswer = bodyStr;
+            }
           }
-          if (cleanSentence) return cleanSentence;
         }
-      }
-
-      // Single non-QA article fallback (only if short and concise)
-      let cleanContent = (item.content || item.title || "").trim();
-      const normTitle = normalizeText(item.title);
-      if (normTitle && normalizeText(cleanContent).startsWith(normTitle)) {
-        cleanContent = cleanContent.slice(item.title.length).replace(/^[\s:\-\=]+/, "").trim();
-      }
-      if (cleanContent && cleanContent.length < 350) {
-        return cleanContent;
+        currentTitle = hMatch[2].trim();
+        currentBody = [];
+      } else {
+        currentBody.push(line);
       }
     }
+
+    // End of lines check for last section
+    if (currentTitle && currentBody.length) {
+      const normHeading = normalizeText(currentTitle);
+      const headingWords = normHeading.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
+      const matchingHW = meaningfulQWords.filter((w) => headingWords.includes(w));
+      let hScore = 0;
+      if (normQ.includes(normHeading) || normHeading.includes(normQ)) hScore += 40;
+      hScore += matchingHW.length * 20;
+
+      if (hScore > globalHighestScore && matchingHW.length >= 1) {
+        const bodyStr = cleanAnswerText(currentBody.join("\n"));
+        if (bodyStr) {
+          globalHighestScore = hScore;
+          globalBestAnswer = bodyStr;
+        }
+      }
+    }
+
+    // Pattern 4: Fallback for short single non-QA article
+    const isMultiQA = /(?:Q\d*|Question|Tanong)\s*[:\.\-]/i.test(content);
+    if (!isMultiQA && (!currentTitle || globalHighestScore < 20)) {
+      const normTitle = normalizeText(item.title);
+      const titleWords = normTitle.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
+      const matchingTW = meaningfulQWords.filter((w) => titleWords.includes(w));
+      let tScore = 0;
+      if (normQ.includes(normTitle) || normTitle.includes(normQ)) tScore += 50;
+      tScore += matchingTW.length * 25;
+
+      if (tScore > globalHighestScore && matchingTW.length >= 1) {
+        let cleanBody = cleanAnswerText(content);
+        if (normTitle && normalizeText(cleanBody).startsWith(normTitle)) {
+          cleanBody = cleanBody.slice(item.title.length).replace(/^[\s:\-\=]+/, "").trim();
+        }
+        if (cleanBody && cleanBody.length < 800) {
+          globalHighestScore = tScore;
+          globalBestAnswer = cleanBody;
+        }
+      }
+    }
+  }
+
+  if (globalBestAnswer && globalHighestScore >= 25) {
+    return globalBestAnswer;
   }
 
   return "";
@@ -2719,7 +2795,7 @@ const buildKnowledgeSummaryAnswer = (relevantKnowledge, language, question = "")
   if (top && top.content) {
     const isMultiQA = /(?:Q\d+|Question|\bQ\b)\s*[:\.]?/i.test(top.content) && /Answer\s*[:\.]?/i.test(top.content);
     if (!isMultiQA) {
-      return top.content.trim();
+      return cleanAnswerText(top.content);
     }
   }
 
@@ -3150,6 +3226,10 @@ async function buildLocalAnswer(question, context = {}) {
   if (wantsResidentStats) {
     return buildResidentStatsAnswer(question, residentStats, language);
   }
+  const smartKnowledgeAnswer = findSmartAnswerInKnowledge(question, knowledgeItems || [], language);
+  if (smartKnowledgeAnswer) {
+    return smartKnowledgeAnswer;
+  }
   if (wantsDocuments || documentFocus) {
     return buildComprehensiveDocumentAnswer(question, documentFocus, context, language);
   }
@@ -3394,6 +3474,8 @@ export async function askResidentAssistant(question, context = {}) {
       }
     }
     answer = buildResidentStatsAnswer(trimmedQuestion, context.residentStats, language);
+  } else if (findSmartAnswerInKnowledge(trimmedQuestion, context.knowledgeItems || [], language)) {
+    answer = findSmartAnswerInKnowledge(trimmedQuestion, context.knowledgeItems || [], language);
   } else if (wantsDocuments || Boolean(documentFocus)) {
     answer = buildComprehensiveDocumentAnswer(trimmedQuestion, documentFocus, context, language);
   } else if (wantsCedula && !documentFocus) {
