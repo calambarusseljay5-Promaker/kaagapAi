@@ -2820,7 +2820,8 @@ const QA_STOP_WORDS = new Set([
   "in", "on", "at", "to", "for", "of", "with", "by", "from", "my", "your", "can", "i", "you", "he", "she",
   "it", "they", "we", "this", "that", "these", "those", "base", "based", "according",
   "sino", "ano", "saan", "kailan", "bakit", "paano", "ang", "ng", "sa", "mga", "ay", "na",
-  "may", "meron", "ba", "po", "opo", "ko", "mo", "natin", "inyo", "namin", "basta", "do", "does", "did"
+  "may", "meron", "ba", "po", "opo", "ko", "mo", "natin", "inyo", "namin", "basta", "do", "does", "did",
+  "barangay", "brgy", "bgy", "upper", "mingading"
 ]);
 
 const cleanAnswerText = (aText) =>
@@ -2935,7 +2936,8 @@ export const findSmartAnswerInKnowledge = (question, relevantKnowledge = [], lan
       if (normQ.includes(normTitle) || normTitle.includes(normQ)) tScore += 60;
       tScore += matchingTW.length * 30;
 
-      if (tScore > globalHighestScore && matchingTW.length >= 1) {
+      const allTitleWordsMatched = titleWords.length > 0 && matchingTW.length >= titleWords.length;
+      if (tScore > globalHighestScore && (allTitleWordsMatched || matchingTW.length >= 2 || normQ.includes(normTitle) || normTitle.includes(normQ))) {
         globalHighestScore = tScore;
         globalBestAnswer = cleanAnswerText(content);
       }
@@ -3598,19 +3600,36 @@ export async function askResidentAssistant(question, context = {}) {
 
   const isAskingCurrentCaptain =
     !includesAny(normalizedQ, ["unang", "una", "first", "1st", "history", "hstory", "dating", "nakaraan", "past", "timeline", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "10th", "pangalawa", "pangatlo", "pang-apat", "panglima", "pang-anim", "pampito", "pangwalo", "pangsiyam", "pangsampu"]) &&
-    ((includesAny(normalizedQ, ["captain", "kapitan", "punong barangay"]) &&
-      includesAny(normalizedQ, ["sino", "who", "ngayon", "present", "current", "kasalukuyan", "sino si", "sino ang"])) ||
-    includesAny(normalizedQ, [
-      "sino ang kapitan",
-      "sino kapitan",
-      "sino ang punong barangay",
-      "sino punong barangay",
-      "who is the captain",
-      "who is captain",
-      "who is the barangay captain",
-      "kapitan ngayon",
-      "captain ngayon",
-    ]));
+    (
+      (includesAny(normalizedQ, ["captain", "kapitan", "punong barangay", "brgy captain", "barangay captain"]) &&
+       includesAny(normalizedQ, ["sino", "who", "ngayon", "present", "current", "kasalukuyan", "kilala", "pangalan", "name", "tawag", "sino si", "sino ang"])) ||
+      includesAny(normalizedQ, [
+        "sino ang kapitan",
+        "sino kapitan",
+        "sino si kapitan",
+        "sino si captain",
+        "sino ang punong barangay",
+        "sino punong barangay",
+        "sino ang barangay captain",
+        "sino ang kapitan ng barangay",
+        "who is the captain",
+        "who is captain",
+        "who is the barangay captain",
+        "who is the current captain",
+        "kapitan ngayon",
+        "captain ngayon",
+        "kasalukuyang kapitan",
+        "kasalukuyang punong barangay",
+        "kilala mo ba ang kapitan",
+        "kilala mo si kapitan",
+        "kilala mo ba si kapitan",
+        "kilala mo kapitan"
+      ]) ||
+      normalizedQ === "kapitan" ||
+      normalizedQ === "captain" ||
+      normalizedQ === "punong barangay" ||
+      normalizedQ === "barangay captain"
+    );
 
   const documentTemplates = context.documentTemplates || [];
   const requests = context.requests || [];
@@ -3635,19 +3654,6 @@ export async function askResidentAssistant(question, context = {}) {
     answer = buildAdminPortalAnswer(language);
   } else if (isThirdPartyPrivacyQuestion(normalizedQ)) {
     answer = buildPrivacyLimitationAnswer(language);
-  } else if (findSmartAnswerInKnowledge(trimmedQuestion, context.knowledgeItems || [], language)) {
-    // Top Priority: Trained knowledge from AI Knowledge & Chatbot Trainer
-    answer = findSmartAnswerInKnowledge(trimmedQuestion, context.knowledgeItems || [], language);
-  } else if (isOutOfBarangayScopeQuestion(normalizedQ)) {
-    answer = buildOutOfScopeLimitationAnswer(language);
-  } else if (isGreetingMessage(trimmedQuestion)) {
-    answer = buildGreetingAnswer(trimmedQuestion, resident);
-  } else if (isApologyMessage(trimmedQuestion)) {
-    answer = buildApologyAnswer(trimmedQuestion);
-  } else if (isGratitudeMessage(trimmedQuestion)) {
-    answer = buildGratitudeAnswer(trimmedQuestion);
-  } else if (isConversationalOrFriendlyQuestion(trimmedQuestion)) {
-    answer = buildConversationalAnswer(trimmedQuestion, resident, language);
   } else if (isAskingCurrentCaptain) {
     answer = buildCurrentCaptainAnswer(resolvedOfficials, language);
   } else if (hasOrganizationChartIntent(trimmedQuestion)) {
@@ -3662,6 +3668,19 @@ export async function askResidentAssistant(question, context = {}) {
       console.error("Failed to dynamically fetch fresh stats for AI prompt:", error);
     }
     answer = buildResidentStatsAnswer(trimmedQuestion, context.residentStats, language);
+  } else if (findSmartAnswerInKnowledge(trimmedQuestion, context.knowledgeItems || [], language)) {
+    // Trained knowledge from AI Knowledge & Chatbot Trainer
+    answer = findSmartAnswerInKnowledge(trimmedQuestion, context.knowledgeItems || [], language);
+  } else if (isOutOfBarangayScopeQuestion(normalizedQ)) {
+    answer = buildOutOfScopeLimitationAnswer(language);
+  } else if (isGreetingMessage(trimmedQuestion)) {
+    answer = buildGreetingAnswer(trimmedQuestion, resident);
+  } else if (isApologyMessage(trimmedQuestion)) {
+    answer = buildApologyAnswer(trimmedQuestion);
+  } else if (isGratitudeMessage(trimmedQuestion)) {
+    answer = buildGratitudeAnswer(trimmedQuestion);
+  } else if (isConversationalOrFriendlyQuestion(trimmedQuestion)) {
+    answer = buildConversationalAnswer(trimmedQuestion, resident, language);
   } else if (wantsDocuments || Boolean(documentFocus)) {
     answer = buildComprehensiveDocumentAnswer(trimmedQuestion, documentFocus, context, language);
   } else if (wantsCedula && !documentFocus) {
