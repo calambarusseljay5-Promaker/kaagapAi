@@ -767,6 +767,55 @@ const buildAdminPasswordSecurityAnswer = (language = "tagalog") => {
   ].join("\n");
 };
 
+const isApprovalOrRecordModificationQuestion = (normalizedQ) => {
+  const triggers = [
+    "change my records", "change my barangay records", "approve my clearance",
+    "approve my barangay clearance", "approve my request", "approve my document",
+    "alter my records", "modify my records", "update my records for me",
+    "change my profile for me", "approve my clearance for me", "ikaw ba ang mag-aapruba",
+    "ikaw ba mag aapruba", "pwede mo ba aprubahan", "pwede mo ba baguhin",
+    "baguhin ang rekord", "aprubahan ang clearance", "aprubahan ang aking",
+    "can you approve", "can you change my", "can you alter"
+  ];
+  return includesAny(normalizedQ, triggers) || (
+    (normalizedQ.includes("approve") || normalizedQ.includes("aprubahan")) &&
+    (normalizedQ.includes("clearance") || normalizedQ.includes("request") || normalizedQ.includes("document") || normalizedQ.includes("certificate"))
+  ) || (
+    (normalizedQ.includes("change") || normalizedQ.includes("modify") || normalizedQ.includes("alter") || normalizedQ.includes("baguhin")) &&
+    (normalizedQ.includes("record") || normalizedQ.includes("profile") || normalizedQ.includes("information"))
+  );
+};
+
+const buildApprovalOrRecordModificationAnswer = (language = "tagalog") => {
+  if (language === "tagalog") {
+    return [
+      "ℹ️ **Paalala sa Pag-apruba at Pagbabago ng Opisyal na Rekord:**",
+      "",
+      "Bilang **KaagapAI Virtual Assistant**, **hindi po ako maaaring direktang magbago ng inyong mga opisyal na rekord o mag-apruba ng inyong mga kahilingan sa dokumento** (tulad ng Barangay Clearance, Certificate of Indigency, atbp.).",
+      "",
+      "Ang lahat ng pagsusuri, pag-apruba, at opisyal na lagda ay eksklusibong isinasagawa ng mga awtorisadong **Opisyal ng Barangay Upper Mingading** (Punong Barangay, Barangay Secretary, o Barangay Treasurer) alinsunod sa mga panuntunan ng lokal na pamahalaan.",
+      "",
+      "📌 **Ano ang maaari ninyong gawin:**",
+      "• **Mag-request ng Dokumento:** I-click ang **'Request Document'** button sa inyong dashboard.",
+      "• **Mag-update ng Profile:** Pumunta sa **'My Profile'** tab at i-click ang **'Edit Profile'** upang magsumite ng opisyal na Profile Update Request para sa pagsusuri ng barangay.",
+      "• **Bumisita sa Barangay Hall:** Maaari kayong tumungo sa opisina ng barangay sa oras ng trabaho (Lunes hanggang Biyernes, 8:00 AM - 5:00 PM)."
+    ].join("\n");
+  }
+
+  return [
+    "ℹ️ **Advisory on Approvals & Official Record Modifications:**",
+    "",
+    "As **KaagapAI**, I am an AI virtual assistant and **cannot directly alter your official barangay records or approve document requests** (such as Barangay Clearance, Indigency, or Residency).",
+    "",
+    "All document reviews, approvals, and official signatures are strictly and exclusively authorized by designated **Barangay Upper Mingading Officials** (Punong Barangay, Barangay Secretary, or Barangay Treasurer) following verified validation.",
+    "",
+    "📌 **What you can do:**",
+    "• **Submit a Document Request:** Click the **'Request Document'** button on your dashboard.",
+    "• **Update your Profile Details:** Go to the **'My Profile'** tab and submit a Profile Update Request for administrative review.",
+    "• **Visit the Barangay Hall:** You may visit the Barangay Office during official business hours (Monday to Friday, 8:00 AM - 5:00 PM)."
+  ].join("\n");
+};
+
 const buildOutOfScopeLimitationAnswer = (language = "tagalog") => {
   if (language === "tagalog") {
     return [
@@ -3007,6 +3056,8 @@ export async function askResidentAssistant(question, context = {}) {
     answer = buildAdminPasswordSecurityAnswer(language);
   } else if (isOutOfBarangayScopeQuestion(normalizedQ)) {
     answer = buildOutOfScopeLimitationAnswer(language);
+  } else if (isApprovalOrRecordModificationQuestion(normalizedQ)) {
+    answer = buildApprovalOrRecordModificationAnswer(language);
   } else if (isAdminPortalQuestion(normalizedQ)) {
     answer = buildAdminPortalAnswer(language);
   } else if (isThirdPartyPrivacyQuestion(normalizedQ)) {

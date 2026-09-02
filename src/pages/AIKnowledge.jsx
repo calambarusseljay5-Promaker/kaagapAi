@@ -58,6 +58,7 @@ import {
   analyzeAndStructureKnowledgeWithAi,
 } from "../utils/fileKnowledgeParser";
 import { generateText } from "../services/geminiService";
+import { askResidentAssistant } from "../services/residentAssistantService";
 import { showAdminSystemToast } from "../utils/toast";
 
 const initialForm = {
@@ -389,45 +390,27 @@ const AIKnowledge = () => {
       scoredItems.sort((a, b) => b.score - a.score);
       const topMatches = scoredItems.filter((s) => s.score > 0).slice(0, 3).map((s) => s.item);
 
-      const knowledgeContext = topMatches.length > 0
-        ? topMatches.map((m, idx) => `[Source ${idx + 1}: ${m.title} (${m.category})]\n${m.content}`).join("\n\n")
-        : "No direct knowledge match found. Use standard polite barangay assistant knowledge.";
-
-      const prompt = `You are KaagapAI, the official Virtual Assistant of Barangay Upper Mingading, Aleosan, Cotabato.
-Answer the following resident inquiry accurately based on the provided Barangay Knowledge Context.
-If the information is in the knowledge context, cite facts clearly in conversational Tagalog/English.
-
-BARANGAY KNOWLEDGE CONTEXT:
-${knowledgeContext}
-
-RESIDENT QUESTION:
-"${q}"`;
-
-      const res = await generateText(prompt, {
-        temperature: 0.3,
-        maxOutputTokens: 1024,
+      const replyText = await askResidentAssistant(q, {
+        knowledgeItems: items,
       });
-
-      const replyText =
-        res?.candidates?.[0]?.content?.parts?.[0]?.text ||
-        res?.text ||
-        "Pasensya na po, hindi ko nahanap ang impormasyon sa ating barangay knowledge base. Maaari ninyong bisitahin ang Barangay Hall.";
 
       const matchedSource = topMatches.length > 0
         ? topMatches.map((m) => m.title).join(", ")
-        : "General AI Knowledge";
+        : "Barangay Knowledge Base";
 
       setSimHistory((prev) => [
         ...prev,
-        { role: "bot", text: replyText, matchedSource },
+        { role: "bot", text: replyText || "I'm here to help with Barangay Upper Mingading services, document requests, announcements, and livelihoods.", matchedSource },
       ]);
     } catch (err) {
+      console.warn("AI Playground query error, falling back gracefully:", err);
+      const fallbackReply = await askResidentAssistant(q, { knowledgeItems: items });
       setSimHistory((prev) => [
         ...prev,
         {
           role: "bot",
-          text: `⚠️ Chatbot query error: ${err.message || "Failed to generate answer."}`,
-          matchedSource: "Error",
+          text: fallbackReply || "I apologize, but I am currently assisting with Barangay Upper Mingading public services, document requests, and announcements. How can I help you?",
+          matchedSource: "Local Assistant Engine",
         },
       ]);
     } finally {

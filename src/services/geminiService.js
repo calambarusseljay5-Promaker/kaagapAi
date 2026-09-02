@@ -5,7 +5,7 @@ const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const DEFAULT_CANDIDATE_MODELS = [
   "gemini-1.5-flash",
   "gemini-2.0-flash",
-  "gemini-2.0-flash-lite",
+  "gemini-1.5-pro",
 ];
 
 export function getActiveGeminiApiKey() {
@@ -93,7 +93,9 @@ export async function generateText(prompt, options = {}) {
     };
   }
 
-  const modelsToTry = Array.from(new Set([model, ...DEFAULT_CANDIDATE_MODELS])).filter(Boolean);
+  const modelsToTry = Array.from(new Set([model, ...DEFAULT_CANDIDATE_MODELS]))
+    .filter(Boolean)
+    .filter((m) => m !== "gemini-2.0-flash-lite"); // exclude deprecated model
   let lastError = null;
 
   for (const currentModel of modelsToTry) {
@@ -121,7 +123,9 @@ export async function generateText(prompt, options = {}) {
         if (response.status === 403 || response.status === 401) {
           throw new Error(`Gemini API Authentication Error (${response.status}): ${errorText}`);
         }
-        throw new Error(`Gemini model ${currentModel} failed (${response.status}): ${errorText}`);
+        console.warn(`Gemini model ${currentModel} returned ${response.status}, trying next model...`);
+        lastError = new Error(`Gemini model ${currentModel} failed (${response.status}): ${errorText}`);
+        continue;
       }
 
       const result = await response.json();
