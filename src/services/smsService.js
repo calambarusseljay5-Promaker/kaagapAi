@@ -106,24 +106,7 @@ export async function sendSmsNotification({ to, body }) {
   // Remove any potential http/https web links to prevent Philippine telco smishing block filters
   message = message.replace(/https?:\/\/[^\s]+/gi, "[Official Portal]");
 
-  let edgeError = null;
-  try {
-    const { data, error } = await supabase.functions.invoke(FUNCTION_NAME, {
-      body: {
-        to: recipient,
-        body: message,
-      },
-    });
-
-    if (!error && !data?.error) {
-      return data;
-    }
-    edgeError = error?.message || data?.error;
-  } catch (err) {
-    edgeError = err?.message;
-  }
-
-  // Fallback: Direct TextBee Gateway API call
+  // 1. Prioritize Direct TextBee Gateway for instant sub-second dispatch
   let apiKey =
     (typeof import.meta !== "undefined" && import.meta.env?.VITE_TEXTBEE_API_KEY) ||
     "txb_7hMsX68glWRdYUZG6ybAXKC0pFuYZicC";
@@ -167,14 +150,34 @@ export async function sendSmsNotification({ to, body }) {
         };
       }
 
-      const directErr = result?.message || result?.error || "TextBee API returned an error.";
-      throw new Error(directErr);
+      const directErr = result?.message || result?.error;
+      if (directErr) {
+        console.warn("Direct TextBee gateway notice:", directErr);
+      }
     } catch (directError) {
-      throw new Error(directError.message || edgeError || "Unable to send SMS.");
+      console.warn("Direct TextBee dispatch notice:", directError.message);
     }
   }
 
-  throw new Error(edgeError || "Unable to send SMS.");
+  // 2. Secondary fallback: Supabase edge function
+  let edgeError = null;
+  try {
+    const { data, error } = await supabase.functions.invoke(FUNCTION_NAME, {
+      body: {
+        to: recipient,
+        body: message,
+      },
+    });
+
+    if (!error && !data?.error) {
+      return data;
+    }
+    edgeError = error?.message || data?.error;
+  } catch (err) {
+    edgeError = err?.message;
+  }
+
+  throw new Error(edgeError || "Unable to deliver SMS notification.");
 }
 
 export async function sendBulkSmsNotifications({ recipients, body }) {
