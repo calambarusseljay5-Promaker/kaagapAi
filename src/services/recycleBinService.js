@@ -35,6 +35,7 @@ const TABLE_DISPLAY_NAMES = {
   document_templates: "Document Template",
   ai_knowledge_items: "AI Knowledge Item",
   residents: "Resident Record",
+  organization_officials: "Barangay Official",
 };
 
 const TABLE_RESTORE_EXCLUDE_COLUMNS = new Set([
@@ -191,9 +192,36 @@ export async function restoreFromRecycleBin(binEntryId) {
     }
   }
 
+  // If restoring a resident, ensure residents cache is invalidated
+  if (entry.tableName === "residents") {
+    try {
+      const { invalidateResidentsCache } = await import("./adminService");
+      invalidateResidentsCache();
+    } catch (e) {
+      console.warn("Notice invalidating residents cache on restore:", e);
+    }
+  }
+
+  // If restoring announcement or livelihood, re-sync to knowledge if needed
+  if (entry.tableName === "announcements") {
+    try {
+      const { syncKnowledgeFromAnnouncement } = await import("./knowledgeService");
+      syncKnowledgeFromAnnouncement(restoredData || entry.snapshot).catch(() => {});
+    } catch {}
+  } else if (entry.tableName === "livelihood_posts") {
+    try {
+      const { syncKnowledgeFromLivelihood } = await import("./knowledgeService");
+      syncKnowledgeFromLivelihood(restoredData || entry.snapshot).catch(() => {});
+    } catch {}
+  }
+
   // Remove from recycle bin
   bin.splice(entryIndex, 1);
   writeJSON(RECYCLE_BIN_KEY, bin);
+
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("recycle-bin-updated", { detail: { action: "restore", entry } }));
+  }
 
   recordAuditEvent({
     module: "Recycle Bin",
@@ -372,6 +400,10 @@ function extractTitle(tableName, record) {
       return record.template_name || record.document_type || "Template";
     case "ai_knowledge_items":
       return record.title || record.question || "Knowledge Item";
+    case "residents":
+      return record.full_name || `${record.first_name || ""} ${record.last_name || ""}`.trim() || `Resident #${record.id}`;
+    case "organization_officials":
+      return record.name ? `${record.name} (${record.position || "Official"})` : "Official";
     default:
       return record.title || record.name || record.full_name || `Record #${record.id}`;
   }
@@ -388,9 +420,12 @@ function prepareRestorePayload(snapshot) {
     delete payload[col];
   }
 
-  // Remove any nested relation objects/arrays that are not database columns
+  // Remove joined relations (e.g. document_requests -> residents)
+  delete payload.residents;
+
+  // Remove any nested non-plain objects that are joined relations
   for (const key of Object.keys(payload)) {
-    if (payload[key] && typeof payload[key] === "object") {
+    if (key === "residents" || (payload[key] && typeof payload[key] === "object" && !Array.isArray(payload[key]) && payload[key].full_name)) {
       delete payload[key];
     }
   }

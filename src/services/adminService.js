@@ -1,6 +1,7 @@
 import { supabase } from "../lib/supabaseClient";
 import { getPurokFilterAliases } from "../utils/residentProfile";
 import { syncApprovedOnlineRegistrations } from "./residentActivationService";
+import { moveToRecycleBin } from "./recycleBinService";
 
 const RESIDENTS_TABLE = "residents";
 const RESIDENT_ACCOUNTS_TABLE = "resident_accounts";
@@ -401,6 +402,21 @@ export async function deleteResident(resident) {
     invalidateResidentsCache();
     const id = getResidentId(resident);
     if (!id) throw new Error("Unable to delete resident: ID is missing.");
+
+    // Fetch snapshot before deletion to preserve in Recycle Bin
+    let recordSnapshot = typeof resident === "object" && resident?.full_name ? resident : null;
+    if (!recordSnapshot) {
+      try {
+        const { data } = await supabase.from(RESIDENTS_TABLE).select("*").eq("id", id).maybeSingle();
+        recordSnapshot = data;
+      } catch (e) {
+        console.warn("Could not snapshot resident for recycle bin:", e);
+      }
+    }
+
+    if (recordSnapshot) {
+      moveToRecycleBin("residents", id, recordSnapshot, "Admin");
+    }
 
     const { error } = await supabase.from(RESIDENTS_TABLE).delete().eq("id", id);
 

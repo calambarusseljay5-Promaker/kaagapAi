@@ -129,6 +129,17 @@ const RecycleBin = () => {
 
   useEffect(() => {
     loadRecycleBin();
+
+    const handleUpdate = () => {
+      loadRecycleBin();
+    };
+
+    window.addEventListener("recycle-bin-updated", handleUpdate);
+    window.addEventListener("storage", handleUpdate);
+    return () => {
+      window.removeEventListener("recycle-bin-updated", handleUpdate);
+      window.removeEventListener("storage", handleUpdate);
+    };
   }, [loadRecycleBin]);
 
   const handleRestore = async (item) => {
@@ -206,14 +217,22 @@ const RecycleBin = () => {
 
   const getTableBadgeColor = (tableName) => {
     switch (tableName) {
+      case "residents":
+        return "bg-emerald-50 text-emerald-700 border-emerald-200";
       case "announcements":
-        return "bg-blue-50 text-blue-700 border-blue-100";
+        return "bg-blue-50 text-blue-700 border-blue-200";
       case "livelihood_posts":
-        return "bg-purple-50 text-purple-700 border-purple-100";
+        return "bg-purple-50 text-purple-700 border-purple-200";
       case "document_requests":
-        return "bg-amber-50 text-amber-700 border-amber-100";
+        return "bg-amber-50 text-amber-700 border-amber-200";
+      case "document_templates":
+        return "bg-indigo-50 text-indigo-700 border-indigo-200";
+      case "ai_knowledge_items":
+        return "bg-teal-50 text-teal-700 border-teal-200";
+      case "organization_officials":
+        return "bg-cyan-50 text-cyan-700 border-cyan-200";
       default:
-        return "bg-slate-50 text-slate-700 border-slate-100";
+        return "bg-slate-50 text-slate-700 border-slate-200";
     }
   };
 
@@ -308,9 +327,12 @@ const RecycleBin = () => {
                 className="w-full sm:w-48 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-800 font-bold outline-none focus:border-[#14532D]"
               >
                 <option value="">All Record Types</option>
+                <option value="residents">Resident Records</option>
                 <option value="announcements">Announcements</option>
                 <option value="livelihood_posts">Livelihood & Jobs</option>
                 <option value="document_requests">Document Requests</option>
+                <option value="document_templates">Document Templates</option>
+                <option value="ai_knowledge_items">AI Knowledge Items</option>
               </select>
               
               <button
@@ -363,6 +385,29 @@ const RecycleBin = () => {
                               <span className="text-[#14532D] font-extrabold">
                                 {item.snapshot?.residents?.full_name || residentNamesRef.current[item.snapshot?.resident_id] || "Unknown Resident"}
                               </span>
+                            </div>
+                          )}
+                          {item.tableName === "residents" && (
+                            <div className="mt-1 text-[11px] font-semibold text-slate-650 flex flex-wrap items-center gap-1.5">
+                              <span>Purok: </span>
+                              <span className="text-[#14532D] font-extrabold">{item.snapshot?.purok || "N/A"}</span>
+                              {item.snapshot?.status && (
+                                <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600 font-bold border border-slate-200">
+                                  {item.snapshot.status}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {item.tableName === "ai_knowledge_items" && (
+                            <div className="mt-1 text-[11px] font-semibold text-slate-650">
+                              <span>Category: </span>
+                              <span className="text-teal-700 font-extrabold">{item.snapshot?.category || "General"}</span>
+                            </div>
+                          )}
+                          {item.tableName === "document_templates" && (
+                            <div className="mt-1 text-[11px] font-semibold text-slate-650">
+                              <span>Category: </span>
+                              <span className="text-indigo-700 font-extrabold">{item.snapshot?.category || "Official Document"}</span>
                             </div>
                           )}
                           {item.snapshot?.created_at && (

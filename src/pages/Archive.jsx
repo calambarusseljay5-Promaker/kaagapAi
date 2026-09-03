@@ -107,9 +107,9 @@ const Archive = () => {
 
   const handleDelete = async (resident) => {
     const ok = await confirm({
-      title: "Permanently Delete Record",
-      message: "This action cannot be undone. This record will be permanently removed from the system.",
-      confirmText: "Delete Permanently",
+      title: "Move to Recycle Bin",
+      message: `Sigurado ka bang nais mong ilipat sa Recycle Bin ang archived record ni ${resident.full_name || "resident"}? Maaari mo itong i-restore anumang oras mula sa Recycle Bin bago tuluyang burahin.`,
+      confirmText: "Move to Recycle Bin",
       cancelText: "Cancel",
       variant: "danger",
       icon: Trash2,
@@ -121,10 +121,10 @@ const Archive = () => {
 
     try {
       await deleteResident(resident);
-      setMessage({ type: "success", text: "Archived resident permanently deleted." });
+      setMessage({ type: "success", text: "Resident moved to Recycle Bin." });
       await loadArchivedResidents();
     } catch (error) {
-      setMessage({ type: "error", text: error.message || "Failed to delete archived resident." });
+      setMessage({ type: "error", text: error.message || "Failed to move archived resident to Recycle Bin." });
     } finally {
       setActionResidentId(null);
     }

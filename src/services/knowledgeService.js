@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabaseClient";
+import { moveToRecycleBin } from "./recycleBinService";
 
 const TABLE = "ai_knowledge_items";
 const SETUP_MESSAGE =
@@ -182,6 +183,21 @@ export async function updateKnowledgeItem(id, updates) {
 
 export async function deleteKnowledgeItem(id) {
   if (!id) throw new Error("Knowledge item ID is required.");
+
+  try {
+    const { data: snapshot } = await supabase
+      .from(TABLE)
+      .select("*")
+      .eq("id", id)
+      .limit(1)
+      .maybeSingle();
+
+    if (snapshot) {
+      moveToRecycleBin("ai_knowledge_items", id, snapshot, "Admin");
+    }
+  } catch (err) {
+    console.warn("Could not snapshot knowledge item for recycle bin:", err);
+  }
 
   const { error } = await supabase.from(TABLE).delete().eq("id", id);
   if (error) throw normalizeKnowledgeError(error);
