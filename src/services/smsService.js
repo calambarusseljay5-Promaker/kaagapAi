@@ -124,9 +124,19 @@ export async function sendSmsNotification({ to, body }) {
   }
 
   // Fallback: Direct TextBee Gateway API call
-  const apiKey = import.meta.env.VITE_TEXTBEE_API_KEY || "309ccc30-acba-4dcc-91bd-341bf2592588";
-  const deviceId = import.meta.env.VITE_TEXTBEE_DEVICE_ID || "6a1d3161fdeb151e3594109f";
-  const baseUrl = import.meta.env.VITE_TEXTBEE_BASE_URL || "https://api.textbee.dev";
+  let apiKey =
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_TEXTBEE_API_KEY) ||
+    "txb_7hMsX68glWRdYUZG6ybAXKC0pFuYZicC";
+  const deviceId =
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_TEXTBEE_DEVICE_ID) ||
+    "6a99127eccb6c72709556a07";
+  const baseUrl =
+    (typeof import.meta !== "undefined" && import.meta.env?.VITE_TEXTBEE_BASE_URL) ||
+    "https://api.textbee.dev";
+
+  if (apiKey && !apiKey.startsWith("txb_") && !apiKey.includes("-")) {
+    apiKey = `txb_${apiKey}`;
+  }
 
   if (apiKey && deviceId) {
     try {
