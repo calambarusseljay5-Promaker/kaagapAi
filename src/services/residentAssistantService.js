@@ -2821,8 +2821,95 @@ const QA_STOP_WORDS = new Set([
   "it", "they", "we", "this", "that", "these", "those", "base", "based", "according",
   "sino", "ano", "saan", "kailan", "bakit", "paano", "ang", "ng", "sa", "mga", "ay", "na",
   "may", "meron", "ba", "po", "opo", "ko", "mo", "natin", "inyo", "namin", "basta", "do", "does", "did",
-  "barangay", "brgy", "bgy", "upper", "mingading"
+  "barangay", "brgy", "bgy", "upper", "mingading", "bawal", "rules", "regulations", "alituntunin"
 ]);
+
+const stripTagalogAffix = (w) => {
+  if (!w || w.length <= 4) return w;
+  return w
+    .replace(/^(ipinagba|ipinag|pagka|pagla|magpa|nagpa|pagsi|pagta|pakiki|pagma|pag|mag|nag|man|nan|mang|nang)/g, "")
+    .replace(/(an|in)$/g, "");
+};
+
+const wordsMatch = (w1, w2) => {
+  if (!w1 || !w2) return false;
+  if (w1 === w2) return true;
+  const s1 = stripTagalogAffix(w1);
+  const s2 = stripTagalogAffix(w2);
+  if (s1 === s2 && s1.length >= 3) return true;
+  if (s1.length >= 4 && s2.length >= 4) {
+    if (s1.includes(s2) || s2.includes(s1)) return true;
+  }
+  return false;
+};
+
+const isGeneralRulesQuestion = (normalizedQ) => {
+  return (
+    includesAny(normalizedQ, [
+      "alituntunin", "rules and regulations", "mga alituntunin", "mga bawal",
+      "list of rules", "pinagbabawal", "ano ang bawal", "ano ang mga bawal",
+      "mga patakaran", "patakaran sa barangay", "rules ng barangay", "bawal sa barangay"
+    ]) &&
+    !includesAny(normalizedQ, [
+      "droga", "smoke", "smoking", "sigarilyo", "vape", "open pipe", "lasing", "drunkenness",
+      "ingay", "videoke", "noise", "basura", "kalat", "littering", "siga", "burning",
+      "daan", "harang", "parking", "away", "fighting", "armas", "baril", "weapon",
+      "sugal", "gambling", "kapitbahay", "suspicious"
+    ])
+  );
+};
+
+const buildGeneralRulesAnswer = (language = "tagalog") => {
+  if (language === "tagalog") {
+    return [
+      "📋 **Mga Alituntunin at mga Bawal sa Barangay Mingading (Rules and Regulations):**",
+      "",
+      "Upang mapanatili ang kapayapaan, kaayusan, kalinisan, kaligtasan, at magandang samahan sa Barangay Mingading:",
+      "",
+      "1. 🚭 **Bawal Manigarilyo sa Loob ng Barangay Hall** — Gamitin ang itinalagang smoking area.",
+      "2. 🚫 **Bawal ang Illegal na Droga** — Mahigpit na ipinagbabawal ang pagmamay-ari, paggamit, pamamahagi, o pagbebenta.",
+      "3. 🚭 **Bawal Manigarilyo o Mag-Vape sa mga Ipinagbabawal na Lugar**.",
+      "4. 🚬 **Bawal ang Open Pipe / Hindi Kontroladong Usok**.",
+      "5. 🍺 **Bawal ang Paglalasing at Paggulo sa Publiko**.",
+      "6. 🔊 **Bawal ang Sobrang Ingay** — Iwasan ang sobrang lakas na musika at videoke, lalo na sa oras ng katahimikan.",
+      "7. 🗑️ **Bawal Magkalat** — Itapon ang basura sa tamang lalagyan. Bawal magtapon sa kalsada o kanal.",
+      "8. 🔥 **Bawal ang Pagsisiga o Pagsunog nang Walang Pahintulot**.",
+      "9. 🏠 **Bawal Harangan ang mga Pampublikong Daan** — Panatilihing malinis at libre ang mga sidewalk at daanan.",
+      "10. 🚗 **Bawal ang Illegal Parking** — Huwag magparada nang nakakaharang sa kalsada, pasukan, o emergency access.",
+      "11. ⚠️ **Bawal ang Pakikipag-away, Pananakot, at Harassment**.",
+      "12. 🔫 **Bawal ang Ilegal na Pag-iingat o Paggamit ng Armas**.",
+      "13. 🎰 **Bawal ang Ilegal na Sugal**.",
+      "14. 🏘️ **Igalang ang mga Kapitbahay**.",
+      "15. 🚨 **I-report ang mga Kahina-hinala o Mapanganib na Gawain sa mga Opisyal ng Barangay**.",
+      "",
+      "📌 *Paalala: Ang mga paglabag ay maaaring patawan ng karampatang aksyon, ordinansa, o pambansang batas.*"
+    ].join("\n");
+  }
+
+  return [
+    "📋 **Rules and Regulations of Barangay Mingading:**",
+    "",
+    "To maintain peace, order, cleanliness, safety, and harmony in the community:",
+    "",
+    "1. 🚭 **No Smoking Inside the Barangay Hall** — Use the designated smoking area.",
+    "2. 🚫 **No Illegal Drugs** — Possession, use, or distribution is strictly prohibited.",
+    "3. 🚭 **No Smoking or Vaping in Prohibited Areas**.",
+    "4. 🚬 **No Open Pipe / Uncontrolled Smoke**.",
+    "5. 🍺 **No Public Drunkenness or Disorderly Conduct**.",
+    "6. 🔊 **No Excessive Noise** — Avoid loud music/videoke during quiet hours.",
+    "7. 🗑️ **No Littering** — Dispose of waste properly in bins.",
+    "8. 🔥 **No Unauthorized Burning (Pagsisiga)**.",
+    "9. 🏠 **Keep Public Areas Clear** — Do not block roads, sidewalks, or pathways.",
+    "10. 🚗 **No Illegal Parking** — Do not obstruct emergency access or streets.",
+    "11. ⚠️ **No Fighting, Violence, or Threats**.",
+    "12. 🔫 **No Illegal Possession or Use of Weapons**.",
+    "13. 🎰 **No Illegal Gambling**.",
+    "14. 🏘️ **Respect Your Neighbors**.",
+    "15. 🚨 **Report Suspicious or Dangerous Activities to Barangay Officials**.",
+    "",
+    "📌 *Notice: Violations are subject to applicable barangay actions, ordinances, and national laws.*"
+  ].join("\n");
+};
 
 const cleanAnswerText = (aText) =>
   String(aText || "")
@@ -2902,8 +2989,12 @@ export const findSmartAnswerInKnowledge = (question, relevantKnowledge = [], lan
 
     for (const b of blocks) {
       const normBlockQ = normalizeText(b.q);
+      const normBlockA = normalizeText(b.a);
       const blockMeaningfulWords = normBlockQ.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
-      const matchingWords = meaningfulQWords.filter((w) => blockMeaningfulWords.includes(w));
+      const bodyMeaningfulWords = normBlockA.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
+
+      const matchingQWords = meaningfulQWords.filter((qw) => blockMeaningfulWords.some((bw) => wordsMatch(qw, bw)));
+      const matchingBodyWords = meaningfulQWords.filter((qw) => bodyMeaningfulWords.some((bw) => wordsMatch(qw, bw)) && !blockMeaningfulWords.some((bw) => wordsMatch(qw, bw)));
 
       let score = 0;
       if (normQ === normBlockQ) {
@@ -2912,18 +3003,26 @@ export const findSmartAnswerInKnowledge = (question, relevantKnowledge = [], lan
         score += 80;
       }
 
-      // Word matching score
-      score += matchingWords.length * 25;
+      // Title/heading words are high weight (40 pts each)
+      score += matchingQWords.length * 40;
+
+      // Body words matching (15 pts each)
+      score += matchingBodyWords.length * 15;
 
       // Overlap ratio boost
       if (blockMeaningfulWords.length > 0) {
-        const ratio = matchingWords.length / blockMeaningfulWords.length;
-        if (ratio >= 0.6) score += 35;
+        const ratio = matchingQWords.length / blockMeaningfulWords.length;
+        if (ratio >= 0.5) score += 35;
       }
 
-      if (score > globalHighestScore && matchingWords.length >= 1) {
+      // If matched, format heading blocks neatly
+      if (score > globalHighestScore && (matchingQWords.length >= 1 || matchingBodyWords.length >= 2)) {
         globalHighestScore = score;
-        globalBestAnswer = b.a;
+        if (b.type === "heading" && !b.a.toLowerCase().includes(b.q.toLowerCase())) {
+          globalBestAnswer = `📌 **${b.q.replace(/^[#\s]+/, "")}**\n\n${b.a}`;
+        } else {
+          globalBestAnswer = b.a;
+        }
       }
     }
 
@@ -2931,7 +3030,7 @@ export const findSmartAnswerInKnowledge = (question, relevantKnowledge = [], lan
     if (blocks.length === 0 && content.length < 800) {
       const normTitle = normalizeText(item.title);
       const titleWords = normTitle.split(" ").filter((w) => w.length >= 2 && !QA_STOP_WORDS.has(w));
-      const matchingTW = meaningfulQWords.filter((w) => titleWords.includes(w));
+      const matchingTW = meaningfulQWords.filter((w) => titleWords.some((tw) => wordsMatch(w, tw)));
       let tScore = 0;
       if (normQ.includes(normTitle) || normTitle.includes(normQ)) tScore += 60;
       tScore += matchingTW.length * 30;
@@ -3401,15 +3500,18 @@ async function buildLocalAnswer(question, context = {}) {
   if (isResidentStatsQuestion(question) || wantsResidentStats) {
     return buildResidentStatsAnswer(question, residentStats, language);
   }
-  const smartKnowledgeAnswer = findSmartAnswerInKnowledge(question, knowledgeItems || [], language);
-  if (smartKnowledgeAnswer) {
-    return smartKnowledgeAnswer;
-  }
   if (wantsDocuments || documentFocus) {
     return buildComprehensiveDocumentAnswer(question, documentFocus, context, language);
   }
   if (wantsCedula && !documentFocus) {
     return buildCedulaAnswer(question);
+  }
+  if (isGeneralRulesQuestion(normalizedQ)) {
+    return buildGeneralRulesAnswer(language);
+  }
+  const smartKnowledgeAnswer = findSmartAnswerInKnowledge(question, knowledgeItems || [], language);
+  if (smartKnowledgeAnswer) {
+    return smartKnowledgeAnswer;
   }
 
   // 4. PRIORITY: Check Custom AI Knowledge Items (Admin-Trained Knowledge Base)
@@ -3668,8 +3770,14 @@ export async function askResidentAssistant(question, context = {}) {
       console.error("Failed to dynamically fetch fresh stats for AI prompt:", error);
     }
     answer = buildResidentStatsAnswer(trimmedQuestion, context.residentStats, language);
+  } else if (wantsDocuments || Boolean(documentFocus)) {
+    answer = buildComprehensiveDocumentAnswer(trimmedQuestion, documentFocus, context, language);
+  } else if (wantsCedula && !documentFocus) {
+    answer = buildCedulaAnswer(trimmedQuestion);
+  } else if (isGeneralRulesQuestion(normalizedQ)) {
+    answer = buildGeneralRulesAnswer(language);
   } else if (findSmartAnswerInKnowledge(trimmedQuestion, context.knowledgeItems || [], language)) {
-    // Trained knowledge from AI Knowledge & Chatbot Trainer
+    // Trained knowledge from AI Knowledge & Chatbot Trainer (e.g. specific rules, incident blotter, location, activities)
     answer = findSmartAnswerInKnowledge(trimmedQuestion, context.knowledgeItems || [], language);
   } else if (isOutOfBarangayScopeQuestion(normalizedQ)) {
     answer = buildOutOfScopeLimitationAnswer(language);
@@ -3681,10 +3789,6 @@ export async function askResidentAssistant(question, context = {}) {
     answer = buildGratitudeAnswer(trimmedQuestion);
   } else if (isConversationalOrFriendlyQuestion(trimmedQuestion)) {
     answer = buildConversationalAnswer(trimmedQuestion, resident, language);
-  } else if (wantsDocuments || Boolean(documentFocus)) {
-    answer = buildComprehensiveDocumentAnswer(trimmedQuestion, documentFocus, context, language);
-  } else if (wantsCedula && !documentFocus) {
-    answer = buildCedulaAnswer(trimmedQuestion);
   } else {
     // Only fetch fresh stats if not already provided in context to avoid unnecessary network delay
     if (!context.residentStats?.loaded) {
