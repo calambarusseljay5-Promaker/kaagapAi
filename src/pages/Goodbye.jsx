@@ -11,23 +11,23 @@ const Goodbye = () => {
 
   const farewell = useMemo(
     () => ({
-      displayName: location.state?.displayName || "KaagapAI user",
-      role: location.state?.role || "user",
+      displayName: location.state?.displayName || "KaagapAI User",
+      role: location.state?.role || (typeof window !== "undefined" && window.sessionStorage?.getItem("last_logged_role")) || "admin",
     }),
     [location.state?.displayName, location.state?.role]
   );
-  const isAdmin = String(farewell.role).toLowerCase() === "admin";
+  const isAdmin = String(farewell.role).toLowerCase().includes("admin");
 
   useEffect(() => {
     const redirectTimer = window.setTimeout(() => {
-      navigate("/", { replace: true });
+      navigate(isAdmin ? "/admin-login" : "/resident-login", { replace: true });
     }, GOODBYE_DURATION_MS);
 
     return () => window.clearTimeout(redirectTimer);
-  }, [navigate]);
+  }, [navigate, isAdmin]);
 
   const continueToLogin = () => {
-    navigate("/", { replace: true });
+    navigate(isAdmin ? "/admin-login" : "/resident-login", { replace: true });
   };
 
   return (

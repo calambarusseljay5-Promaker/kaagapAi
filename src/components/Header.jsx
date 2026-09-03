@@ -330,18 +330,19 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
   const confirmSignOut = () => {
     setShowSignOutConfirm(false);
     setShowProfile(false);
-    sessionStorage.setItem("just_logged_out", "true");
 
     // Start sign out without leaving the modal open
     setIsSigningOut(true);
 
     logoutUser()
       .then(() => {
+        sessionStorage.setItem("just_logged_out", "true");
+        sessionStorage.setItem("last_logged_role", "admin");
         navigate("/goodbye", {
           replace: true,
           state: {
-            displayName,
-            role: displayRole,
+            displayName: "Barangay Admin",
+            role: "admin",
           },
         });
       })
