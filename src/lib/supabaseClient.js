@@ -9,7 +9,7 @@ const SUPABASE_REQUEST_TIMEOUT_MS = 20000;
 
 const fetchWithTimeout = async (input, init = {}) => {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => {
+  const timeoutId = setTimeout(() => {
     controller.abort();
   }, SUPABASE_REQUEST_TIMEOUT_MS);
   const externalSignal = init.signal;
@@ -40,7 +40,7 @@ const fetchWithTimeout = async (input, init = {}) => {
 
     throw error;
   } finally {
-    window.clearTimeout(timeoutId);
+    clearTimeout(timeoutId);
     externalSignal?.removeEventListener?.("abort", abortFromExternalSignal);
   }
 };

@@ -1,5 +1,5 @@
-import { supabase } from "../lib/supabaseClient";
-import { recordAuditEvent } from "./adminActivityService";
+import { supabase } from "../lib/supabaseClient.js";
+import { recordAuditEvent } from "./adminActivityService.js";
 
 const ORGANIZATION_STORAGE_KEY = "kaagapai_barangay_organization";
 const ORGANIZATION_TABLE = "organization_officials";

@@ -1,4 +1,4 @@
-import { supabase } from "../lib/supabaseClient";
+import { supabase } from "../lib/supabaseClient.js";
 
 const SETTINGS_KEY = "kaagapai_system_settings";
 const AUDIT_LOG_KEY = "kaagapai_audit_logs";

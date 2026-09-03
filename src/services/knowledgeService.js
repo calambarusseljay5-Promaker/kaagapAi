@@ -1,5 +1,5 @@
-import { supabase } from "../lib/supabaseClient";
-import { moveToRecycleBin } from "./recycleBinService";
+import { supabase } from "../lib/supabaseClient.js";
+import { moveToRecycleBin } from "./recycleBinService.js";
 
 const TABLE = "ai_knowledge_items";
 const SETUP_MESSAGE =
@@ -94,6 +94,21 @@ const buildLivelihoodKnowledgePayload = (post = {}) => ({
   ),
 });
 
+export const isAdminInstructionItem = (item = {}) => {
+  const title = String(item?.title || "").toLowerCase();
+  const content = String(item?.content || "").toLowerCase();
+  return (
+    title.includes("administrative rules") ||
+    title.includes("admin ai") ||
+    title.includes("system prompt") ||
+    title.includes("system instruction") ||
+    title.includes("ai rules") ||
+    content.includes("the barangay admin ai must follow these rules") ||
+    content.includes("must follow these rules:") ||
+    content.includes("do not invent information")
+  );
+};
+
 export async function fetchKnowledgeItems({
   search = "",
   status = "",
@@ -131,6 +146,7 @@ export async function fetchKnowledgeItems({
     return data.filter((item) => {
       if (item.status && item.status !== "Active") return false;
       if (item.audience === "Admin Only") return false;
+      if (isAdminInstructionItem(item)) return false;
       // If expires_at is set, check if expired
       if (item.expires_at) {
         try {

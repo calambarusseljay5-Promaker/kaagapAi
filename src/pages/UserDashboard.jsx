@@ -3104,6 +3104,7 @@ const UserDashboard = () => {
       const answer = await askResidentAssistant(question, {
         announcements: publishedAnnouncements,
         documentTemplates,
+        knowledgeItems,
         opportunities,
         organizationOfficials,
         requests,
