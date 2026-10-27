@@ -3,6 +3,119 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═════════════════════════════════════════════════════════════════════════════
+   DOCUMENT TEMPLATES: 100% ORIGINAL WORD FONTS PRELOADING & EMBEDDING
+   ═════════════════════════════════════════════════════════════════════════════ */
+@font-face {
+  font-family: 'Algerian';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/fonts/ALGER.TTF') format('truetype'),
+       local('Algerian'),
+       local('Algerian Regular');
+}
+@font-face {
+  font-family: 'Algerian';
+  font-style: normal;
+  font-weight: 700;
+  src: url('/fonts/ALGER.TTF') format('truetype'),
+       local('Algerian'),
+       local('Algerian Regular');
+}
+@font-face {
+  font-family: 'Rockwell Condensed';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/fonts/ROCC____.TTF') format('truetype'),
+       local('Rockwell Condensed'),
+       local('Rockwell-Condensed');
+}
+@font-face {
+  font-family: 'Rockwell Condensed';
+  font-style: normal;
+  font-weight: 700;
+  src: url('/fonts/ROCCB___.TTF') format('truetype'),
+       local('Rockwell Condensed Bold'),
+       local('Rockwell-Condensed-Bold'),
+       local('Rockwell Condensed');
+}
+@font-face {
+  font-family: 'Felix Titling';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/fonts/FELIXTI.TTF') format('truetype'),
+       local('Felix Titling'),
+       local('Felix-Titling');
+}
+@font-face {
+  font-family: 'Felix Titling';
+  font-style: normal;
+  font-weight: 700;
+  src: url('/fonts/FELIXTI.TTF') format('truetype'),
+       local('Felix Titling'),
+       local('Felix-Titling');
+}
+@font-face {
+  font-family: 'Agency FB';
+  font-style: normal;
+  font-weight: 400;
+  src: url('/fonts/AGENCYR.TTF') format('truetype'),
+       local('Agency FB'),
+       local('AgencyFB-Reg');
+}
+@font-face {
+  font-family: 'Agency FB';
+  font-style: normal;
+  font-weight: 700;
+  src: url('/fonts/AGENCYB.TTF') format('truetype'),
+       local('Agency FB Bold'),
+       local('AgencyFB-Bold'),
+       local('Agency FB');
+}
+@font-face {
+  font-family: 'Cooper Std Black';
+  font-style: normal;
+  font-weight: 400 900;
+  src: url('/fonts/COOPBL.TTF') format('truetype'),
+       local('Cooper Black'),
+       local('Cooper Std Black'),
+       local('CooperBlack');
+}
+@font-face {
+  font-family: 'Cooper Black';
+  font-style: normal;
+  font-weight: 400 900;
+  src: url('/fonts/COOPBL.TTF') format('truetype'),
+       local('Cooper Black'),
+       local('Cooper Std Black'),
+       local('CooperBlack');
+}
+@font-face {
+  font-family: 'Charlemagne Std';
+  font-style: normal;
+  font-weight: 400 700;
+  src: local('Charlemagne Std'),
+       local('CharlemagneStd-Bold'),
+       local('Charlemagne Std Bold'),
+       local('Times New Roman');
+}
+@font-face {
+  font-family: 'Bodoni MT Poster Compressed';
+  font-style: normal;
+  font-weight: 400 700;
+  src: url('/fonts/BOD_PSTC.TTF') format('truetype'),
+       local('Bodoni MT Poster Compressed'),
+       local('Bodoni MT Poster Compressed Regular');
+}
+@font-face {
+  font-family: 'Times New Roman (Headings CS)';
+  font-style: normal;
+  font-weight: 400 700;
+  src: local('Times New Roman'),
+       local('TimesNewRoman');
+}
+
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -149,6 +262,14 @@
   background: #ffffff;
   border-color: var(--kaagap-emerald);
   box-shadow: 0 0 0 3px rgba(15, 107, 67, 0.1);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 body {
@@ -5819,7 +5940,7 @@ select {
 
 /* ---------- BASE ---------- */
 body { background: var(--bg); color: var(--text); font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; }
-.app-shell { display: grid; grid-template-columns: 260px 1fr; height: 100vh; overflow: hidden; }
+.app-shell { display: grid; grid-template-columns: 260px 1fr; height: 100vh; overflow: hidden; font-family: 'Inter', 'Poppins', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 .app-shell > main { overflow-y: auto; background-color: var(--bg); }
 
 /* ---------- HEADER — CLEAN TECH STYLES ---------- */
@@ -5837,32 +5958,18 @@ body { background: var(--bg); color: var(--text); font-family: 'Plus Jakarta San
 .header-right { display: flex; align-items: center; gap: 16px; margin-left: auto; }
 .avatar { width: 40px; height: 40px; border-radius: 999px; background: var(--primary); color: #fff; display: grid; place-items: center; border: 2px solid var(--primary-accent); }
 
-/* ---------- SIDEBAR — TRANSLUCENT FROSTED GLASS ---------- */
+/* ---------- SIDEBAR — CLEAN CIVIC FROSTED GLASS ---------- */
 .app-sidebar {
-  background: rgba(2, 47, 35, 0.45) !important;
-  backdrop-filter: blur(24px) !important;
-  -webkit-backdrop-filter: blur(24px) !important;
-  color: #fff; padding: 20px 14px;
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  padding: 20px 14px;
   overflow-y: auto;
-  border-right: 1px solid rgba(255, 255, 255, 0.15) !important;
 }
 .nav-item {
   display: flex; align-items: center; gap: 12px;
   padding: 12px 14px; border-radius: 12px;
-  transition: all .2s ease; font-size: 14px; font-weight: 700;
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(255, 255, 255, 0.85);
+  transition: all .2s ease; font-size: 13px; font-weight: 700;
   letter-spacing: -0.01em;
-}
-.nav-item.active {
-  background: rgba(16, 185, 129, 0.25);
-  color: #ffffff;
-  border: 1px solid rgba(52, 211, 153, 0.4);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-}
-.nav-item:hover:not(.active) {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
 }
 
 /* ---------- ? STAT CARDS — 2×2 GRID — LOCKED FOREVER ? ---------- */
@@ -5908,15 +6015,57 @@ body { background: var(--bg); color: var(--text); font-family: 'Plus Jakarta San
   .bottom-grid{grid-template-columns:repeat(2,1fr);}
 }
 
-/* MOBILE — ? 2×2 KEPT, EVERYTHING ELSE FULL WIDTH ? */
+/* MOBILE — HIGH CONTRAST CLEAR FONTS & NO LEFT SIDEBAR */
+@media (max-width: 1023px) {
+  .app-sidebar {
+    display: none !important;
+  }
+}
+
 @media (max-width:767px){
   :root{--header-h:48px;}
   .app-shell{grid-template-columns:1fr;}
-  .app-sidebar{position:fixed;left:-280px;top:0;height:calc(100vh - 64px);width:260px;max-width:82vw;transition:left .25s ease;z-index:100000 !important;overflow-y:auto;}
-  .app-sidebar.open{left:0; z-index:100000 !important;}
+  .app-sidebar{display:none !important;}
   .app-header{padding:0 14px; height:var(--header-h); min-height:48px; flex-wrap:nowrap; gap:8px;}
   main{padding:0 6px 8px 6px;}
-  .nav-label{display:block !important;}
+
+  /* ══ Mobile Font Contrast & Clarity Enhancements ══ */
+  .app-shell {
+    color: #0f172a;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Make faint secondary and helper texts dark and clear on mobile screens */
+  .app-shell .text-slate-500,
+  .app-shell .text-slate-400 {
+    color: #334155 !important;
+    font-weight: 600;
+  }
+
+  .app-shell .text-slate-600 {
+    color: #1e293b !important;
+    font-weight: 600;
+  }
+
+  .app-shell .text-emerald-700 {
+    color: #047857 !important;
+  }
+
+  .app-shell .text-emerald-800 {
+    color: #065f46 !important;
+  }
+
+  .app-shell .text-emerald-900 {
+    color: #064e3b !important;
+    font-weight: 800;
+  }
+
+  .app-shell h1, .app-shell h2, .app-shell h3, .app-shell h4, .app-shell h5, .app-shell h6 {
+    color: #0f172a !important;
+    letter-spacing: -0.015em;
+  }
 
   /* ??? THIS IS YOUR RULE — NEVER CHANGES ??? */
   .stats-grid{
@@ -6472,7 +6621,7 @@ input:-webkit-autofill:active {
    ========================================================================== */
 .admin-shell-bg > aside,
 .admin-shell-bg[data-admin-theme] > aside,
-aside.fixed {
+.admin-shell-bg aside.fixed {
   background: linear-gradient(180deg, #011C13 0%, #033B28 35%, #054E35 70%, #01140D 100%) !important;
   border-right: 1px solid rgba(52, 211, 153, 0.2) !important;
   box-shadow: 4px 0 30px rgba(1, 20, 13, 0.5) !important;
@@ -6520,4 +6669,77 @@ div[role="dialog"] > section > header :is(h1, h2, h3, h4, p, span, div, a, label
   color: #000000 !important;
 }
 
+/* ==========================================================================
+   RESIDENT MOBILE DRAWER — ULTRA-CLEAR HIGH CONTRAST TYPOGRAPHY & COLORS
+   Guarantees 100% readability of menu items, icons, and text on mobile phones
+   ========================================================================== */
+.resident-mobile-drawer {
+  background: linear-gradient(180deg, #022c1e 0%, #043d2b 45%, #011a12 100%) !important;
+  color: #ffffff !important;
+}
 
+.resident-mobile-drawer * {
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+  text-rendering: optimizeLegibility !important;
+}
+
+.resident-mobile-drawer .drawer-nav-item {
+  color: #ffffff !important;
+}
+
+.resident-mobile-drawer .drawer-nav-item span {
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+.resident-mobile-drawer .drawer-nav-item.active {
+  background: linear-gradient(90deg, #059669 0%, #10b981 100%) !important;
+  color: #ffffff !important;
+}
+
+.resident-mobile-drawer .drawer-nav-item.active span {
+  color: #ffffff !important;
+  font-weight: 900 !important;
+}
+
+.resident-mobile-drawer .drawer-nav-item svg {
+  color: #34d399 !important;
+}
+
+.resident-mobile-drawer .drawer-nav-item.active svg {
+  color: #ffffff !important;
+}
+
+.resident-mobile-drawer .drawer-title {
+  color: #ffffff !important;
+}
+
+.resident-mobile-drawer .drawer-subtitle {
+  color: #34d399 !important;
+}
+
+.resident-mobile-drawer .drawer-close-btn {
+  color: #ffffff !important;
+}
+
+.resident-mobile-drawer .drawer-logout {
+  color: #fda4af !important;
+}
+
+.resident-mobile-drawer .drawer-logout span {
+  color: #fda4af !important;
+  font-weight: 900 !important;
+}
+
+.resident-mobile-drawer .drawer-logout svg {
+  color: #fb7185 !important;
+}
+
+.resident-mobile-drawer .drawer-office-card h4 {
+  color: #ffffff !important;
+}
+
+.resident-mobile-drawer .drawer-office-card p {
+  color: #a7f3d0 !important;
+}

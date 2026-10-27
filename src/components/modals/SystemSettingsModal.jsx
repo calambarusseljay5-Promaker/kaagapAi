@@ -52,6 +52,18 @@ import {
   getActiveGeminiApiKey,
   getActiveGeminiModel,
 } from "../../services/geminiService";
+import {
+  OPENSOURCE_MODELS,
+  getActiveAiProvider,
+  setActiveAiProvider,
+  getActiveOpenSourceModel,
+  setActiveOpenSourceModel,
+  getActiveOpenSourceApiKey,
+  setActiveOpenSourceApiKey,
+  getOllamaEndpoint,
+  setOllamaEndpoint,
+  testOpenSourceConnection,
+} from "../../services/openSourceLlmService";
 import { getBarangayLogo, setBarangayLogo } from "../../services/logoService";
 import {
   createAndUploadBackup,
@@ -93,7 +105,13 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
   const restoreFileRef = useRef(null);
 
   const [activeTab, setActiveTab] = useState("general"); // "general" | "backup"
-  const [settings, setSettings] = useState(() => getSystemSettings());
+  const [settings, setSettings] = useState(() => ({
+    ...getSystemSettings(),
+    aiProvider: getActiveAiProvider(),
+    openSourceModel: getActiveOpenSourceModel(),
+    openSourceApiKey: getActiveOpenSourceApiKey(),
+    ollamaEndpoint: getOllamaEndpoint(),
+  }));
   const [logoPreview, setLogoPreview] = useState(() => getBarangayLogo());
   const [isEditingGeneral, setIsEditingGeneral] = useState(false);
   const [logoConfirmModal, setLogoConfirmModal] = useState({ isOpen: false, dataUrl: "", file: null });
@@ -135,7 +153,13 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
 
   useEffect(() => {
     if (isOpen) {
-      setSettings(getSystemSettings());
+      setSettings({
+        ...getSystemSettings(),
+        aiProvider: getActiveAiProvider(),
+        openSourceModel: getActiveOpenSourceModel(),
+        openSourceApiKey: getActiveOpenSourceApiKey(),
+        ollamaEndpoint: getOllamaEndpoint(),
+      });
       refreshBackupData();
     }
   }, [isOpen, refreshBackupData]);
@@ -195,21 +219,32 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
     setTestingAi(true);
     setAiTestResult(null);
     try {
-      const activeKey = settings.geminiApiKey || getActiveGeminiApiKey();
-      const activeModel = settings.geminiModel || getActiveGeminiModel();
-      const res = await testGeminiConnection(activeKey, activeModel);
+      const provider = settings.aiProvider || getActiveAiProvider();
+      let res;
+      if (provider === "opensource" || provider === "ollama") {
+        res = await testOpenSourceConnection({
+          provider,
+          model: settings.openSourceModel || getActiveOpenSourceModel(),
+          apiKey: settings.openSourceApiKey || getActiveOpenSourceApiKey(),
+          endpoint: settings.ollamaEndpoint || getOllamaEndpoint(),
+        });
+      } else {
+        const activeKey = settings.geminiApiKey || getActiveGeminiApiKey();
+        const activeModel = settings.geminiModel || getActiveGeminiModel();
+        res = await testGeminiConnection(activeKey, activeModel);
+      }
       setAiTestResult(res);
       if (res.success) {
         showAdminSystemToast({
           type: "success",
-          title: "Gemini AI Connected",
-          text: `Successfully connected to ${res.model || "Gemini AI"}!`,
+          title: `${res.model || "AI Model"} Connected`,
+          text: res.message || `Successfully connected to ${res.model || "AI Engine"}!`,
         });
       } else {
         showAdminSystemToast({
           type: "error",
-          title: "Gemini Connection Failed",
-          text: res.message || "Failed to reach Google Gemini API.",
+          title: "AI Connection Failed",
+          text: res.message || "Failed to reach AI provider.",
         });
       }
     } catch (err) {
@@ -221,14 +256,25 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
 
   const handleSave = async (event) => {
     event?.preventDefault();
+    if (settings.aiProvider) setActiveAiProvider(settings.aiProvider);
+    if (settings.openSourceModel) setActiveOpenSourceModel(settings.openSourceModel);
+    if (settings.openSourceApiKey !== undefined) setActiveOpenSourceApiKey(settings.openSourceApiKey);
+    if (settings.ollamaEndpoint) setOllamaEndpoint(settings.ollamaEndpoint);
+
     const saved = saveSystemSettings(settings);
-    setSettings(saved);
+    setSettings({
+      ...saved,
+      aiProvider: getActiveAiProvider(),
+      openSourceModel: getActiveOpenSourceModel(),
+      openSourceApiKey: getActiveOpenSourceApiKey(),
+      ollamaEndpoint: getOllamaEndpoint(),
+    });
     setIsEditingGeneral(false);
     setSavedMessage("System settings saved successfully!");
     showAdminSystemToast({
       type: "success",
       title: "Settings Saved",
-      text: "Official Barangay contact information updated successfully.",
+      text: "Official Barangay contact information & AI engine updated successfully.",
     });
     setTimeout(() => setSavedMessage(""), 4000);
   };
@@ -605,7 +651,7 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
                 </div>
               </section>
 
-              {/* ─── Google Gemini AI Configuration ────────────────────────────── */}
+              {/* ─── AI Engine Configuration (Gemini vs Open-Source LLMs) ────────────────────────────── */}
               <section className="rounded-xl border border-slate-200 bg-white p-3.5 sm:p-4 shadow-2xs">
                 <div className="flex items-center justify-between gap-2.5 border-b border-slate-100 pb-3">
                   <div className="flex items-center gap-2.5">
@@ -614,77 +660,223 @@ const SystemSettingsModal = ({ isOpen, onClose }) => {
                     </span>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="text-xs sm:text-sm font-extrabold text-slate-900">Google Gemini AI Engine</h3>
+                        <h3 className="text-xs sm:text-sm font-extrabold text-slate-900">AI Engine & LLM Architecture</h3>
                         <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 text-emerald-850 border border-emerald-300 px-2 py-0.5 text-[10px] font-black">
-                          <Sparkles size={10} /> Pro & High-Tier
+                          <Cpu size={10} /> Open-Source & Cloud
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-500">
-                        Configure the active Gemini model and API key powering the Resident Chatbot, Copilot & Document OCR.
+                        Choose between Google Gemini, Meta Llama 3 / Mistral (Open-Source), or offline local Ollama.
                       </p>
                     </div>
                   </div>
                 </div>
 
                 <div className="mt-3.5 space-y-3">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {/* Active Gemini Model */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700">
-                        Active Gemini AI Model
-                        <select
-                          disabled={!isEditingGeneral}
-                          value={settings.geminiModel || "gemini-2.0-flash"}
-                          onChange={(e) => updateField("geminiModel", e.target.value)}
-                          className={`mt-1 w-full h-8.5 rounded-lg border px-3 text-xs font-semibold outline-none transition ${
-                            !isEditingGeneral
-                              ? "border-slate-200 bg-slate-100/70 text-slate-600 cursor-not-allowed select-none"
-                              : "border-slate-300 bg-white text-slate-900 focus:border-[#00552E] focus:ring-2 focus:ring-[#00552E]/20"
-                          }`}
-                        >
-                          {AVAILABLE_GEMINI_MODELS.map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.name} - {m.description}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <p className="mt-1 text-[10px] text-slate-500">
-                        Select <strong>Gemini 2.0 Flash</strong> for high speed or <strong>Gemini 1.5 Pro / 2.5 Pro</strong> for deep reasoning.
-                      </p>
-                    </div>
+                  {/* AI Provider Selector */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                      Active AI Intelligence Provider
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        disabled={!isEditingGeneral}
+                        onClick={() => updateField("aiProvider", "gemini")}
+                        className={`px-3 py-2 rounded-xl text-left border transition cursor-pointer flex flex-col justify-between ${
+                          (settings.aiProvider || "gemini") === "gemini"
+                            ? "border-emerald-600 bg-emerald-50/70 text-emerald-950 ring-2 ring-emerald-500/20 font-black"
+                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 font-bold"
+                        } ${!isEditingGeneral ? "cursor-not-allowed opacity-80" : ""}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs">Google Gemini</span>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-200 text-emerald-900 font-black">Cloud</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 mt-1 font-normal">Gemini 2.0 Flash / Pro</span>
+                      </button>
 
-                    {/* Gemini API Key */}
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700">
-                        Google Gemini API Key
-                        <div className="relative mt-1">
-                          <input
-                            type={showApiKey ? "text" : "password"}
+                      <button
+                        type="button"
+                        disabled={!isEditingGeneral}
+                        onClick={() => updateField("aiProvider", "opensource")}
+                        className={`px-3 py-2 rounded-xl text-left border transition cursor-pointer flex flex-col justify-between ${
+                          settings.aiProvider === "opensource"
+                            ? "border-purple-600 bg-purple-50/70 text-purple-950 ring-2 ring-purple-500/20 font-black"
+                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 font-bold"
+                        } ${!isEditingGeneral ? "cursor-not-allowed opacity-80" : ""}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs">Open-Source LLM</span>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-200 text-purple-900 font-black">Open Source</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 mt-1 font-normal">Meta Llama 3.3 / Mistral</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={!isEditingGeneral}
+                        onClick={() => updateField("aiProvider", "ollama")}
+                        className={`px-3 py-2 rounded-xl text-left border transition cursor-pointer flex flex-col justify-between ${
+                          settings.aiProvider === "ollama"
+                            ? "border-blue-600 bg-blue-50/70 text-blue-950 ring-2 ring-blue-500/20 font-black"
+                            : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 font-bold"
+                        } ${!isEditingGeneral ? "cursor-not-allowed opacity-80" : ""}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs">Ollama Local</span>
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-200 text-blue-900 font-black">Offline</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 mt-1 font-normal">100% On-Premise Server</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Settings for Google Gemini */}
+                  {(settings.aiProvider || "gemini") === "gemini" && (
+                    <div className="grid gap-3 sm:grid-cols-2 pt-1 border-t border-slate-100">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700">
+                          Active Gemini Model
+                          <select
                             disabled={!isEditingGeneral}
-                            value={settings.geminiApiKey || ""}
-                            onChange={(e) => updateField("geminiApiKey", e.target.value)}
-                            placeholder="AIzaSy... (leave blank to use .env key)"
-                            className={`w-full h-8.5 rounded-lg border pl-3 pr-9 text-xs font-mono font-semibold outline-none transition ${
+                            value={settings.geminiModel || "gemini-2.0-flash"}
+                            onChange={(e) => updateField("geminiModel", e.target.value)}
+                            className={`mt-1 w-full h-8.5 rounded-lg border px-3 text-xs font-semibold outline-none transition ${
                               !isEditingGeneral
                                 ? "border-slate-200 bg-slate-100/70 text-slate-600 cursor-not-allowed select-none"
                                 : "border-slate-300 bg-white text-slate-900 focus:border-[#00552E] focus:ring-2 focus:ring-[#00552E]/20"
                             }`}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowApiKey(!showApiKey)}
-                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
                           >
-                            {showApiKey ? <EyeOff size={13} /> : <Eye size={13} />}
-                          </button>
-                        </div>
-                      </label>
-                      <p className="mt-1 text-[10px] text-slate-500">
-                        Get your API key for free from <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="text-emerald-700 font-bold underline">Google AI Studio</a>.
-                      </p>
+                            {AVAILABLE_GEMINI_MODELS.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name} - {m.description}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700">
+                          Google Gemini API Key
+                          <div className="relative mt-1">
+                            <input
+                              type={showApiKey ? "text" : "password"}
+                              disabled={!isEditingGeneral}
+                              value={settings.geminiApiKey || ""}
+                              onChange={(e) => updateField("geminiApiKey", e.target.value)}
+                              placeholder="AIzaSy... (leave blank to use .env key)"
+                              className={`w-full h-8.5 rounded-lg border pl-3 pr-9 text-xs font-mono font-semibold outline-none transition ${
+                                !isEditingGeneral
+                                  ? "border-slate-200 bg-slate-100/70 text-slate-600 cursor-not-allowed select-none"
+                                  : "border-slate-300 bg-white text-slate-900 focus:border-[#00552E] focus:ring-2 focus:ring-[#00552E]/20"
+                              }`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowApiKey(!showApiKey)}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              {showApiKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                            </button>
+                          </div>
+                        </label>
+                      </div>
                     </div>
-                  </div>
+                  )}
+
+                  {/* Settings for Open-Source LLMs (Groq / Meta Llama 3 / Mistral) */}
+                  {settings.aiProvider === "opensource" && (
+                    <div className="grid gap-3 sm:grid-cols-2 pt-1 border-t border-slate-100">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700">
+                          Open-Source Model (Meta Llama / Mistral)
+                          <select
+                            disabled={!isEditingGeneral}
+                            value={settings.openSourceModel || "llama-3.3-70b-versatile"}
+                            onChange={(e) => updateField("openSourceModel", e.target.value)}
+                            className={`mt-1 w-full h-8.5 rounded-lg border px-3 text-xs font-semibold outline-none transition ${
+                              !isEditingGeneral
+                                ? "border-slate-200 bg-slate-100/70 text-slate-600 cursor-not-allowed select-none"
+                                : "border-slate-300 bg-white text-slate-900 focus:border-purple-600 focus:ring-2 focus:ring-purple-500/20"
+                            }`}
+                          >
+                            {OPENSOURCE_MODELS.filter((m) => m.id !== "ollama-local").map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name} ({m.provider})
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-700">
+                          Groq Open-Source API Key
+                          <div className="relative mt-1">
+                            <input
+                              type={showApiKey ? "text" : "password"}
+                              disabled={!isEditingGeneral}
+                              value={settings.openSourceApiKey || ""}
+                              onChange={(e) => updateField("openSourceApiKey", e.target.value)}
+                              placeholder="gsk_... (free from console.groq.com)"
+                              className={`w-full h-8.5 rounded-lg border pl-3 pr-9 text-xs font-mono font-semibold outline-none transition ${
+                                !isEditingGeneral
+                                  ? "border-slate-200 bg-slate-100/70 text-slate-600 cursor-not-allowed select-none"
+                                  : "border-slate-300 bg-white text-slate-900 focus:border-purple-600 focus:ring-2 focus:ring-purple-500/20"
+                              }`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setShowApiKey(!showApiKey)}
+                              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              {showApiKey ? <EyeOff size={13} /> : <Eye size={13} />}
+                            </button>
+                          </div>
+                        </label>
+                        <p className="mt-1 text-[10px] text-slate-500">
+                          Kumuha ng libreng key sa{" "}
+                          <a
+                            href="https://console.groq.com/keys"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-purple-700 font-bold underline"
+                          >
+                            console.groq.com/keys
+                          </a>{" "}
+                          (100% Libre, walang credit card). Kung wala pa, piliin lamang ang <strong>Google Gemini</strong>.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Settings for Local Ollama */}
+                  {settings.aiProvider === "ollama" && (
+                    <div className="grid gap-3 sm:grid-cols-2 pt-1 border-t border-slate-100">
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-bold text-slate-700">
+                          Local Ollama Endpoint (Offline Barangay Host)
+                          <input
+                            type="text"
+                            disabled={!isEditingGeneral}
+                            value={settings.ollamaEndpoint || "http://localhost:11434"}
+                            onChange={(e) => updateField("ollamaEndpoint", e.target.value)}
+                            placeholder="http://localhost:11434"
+                            className={`mt-1 w-full h-8.5 rounded-lg border px-3 text-xs font-mono font-semibold outline-none transition ${
+                              !isEditingGeneral
+                                ? "border-slate-200 bg-slate-100/70 text-slate-600 cursor-not-allowed select-none"
+                                : "border-slate-300 bg-white text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-500/20"
+                            }`}
+                          />
+                        </label>
+                        <p className="mt-1 text-[10px] text-slate-500">
+                          Runs completely offline on the Barangay hall desktop. Start using command: <code className="bg-slate-100 px-1 py-0.5 rounded text-blue-800">ollama run llama3</code>.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Test Connection Button & Status */}
                   <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 p-2.5">

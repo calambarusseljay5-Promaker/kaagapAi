@@ -18,6 +18,10 @@ import {
   Eye,
   X,
   AlertTriangle,
+  Compass,
+  Target,
+  Award,
+  Check,
 } from "lucide-react";
 import PageWrapper from "../components/PageWrapper";
 import FloatingModal from "../components/FloatingModal";
@@ -28,6 +32,11 @@ import {
   resetOrganizationOfficials,
   saveOrganizationOfficials,
 } from "../services/organizationService";
+import {
+  getBarangayMandate,
+  saveBarangayMandate,
+  DEFAULT_BARANGAY_MANDATE,
+} from "../services/barangayMandateService";
 
 const PHOTO_MAX_FILE_SIZE = 8 * 1024 * 1024;
 const PHOTO_MAX_SIZE = 420;
@@ -663,6 +672,51 @@ const OrganizationChart = () => {
   const [savingOfficial, setSavingOfficial] = useState(false);
   const [viewingOfficial, setViewingOfficial] = useState(null);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [showMandateModal, setShowMandateModal] = useState(false);
+  const [mandateForm, setMandateForm] = useState(() => getBarangayMandate());
+  const [savingMandate, setSavingMandate] = useState(false);
+  const [mandateFeedback, setMandateFeedback] = useState(null);
+
+  const handleOpenMandateModal = () => {
+    setMandateForm(getBarangayMandate());
+    setMandateFeedback(null);
+    setShowMandateModal(true);
+  };
+
+  const handleSaveMandate = async (e) => {
+    if (e?.preventDefault) e.preventDefault();
+    setSavingMandate(true);
+    setMandateFeedback(null);
+    try {
+      await saveBarangayMandate(mandateForm);
+      setMandateFeedback({
+        type: "success",
+        text: "Mission, Vision & Goals updated and synced successfully across Admin & Resident login pages!",
+      });
+      setTimeout(() => {
+        setShowMandateModal(false);
+        setMandateFeedback(null);
+      }, 1400);
+    } catch (err) {
+      console.error("Save mandate error:", err);
+      setMandateFeedback({
+        type: "error",
+        text: err.message || "Failed to save Mission, Vision & Goals.",
+      });
+    } finally {
+      setSavingMandate(false);
+    }
+  };
+
+  const handleResetMandateDefaults = () => {
+    if (window.confirm("Reset Mission, Vision, and Goals back to default Barangay Upper Mingading text?")) {
+      setMandateForm({ ...DEFAULT_BARANGAY_MANDATE });
+      setMandateFeedback({
+        type: "info",
+        text: "Defaults restored. Click 'Save Mandate' to apply.",
+      });
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -857,6 +911,15 @@ const OrganizationChart = () => {
             </span>
           </div>
           <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={handleOpenMandateModal}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-400/50 bg-[#0B5D3B] hover:bg-[#08452B] text-white px-4 py-2 text-xs font-black transition shadow-md cursor-pointer hover:scale-[1.02] active:scale-95"
+              title="View and Edit Barangay Mission, Vision & Goals"
+            >
+              <Compass size={15} className="text-emerald-300 stroke-[2.5]" />
+              <span>Mission, Vision & Goals</span>
+            </button>
             <button
               type="button"
               onClick={handlePrint}
@@ -1399,6 +1462,157 @@ const OrganizationChart = () => {
                 </select>
               </label>
             </section>
+          </div>
+        </FloatingModal>
+      )}
+
+      {/* ─── EDIT MISSION, VISION & GOALS MODAL ─── */}
+      {showMandateModal && (
+        <FloatingModal
+          open={showMandateModal}
+          onClose={() => setShowMandateModal(false)}
+          title="Mission, Vision & Goals"
+          eyebrow="Barangay Strategic Mandate"
+          maxWidth="max-w-3xl"
+          footer={
+            <div className="flex items-center justify-between w-full gap-3">
+              <button
+                type="button"
+                onClick={handleResetMandateDefaults}
+                disabled={savingMandate}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 transition hover:bg-slate-50 cursor-pointer disabled:opacity-50"
+                title="Restore default text"
+              >
+                <RotateCcw size={14} />
+                <span>Reset to Default</span>
+              </button>
+              <div className="flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowMandateModal(false)}
+                  disabled={savingMandate}
+                  className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveMandate}
+                  disabled={savingMandate}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#0B5D3B] hover:bg-[#08452B] px-5 py-2 text-xs font-black text-white transition shadow-md cursor-pointer disabled:opacity-60"
+                >
+                  {savingMandate ? (
+                    <span>Saving Changes...</span>
+                  ) : (
+                    <>
+                      <Check size={15} className="stroke-[3]" />
+                      <span>Save Mandate</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Edit the official statements for Barangay Upper Mingading. Saving will automatically update the <b>Mission</b>, <b>Vision</b>, and <b>Goals</b> cards on both the <b>Admin</b> and <b>Resident</b> login portals in real time.
+            </p>
+
+            {mandateFeedback && (
+              <div
+                className={`p-3 rounded-xl text-xs font-bold border flex items-center gap-2 ${
+                  mandateFeedback.type === "success"
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                    : mandateFeedback.type === "error"
+                    ? "bg-rose-50 text-rose-800 border-rose-300"
+                    : "bg-blue-50 text-blue-800 border-blue-300"
+                }`}
+              >
+                <span>{mandateFeedback.text}</span>
+              </div>
+            )}
+
+            {/* 1. OUR MISSION */}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 transition-all focus-within:border-emerald-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-500/10">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    <Compass size={16} />
+                  </span>
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-emerald-900">
+                      Our Mission
+                    </h3>
+                    <p className="text-[11px] text-slate-500">Core purpose, public service delivery, and community empowerment</p>
+                  </div>
+                </div>
+                <span className="text-[11px] font-semibold text-slate-400">
+                  {mandateForm.mission.length} chars
+                </span>
+              </div>
+              <textarea
+                value={mandateForm.mission}
+                onChange={(e) => setMandateForm((prev) => ({ ...prev, mission: e.target.value }))}
+                rows={4}
+                className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs sm:text-[13px] font-medium text-slate-800 outline-none transition focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 leading-relaxed resize-y"
+                placeholder="Enter Barangay Mission..."
+              />
+            </div>
+
+            {/* 2. OUR VISION */}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 transition-all focus-within:border-emerald-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-500/10">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    <Target size={16} />
+                  </span>
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-emerald-900">
+                      Our Vision
+                    </h3>
+                    <p className="text-[11px] text-slate-500">Long-term vision for community balance, agriculture, and good governance</p>
+                  </div>
+                </div>
+                <span className="text-[11px] font-semibold text-slate-400">
+                  {mandateForm.vision.length} chars
+                </span>
+              </div>
+              <textarea
+                value={mandateForm.vision}
+                onChange={(e) => setMandateForm((prev) => ({ ...prev, vision: e.target.value }))}
+                rows={3}
+                className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs sm:text-[13px] font-medium text-slate-800 outline-none transition focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 leading-relaxed resize-y"
+                placeholder="Enter Barangay Vision..."
+              />
+            </div>
+
+            {/* 3. OUR GOALS */}
+            <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 transition-all focus-within:border-emerald-500 focus-within:bg-white focus-within:ring-2 focus-within:ring-emerald-500/10">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    <Award size={16} />
+                  </span>
+                  <div>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-emerald-900">
+                      Our Goals
+                    </h3>
+                    <p className="text-[11px] text-slate-500">Key targets, disaster preparedness, and community engagement</p>
+                  </div>
+                </div>
+                <span className="text-[11px] font-semibold text-slate-400">
+                  {mandateForm.goals.length} chars
+                </span>
+              </div>
+              <textarea
+                value={mandateForm.goals}
+                onChange={(e) => setMandateForm((prev) => ({ ...prev, goals: e.target.value }))}
+                rows={3}
+                className="w-full rounded-xl border border-slate-200 bg-white p-3 text-xs sm:text-[13px] font-medium text-slate-800 outline-none transition focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 leading-relaxed resize-y"
+                placeholder="Enter Barangay Goals..."
+              />
+            </div>
           </div>
         </FloatingModal>
       )}

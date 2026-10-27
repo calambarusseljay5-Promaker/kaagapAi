@@ -39,6 +39,7 @@ import {
   Briefcase,
 } from "lucide-react";
 import { useBarangayLogo } from "../services/logoService";
+import { useBarangayMandate } from "../services/barangayMandateService";
 import { supabase } from "../lib/supabaseClient";
 import FloatingModal from "../components/FloatingModal";
 import BarangayCarousel, { DEFAULT_SHOWCASE_SLIDES } from "../components/BarangayCarousel";
@@ -132,6 +133,7 @@ const getLoginDisplayName = ({ user, profile, resident }) =>
 
 const Login = ({ portalMode = null }) => {
   const barangayLogo = useBarangayLogo();
+  const { mission: barangayMission, vision: barangayVision, goals: barangayGoals } = useBarangayMandate();
   const [initialLoading, setInitialLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -1712,7 +1714,7 @@ const Login = ({ portalMode = null }) => {
                   <span>Our Mission</span>
                 </h2>
                 <p className="text-[11.5px] sm:text-xs text-slate-600 leading-relaxed font-medium group-hover:text-slate-800 transition-colors">
-                  To attain healthy, peaceful and progressive Barangay Upper Mingading through improved delivery of basic services with access to health programs and quality education, people empowerment for peaceful community and sustainable environment, enhancement of infrastructure facilities and promotion of economic activities and livelihood opportunities that is supportive to the development of socio-economic condition of the populace.
+                  {barangayMission}
                 </p>
               </motion.div>
 
@@ -1733,7 +1735,7 @@ const Login = ({ portalMode = null }) => {
                   <span>Our Vision</span>
                 </h2>
                 <p className="text-[11.5px] sm:text-xs text-slate-600 leading-relaxed font-medium group-hover:text-slate-800 transition-colors">
-                  Barangay Upper Mingading envision a balance and agricultural progressive community where people enjoy a safe environment educated and healthy constituents supported with adequate infrastructure through good governance and transparent leadership.
+                  {barangayVision}
                 </p>
               </motion.div>
 
@@ -1754,7 +1756,7 @@ const Login = ({ portalMode = null }) => {
                   <span>Our Goals</span>
                 </h2>
                 <p className="text-[11.5px] sm:text-xs text-slate-600 leading-relaxed font-medium group-hover:text-slate-800 transition-colors">
-                  To effectively escalate the community awareness and disaster preparedness, focus on proactive measures like community engagement, education, and practical training.
+                  {barangayGoals}
                 </p>
               </motion.div>
 

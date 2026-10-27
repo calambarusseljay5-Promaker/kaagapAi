@@ -312,7 +312,7 @@ export async function fetchAdminNotifications() {
   ]);
   const notifications = results
     .flatMap((result) => (result.status === "fulfilled" ? result.value : []))
-    .filter((notification) => !deletedIds.has(notification.id))
+    .filter((notification) => !deletedIds.has(notification.id) && !readIds.has(notification.id))
     .sort((a, b) => b.sortTime - a.sortTime)
     .slice(0, NOTIFICATION_LIMIT);
   const errors = results
@@ -322,7 +322,7 @@ export async function fetchAdminNotifications() {
   return {
     notifications,
     errors,
-    unreadCount: notifications.filter((notification) => !notification.is_read).length,
+    unreadCount: notifications.length,
   };
 }
 
@@ -344,16 +344,24 @@ export function markAllAdminNotificationsRead(notificationIds = []) {
 export function deleteAdminNotification(notificationId) {
   if (!notificationId) return;
   const deletedIds = getDeletedNotificationIds();
+  const readIds = getReadNotificationIds();
   deletedIds.add(notificationId);
+  readIds.add(notificationId);
   saveDeletedNotificationIds(deletedIds);
+  saveReadNotificationIds(readIds);
 }
 
 export function deleteAllAdminNotifications(notificationIds = []) {
   const deletedIds = getDeletedNotificationIds();
+  const readIds = getReadNotificationIds();
   notificationIds.forEach((id) => {
-    if (id) deletedIds.add(id);
+    if (id) {
+      deletedIds.add(id);
+      readIds.add(id);
+    }
   });
   saveDeletedNotificationIds(deletedIds);
+  saveReadNotificationIds(readIds);
 }
 
 export function subscribeAdminNotificationChanges(onChange) {

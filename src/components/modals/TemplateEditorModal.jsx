@@ -39,6 +39,7 @@ import {
   Trash2,
   List,
   ListOrdered,
+  Code,
 } from "lucide-react";
 import {
   AVAILABLE_PLACEHOLDERS,
@@ -50,6 +51,20 @@ import {
   PUNONG_BARANGAY,
   REAL_DOCUMENT_CSS,
 } from "../../utils/realDocumentTemplates";
+
+const FONT_MAP = {
+  times: '"Times New Roman", "Times New Roman (Headings CS)", Times, "Liberation Serif", serif',
+  algerian: 'Algerian, "Algerian Regular", Impact, serif',
+  felix: '"Felix Titling", "Felix-Titling", "Times New Roman", serif',
+  bodoni: '"Bodoni MT Poster Compressed", "Bodoni MT", Impact, serif',
+  agency: '"Agency FB", "AgencyFB-Reg", "Arial Narrow", sans-serif',
+  rockwell: '"Rockwell Condensed", "Rockwell-Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif, sans-serif',
+  arial: 'Arial, "Helvetica Neue", Helvetica, sans-serif',
+  georgia: 'Georgia, "Times New Roman", serif',
+  cooper: '"Cooper Std Black", "Cooper Black", serif, sans-serif',
+  calibri: 'Calibri, sans-serif',
+  "arial-narrow": '"Arial Narrow", Arial, sans-serif',
+};
 
 export default function TemplateEditorModal({
   isOpen,
@@ -117,9 +132,15 @@ export default function TemplateEditorModal({
 
   // Refs
   const headerEditorRef = useRef(null);
+  const titleEditorRef = useRef(null);
   const bodyEditorRef = useRef(null);
   const logoFileInputRef = useRef(null);
   const secondaryLogoFileInputRef = useRef(null);
+  const savedSelectionRef = useRef(null);
+  const undoStackRef = useRef([]);
+  const redoStackRef = useRef([]);
+  const isHistoryActionRef = useRef(false);
+  const historyDebounceRef = useRef(null);
 
   // Preset Seals
   const PRESET_LOGOS = [
@@ -135,27 +156,27 @@ export default function TemplateEditorModal({
   // Helper to get default template body text
   const getDefaultContentForKey = (key) => {
     if (key === "clearance") {
-      return `<p>This is to certify according to our existing records that Ms./<u>Mr</u>/Mrs. <strong>{{FULL_NAME}}</strong>, <strong>{{AGE}}</strong> yrs. Old, Filipino {{CIVIL_STATUS}}, whose signature and thumbmark appear below is presently a resident of Purok {{PUROK}}, Upper Mingading, Aleosan, Cotabato and no current position in the Barangay.</p><p>This is to certify further, that their character, reputation and moral standing in the community are beyond reproach and that as of the date of this issued there is no pending case whatsoever filed against the above – named person for whatever any legal purpose which may serve them best.</p><p>This is to certify further more that in view of the foregoing circumstances, this Barangay Clearance is issued upon request of the above – named person for <strong>{{PURPOSE}}</strong> and whatever any legal purpose which may serve them best.</p><p>Issued this <u>{{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
+      return `<p>This is to certify according to our existing records that {{PREFIX}} <u><strong>{{FULL_NAME}}</strong></u>, <u><strong>{{AGE}}</strong></u> yrs. Old, Filipino {{CIVIL_STATUS}}, whose signature and thumbmark appear below is presently a resident of Purok <u>{{PUROK}}</u>, Upper Mingading, Aleosan, Cotabato and no current position in the Barangay.</p><p>This is to certify further, that <u>{{HER_HIS}}</u> character, reputation and moral standing in the community are beyond reproach and that as of the date of this issued there is no pending case whatsoever filed against the above – named person for whatever any legal purpose which may serve {{HIS_HER}} best.</p><p>This is to certify <u>further more</u> that in view of the foregoing circumstances, this Barangay Clearance is issued upon request of the above – named person for <u><strong>{{PURPOSE}}</strong> and</u> whatever any legal purpose which may serve {{HER_HIS}} best.</p><p>Issued this <u>{{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
     }
     if (key === "residency") {
-      return `<p>THIS IS TO CERTIFY that <strong>{{FULL_NAME}}</strong>, <u>male</u>/ female, single/ <u>married</u>, Filipino, was born on {{BIRTHDAY}} a bona fide citizen of Purok {{PUROK}}, Upper Mingading, Aleosan, Cotabato. <u>His</u>/ Her, reputation and moral standing in the community is beyond reproach and that is no pending case filed on said person whatsoever. From our barangay peace and order committee we are recommending him <u>{{PURPOSE}}</u>.</p><p>This certification is issued upon the request of above-named person for whatever legal purpose it may serve best.</p><p>Issued this <u>{{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
+      return `<p>THIS IS TO CERTIFY that <u><strong>{{FULL_NAME}}</strong></u>, {{SEX}}, {{CIVIL_STATUS}}, Filipino, was born on {{BIRTHDAY}} a bona fide citizen of Purok <u>{{PUROK}}</u>, Upper Mingading, Aleosan, Cotabato. {{HIS_HER}}, reputation and moral standing in the community is beyond reproach and that is no pending case filed on said person whatsoever. From our barangay peace and order committee we are recommending {{HIM_HER}} <u>{{PURPOSE}}</u>.</p><p>This certification is issued upon the request of above-named person for whatever legal purpose it may serve best.</p><p>Issued <u>this {{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
     }
     if (key === "indigency") {
-      return `<p>THIS IS TO CERTIFY that <strong>{{FULL_NAME}}</strong>, <strong>{{AGE}}</strong> yrs. old single/ married/ Widow and a bonafide resident of Purok {{PUROK}}, Upper Mingading, Aleosan, Cotabato a low income earner family and considered as indigent.</p><p>This certification is issued upon the request of above-named person for <strong>{{PURPOSE}}</strong> and for whatever legal purpose it may serve best.</p><p>Issued this <u>{{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
+      return `<p>THIS IS TO CERTIFY that <u><strong>{{FULL_NAME}}</strong></u>, <u><strong>{{AGE}}</strong></u> yrs. old {{CIVIL_STATUS}} and a bonafide resident of <u>Purok {{PUROK}}</u>, Upper Mingading, Aleosan, <u>Cotabato a low income</u> earner family and considered as indigent.</p><p>This certification is issued upon the request of above-named <u>person and</u> for <strong>{{PURPOSE}}</strong> and for whatever legal purpose it may serve best.</p><p>Issued this <u>{{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
     }
     if (key === "business") {
-      return `<p>This is to certify that <strong>{{FULL_NAME}}</strong>, <strong>{{AGE}}</strong> yrs. old, Filipino, {{CIVIL_STATUS}}, a bona fide resident of Purok {{PUROK}}, Barangay Upper Mingading, Aleosan, Cotabato, and they have a <strong>{{BUSINESS_NAME}}</strong> at the said place.</p><p>This certification is being issued upon the request of the above-mentioned name person for Business Permit Application and for whatever any legal purposes may serve them best.</p><p>Issued this <u>{{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
+      return `<p>This is to certify that <u><strong>{{FULL_NAME}}</strong></u>, {{AGE}} yrs. old, Filipino, {{CIVIL_STATUS}}, a bona fide resident of Purok {{PUROK}}, Barangay Upper Mingading, Aleosan, Cotabato, and {{HE_SHE}} has a <strong>{{BUSINESS_NAME}}</strong> at the said place.</p><p>This certification is being issued upon the request of the above-mentioned name person for <strong>{{PURPOSE}}</strong> and for whatever any legal purposes may serve {{HIM_HER}} best.</p><p>Issued this <u><strong>{{DAY}}</strong></u> day of <strong>{{MONTH}} {{YEAR}}</strong> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
     }
     if (key === "solo") {
-      return `<p>This is to certify that <strong>{{FULL_NAME}}</strong> legal age, Filipino, {{CIVIL_STATUS}}, a bona fide resident of Purok {{PUROK}}, Barangay Upper Mingading, Aleosan, Cotabato.</p><p>This certification is being issued upon the request of the above-mentioned name person on application for solo parent due to <strong>{{SOLO_PARENT_REASON}}</strong> and whatever any legal intent may serve best.</p><p>Issued this <u>{{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
+      return `<p>This is to certify that <u><strong>{{FULL_NAME}}</strong></u> legal age, Filipino, {{CIVIL_STATUS}}, a bona fide resident of Purok <u>{{PUROK}}</u>, Barangay Upper Mingading, Aleosan, Cotabato.</p><p>This certification is being issued upon the request of the above-mentioned name person on application for solo parent due to <strong>{{SOLO_PARENT_REASON}}</strong> and whatever any legal intent may serve best.</p><p>Issued this <strong>{{DAY}}</strong> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
     }
     if (key === "4ps") {
-      return `<p>This is to certify that <strong>{{FULL_NAME}}</strong>, <strong>{{AGE}}</strong> yrs. old, Filipino, {{CIVIL_STATUS}}, a bona fide resident of Purok {{PUROK}}, Barangay Upper Mingading, Aleosan, Cotabato.</p><p>This certification is being issued upon the request of the above-mentioned name person for <strong>{{PURPOSE}}</strong> and for whatever any legal purposes.</p><p>Issued this <u>{{DAY}}</u> day <u>of {{MONTH}}</u> <strong>{{YEAR}}</strong> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
+      return `<p>This is to certify that <u><strong>{{FULL_NAME}}</strong></u>, <u><strong>{{AGE}}</strong></u> yrs. old, Filipino, {{CIVIL_STATUS}}, a bona fide resident of Purok <u>{{PUROK}}</u>, Barangay Upper Mingading, Aleosan, Cotabato.</p><p>This certification is being issued upon the request of the above-mentioned name person for {{PURPOSE}}.</p><p>Issued this <u>{{DAY}}</u> day <u>of {{MONTH}}</u> <strong>{{YEAR}}</strong> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
     }
     if (key === "rsbsa") {
-      return `<p>THIS IS TO CERTIFY THAT <strong>{{FULL_NAME}}</strong> <strong>{{AGE}}</strong> y/o, residing at {{ADDRESS}}, Upper Mingading Aleosan, Cotabato, is tilling the following crop(s) <strong>{{CROPS_DETAILS}}</strong> as <u>Owner</u>/Farmer at Purok {{PUROK}}, Upper Mingading, Cotabato with size {{FARM_SIZE}}.</p><p>This <strong>CERTIFICATION</strong> is being issued by the Barangay solely for the purpose of the farmers and fisher folk registration to the <strong>REGISTRY SYSTEM FOR BASIC SECTORS IN AGRICULTURE (RSBSA)</strong> of the Department of Agriculture and may not be used for other purposes not mention above.</p>`;
+      return `<p>THIS IS TO CERTIFY THAT <u><strong>{{FULL_NAME}}</strong></u> <u><strong>{{AGE}}</strong></u> y/o, residing at <u>{{ADDRESS}}</u>, Upper Mingading Aleosan, Cotabato, is tilling the following crop(s) <strong>{{CROPS_DETAILS}}</strong> as <u>Owner</u>/Farmer at Purok <u>{{PUROK}}</u>, Upper Mingading, Cotabato with size <strong>{{FARM_SIZE}}</strong>.</p><p>This <strong>CERTIFICATION</strong> is being issued by the Barangay solely for the purpose of the farmers and fisher folk registration to the <strong>REGISTRY SYSTEM FOR BASIC SECTORS IN AGRICULTURE (RSBSA)</strong> of the Department of Agriculture and may not be used for other purposes not mention above.</p>`;
     }
-    return `<p>This is to certify that <strong>{{FULL_NAME}}</strong>, <strong>{{AGE}}</strong> yrs. old, Filipino, {{CIVIL_STATUS}}, a bona fide resident of Purok {{PUROK}}, Barangay Upper Mingading, Aleosan, Cotabato.</p><p>This certification is issued for <strong>{{PURPOSE}}</strong> and whatever legal purpose it may serve best.</p><p>Issued this <u>{{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
+    return `<p>This is to certify that <u><strong>{{FULL_NAME}}</strong></u>, <strong>{{AGE}}</strong> yrs. old, Filipino, {{CIVIL_STATUS}}, a bona fide resident of Purok {{PUROK}}, Barangay Upper Mingading, Aleosan, Cotabato.</p><p>This certification is issued for <strong>{{PURPOSE}}</strong> and whatever legal purpose it may serve best.</p><p>Issued this <u>{{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
   };
 
   // Strip any accidental <img> tags from the text container to prevent duplication
@@ -192,7 +213,7 @@ export default function TemplateEditorModal({
     }
 
     const initialBody = sanitizeTextHtml(template?.content || getDefaultContentForKey(key));
-    const officialDocTitle = key === "clearance" ? "BARANGAY CLEARANCE" : "CERTIFICATION";
+    const officialDocTitle = key === "clearance" ? "BARANGAY CLEARANCE" : (key === "business" ? "C E R T I F I C A T I O N" : "CERTIFICATION");
 
     // Load any saved custom header / logo configs if available
     const savedConfig = template?.header_config || {};
@@ -218,6 +239,7 @@ export default function TemplateEditorModal({
       barangay: savedConfig.barangay || "Barangay of Upper Mingading",
       office: savedConfig.office || "OFFICE OF THE PUNONG BARANGAY",
       title: savedConfig.title || officialDocTitle,
+      titleHtml: savedConfig.titleHtml || savedConfig.title || officialDocTitle,
       salutation: savedConfig.salutation || "TO WHOM IT MAY CONCERN:",
       captainName: savedConfig.captainName || PUNONG_BARANGAY,
       captainTitle: savedConfig.captainTitle || "Punong Barangay",
@@ -240,9 +262,33 @@ export default function TemplateEditorModal({
       if (bodyEditorRef.current) {
         bodyEditorRef.current.innerHTML = initialBody;
       }
+      if (titleEditorRef.current) {
+        titleEditorRef.current.innerHTML = loadedHeaderConfig.titleHtml || loadedHeaderConfig.title || officialDocTitle;
+      }
       updateMetrics();
     }, 50);
   }, [template, isOpen]);
+
+  // Continuously track text selections inside canvas so toolbar actions never lose target
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleSelectionChange = () => {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+        const range = sel.getRangeAt(0);
+        const pageEl = document.querySelector(".real-doc-page");
+        if (pageEl && pageEl.contains(range.commonAncestorContainer)) {
+          savedSelectionRef.current = range.cloneRange();
+        }
+      }
+    };
+
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () => {
+      document.removeEventListener("selectionchange", handleSelectionChange);
+    };
+  }, [isOpen]);
 
   // Global Keyboard Shortcuts (Ctrl+A, Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+S, Ctrl+Z, Ctrl+Y, Ctrl+P)
   useEffect(() => {
@@ -257,6 +303,19 @@ export default function TemplateEditorModal({
       if (isCtrlOrCmd && e.key.toLowerCase() === "s") {
         e.preventDefault();
         handleSubmit(e);
+      } else if (isCtrlOrCmd && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        handleSelectAll();
+      } else if (isCtrlOrCmd && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      } else if (isCtrlOrCmd && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        handleRedo();
       } else if (isCtrlOrCmd && e.key.toLowerCase() === "b") {
         e.preventDefault();
         executeCommand("bold");
@@ -266,12 +325,6 @@ export default function TemplateEditorModal({
       } else if (isCtrlOrCmd && e.key.toLowerCase() === "u") {
         e.preventDefault();
         executeCommand("underline");
-      } else if (isCtrlOrCmd && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        executeCommand("undo");
-      } else if (isCtrlOrCmd && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        executeCommand("redo");
       } else if (isCtrlOrCmd && e.key.toLowerCase() === "p") {
         e.preventDefault();
         handlePrintPreview();
@@ -282,13 +335,12 @@ export default function TemplateEditorModal({
     };
 
     const handleGlobalPaste = (e) => {
-      // Check if image is in clipboard
-      if (e.clipboardData && e.clipboardData.items) {
-        const items = e.clipboardData.items;
-        for (let i = 0; i < items.length; i++) {
-          if (items[i].type.indexOf("image") !== -1) {
-            e.preventDefault();
-            const file = items[i].getAsFile();
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
             const reader = new FileReader();
             reader.onload = (event) => {
               setLogoConfig((prev) => ({
@@ -312,8 +364,6 @@ export default function TemplateEditorModal({
       window.removeEventListener("paste", handleGlobalPaste);
     };
   }, [isOpen, formData, selectedCanvasObject]);
-
-  if (!isOpen) return null;
 
   // Zoom handlers
   const handleZoomIn = () => setZoom((prev) => Math.min(prev + 15, 200));
@@ -402,19 +452,304 @@ export default function TemplateEditorModal({
     }
   };
 
+  const handleTitleInput = () => {
+    if (!titleEditorRef.current) return;
+    const html = titleEditorRef.current.innerHTML;
+    const text = titleEditorRef.current.innerText.trim();
+    setHeaderConfig((prev) => ({ ...prev, title: text, titleHtml: html }));
+    updateMetrics();
+    if (historyDebounceRef.current) clearTimeout(historyDebounceRef.current);
+    historyDebounceRef.current = setTimeout(() => {
+      pushHistorySnapshot();
+    }, 400);
+  };
+
   const handleEditorInput = () => {
     updateMetrics();
+    if (historyDebounceRef.current) clearTimeout(historyDebounceRef.current);
+    historyDebounceRef.current = setTimeout(() => {
+      pushHistorySnapshot();
+    }, 400);
   };
 
   const executeCommand = (command, value = null) => {
-    document.execCommand(command, false, value);
-    handleEditorInput();
+    const sel = restoreSavedSelection();
+    const inTitle = titleEditorRef.current && (
+      (sel && sel.rangeCount > 0 && titleEditorRef.current.contains(sel.anchorNode)) ||
+      document.activeElement === titleEditorRef.current
+    );
+
+    if (inTitle && command === "bold") {
+      if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) {
+        document.execCommand("bold", false, null);
+      } else {
+        const curWeight = window.getComputedStyle(titleEditorRef.current).fontWeight;
+        const isBold = curWeight === "bold" || parseInt(curWeight) >= 700;
+        titleEditorRef.current.style.setProperty("font-weight", isBold ? "normal" : "900", "important");
+      }
+      handleTitleInput();
+    } else {
+      saveCurrentSelection();
+      document.execCommand(command, false, value);
+      handleEditorInput();
+    }
+    pushHistorySnapshot();
   };
+
+  // Selection and History helpers
+  const saveCurrentSelection = () => {
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+      try {
+        savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
+      } catch {
+        // ignore
+      }
+    }
+  };
+
+  const restoreSavedSelection = () => {
+    if (savedSelectionRef.current) {
+      try {
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(savedSelectionRef.current);
+        return sel;
+      } catch {
+        return window.getSelection();
+      }
+    }
+    return window.getSelection();
+  };
+
+  const getEditorSnapshot = () => {
+    return {
+      bodyHtml: bodyEditorRef.current ? bodyEditorRef.current.innerHTML : "",
+      titleHtml: titleEditorRef.current ? titleEditorRef.current.innerHTML : (headerConfig.titleHtml || headerConfig.title),
+      headerConfig: { ...headerConfig },
+      logoConfig: { ...logoConfig },
+      fontFamily,
+      fontSize,
+      lineHeight,
+      country: headerEditorRef.current?.children[0]?.innerText || headerConfig.country,
+      province: headerEditorRef.current?.children[1]?.innerText || headerConfig.province,
+      municipality: headerEditorRef.current?.children[2]?.innerText || headerConfig.municipality,
+      barangay: headerEditorRef.current?.children[3]?.innerText || headerConfig.barangay,
+      office: headerEditorRef.current?.children[4]?.innerText || headerConfig.office,
+      title: titleEditorRef.current?.innerText.trim() || headerConfig.title,
+      salutation: document.querySelector(".real-doc-to")?.innerText || headerConfig.salutation,
+      captainName: document.querySelector(".real-doc-captain-name strong")?.innerText || headerConfig.captainName,
+      captainTitle: document.querySelector(".real-doc-subtext")?.innerText || headerConfig.captainTitle,
+    };
+  };
+
+  const pushHistorySnapshot = () => {
+    if (isHistoryActionRef.current) return;
+    const snap = getEditorSnapshot();
+    const last = undoStackRef.current[undoStackRef.current.length - 1];
+    if (last && last.bodyHtml === snap.bodyHtml && JSON.stringify(last.headerConfig) === JSON.stringify(snap.headerConfig)) {
+      return;
+    }
+    undoStackRef.current.push(snap);
+    if (undoStackRef.current.length > 60) {
+      undoStackRef.current.shift();
+    }
+    redoStackRef.current = [];
+  };
+
+  const applySnapshot = (snap) => {
+    if (!snap) return;
+    if (bodyEditorRef.current && snap.bodyHtml !== undefined) {
+      bodyEditorRef.current.innerHTML = snap.bodyHtml;
+    }
+    if (titleEditorRef.current && snap.titleHtml !== undefined) {
+      titleEditorRef.current.innerHTML = snap.titleHtml;
+    }
+    if (snap.headerConfig) setHeaderConfig(snap.headerConfig);
+    if (snap.logoConfig) setLogoConfig(snap.logoConfig);
+    if (snap.fontFamily) setFontFamily(snap.fontFamily);
+    if (snap.fontSize) setFontSize(snap.fontSize);
+    if (snap.lineHeight) setLineHeight(snap.lineHeight);
+
+    if (headerEditorRef.current) {
+      if (headerEditorRef.current.children[0] && snap.country) headerEditorRef.current.children[0].innerText = snap.country;
+      if (headerEditorRef.current.children[1] && snap.province) headerEditorRef.current.children[1].innerText = snap.province;
+      if (headerEditorRef.current.children[2] && snap.municipality) headerEditorRef.current.children[2].innerText = snap.municipality;
+      if (headerEditorRef.current.children[3] && snap.barangay) headerEditorRef.current.children[3].innerText = snap.barangay;
+      if (headerEditorRef.current.children[4] && snap.office) headerEditorRef.current.children[4].innerText = snap.office;
+    }
+    const titleEl = document.querySelector(".real-doc-title");
+    if (titleEl && snap.title) titleEl.innerText = snap.title;
+    const salutationEl = document.querySelector(".real-doc-to");
+    if (salutationEl && snap.salutation) salutationEl.innerText = snap.salutation;
+    const captainEl = document.querySelector(".real-doc-captain-name strong");
+    if (captainEl && snap.captainName) captainEl.innerText = snap.captainName;
+    const captainTitleEl = document.querySelector(".real-doc-subtext");
+    if (captainTitleEl && snap.captainTitle) captainTitleEl.innerText = snap.captainTitle;
+
+    updateMetrics();
+  };
+
+  const handleUndo = () => {
+    if (undoStackRef.current.length === 0) {
+      document.execCommand("undo");
+      return;
+    }
+    isHistoryActionRef.current = true;
+    const currentSnap = getEditorSnapshot();
+    redoStackRef.current.push(currentSnap);
+    const prevSnap = undoStackRef.current.pop();
+    applySnapshot(prevSnap);
+    isHistoryActionRef.current = false;
+  };
+
+  const handleRedo = () => {
+    if (redoStackRef.current.length === 0) {
+      document.execCommand("redo");
+      return;
+    }
+    isHistoryActionRef.current = true;
+    const currentSnap = getEditorSnapshot();
+    undoStackRef.current.push(currentSnap);
+    const nextSnap = redoStackRef.current.pop();
+    applySnapshot(nextSnap);
+    isHistoryActionRef.current = false;
+  };
+
+  const handleSelectAll = () => {
+    const pageEl = document.querySelector(".real-doc-page") || bodyEditorRef.current;
+    if (pageEl) {
+      const range = document.createRange();
+      range.selectNodeContents(pageEl);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      saveCurrentSelection();
+    }
+  };
+
+  const applyFontToSelection = (fontCss) => {
+    const sel = restoreSavedSelection();
+    const inTitle = titleEditorRef.current && (
+      (sel && sel.rangeCount > 0 && titleEditorRef.current.contains(sel.anchorNode)) ||
+      document.activeElement === titleEditorRef.current
+    );
+
+    const hasSelection = sel && sel.rangeCount > 0 && !sel.isCollapsed && sel.toString().trim().length > 0;
+
+    if (hasSelection) {
+      try {
+        const range = sel.getRangeAt(0);
+        const span = document.createElement("span");
+        span.style.setProperty("font-family", fontCss, "important");
+
+        const frag = range.extractContents();
+        span.appendChild(frag);
+        range.insertNode(span);
+
+        sel.removeAllRanges();
+        const newRange = document.createRange();
+        newRange.selectNodeContents(span);
+        sel.addRange(newRange);
+        savedSelectionRef.current = newRange.cloneRange();
+      } catch (err) {
+        console.warn("applyFontToSelection fallback:", err);
+        document.execCommand("styleWithCSS", false, true);
+        document.execCommand("fontName", false, fontCss);
+      }
+    } else if (inTitle) {
+      titleEditorRef.current.style.setProperty("font-family", fontCss, "important");
+    }
+
+    if (inTitle) {
+      handleTitleInput();
+    } else {
+      handleEditorInput();
+    }
+    pushHistorySnapshot();
+  };
+
+  const applyFontSizeToSelection = (sizePt) => {
+    const sel = restoreSavedSelection();
+    const inTitle = titleEditorRef.current && (
+      (sel && sel.rangeCount > 0 && titleEditorRef.current.contains(sel.anchorNode)) ||
+      document.activeElement === titleEditorRef.current
+    );
+
+    const hasSelection = sel && sel.rangeCount > 0 && !sel.isCollapsed && sel.toString().trim().length > 0;
+
+    if (hasSelection) {
+      try {
+        const range = sel.getRangeAt(0);
+        const span = document.createElement("span");
+        span.style.setProperty("font-size", sizePt, "important");
+
+        const frag = range.extractContents();
+        span.appendChild(frag);
+        range.insertNode(span);
+
+        sel.removeAllRanges();
+        const newRange = document.createRange();
+        newRange.selectNodeContents(span);
+        sel.addRange(newRange);
+        savedSelectionRef.current = newRange.cloneRange();
+      } catch (err) {
+        console.warn("applyFontSizeToSelection fallback:", err);
+      }
+    } else if (inTitle) {
+      titleEditorRef.current.style.setProperty("font-size", sizePt, "important");
+    }
+
+    if (inTitle) {
+      handleTitleInput();
+    } else {
+      handleEditorInput();
+    }
+    pushHistorySnapshot();
+  };
+
+  const handleFontFamilyChange = (val) => {
+    const chosenCss = fontMap[val] || val;
+    const sel = restoreSavedSelection();
+    const hasSelection = sel && sel.rangeCount > 0 && !sel.isCollapsed && sel.toString().trim().length > 0;
+    const inTitle = titleEditorRef.current && (
+      (sel && sel.rangeCount > 0 && titleEditorRef.current.contains(sel.anchorNode)) ||
+      document.activeElement === titleEditorRef.current
+    );
+
+    if (hasSelection || inTitle) {
+      // ONLY change selected text (or active title)
+      applyFontToSelection(chosenCss);
+    } else {
+      // Change entire template document default font
+      setFontFamily(val);
+      pushHistorySnapshot();
+      handleEditorInput();
+    }
+  };
+
+  const handleFontSizeChange = (val) => {
+    const sel = restoreSavedSelection();
+    const hasSelection = sel && sel.rangeCount > 0 && !sel.isCollapsed && sel.toString().trim().length > 0;
+    const inTitle = titleEditorRef.current && (
+      (sel && sel.rangeCount > 0 && titleEditorRef.current.contains(sel.anchorNode)) ||
+      document.activeElement === titleEditorRef.current
+    );
+
+    if (hasSelection || inTitle) {
+      applyFontSizeToSelection(`${val}pt`);
+    } else {
+      setFontSize(val);
+      pushHistorySnapshot();
+      handleEditorInput();
+    }
+  };
+
 
   const handleReset = () => {
     const key = getRealDocumentTemplateKey(formData.template_name);
     const defaultText = getDefaultContentForKey(key);
-    const officialDocTitle = key === "clearance" ? "BARANGAY CLEARANCE" : "CERTIFICATION";
+    const officialDocTitle = key === "clearance" ? "BARANGAY CLEARANCE" : (key === "business" ? "C E R T I F I C A T I O N" : "CERTIFICATION");
 
     const defaultHeader = {
       country: "Republic of the Philippines",
@@ -497,7 +832,8 @@ export default function TemplateEditorModal({
       municipality: headerConfig.municipality,
       barangay: headerConfig.barangay,
       office: headerConfig.office,
-      title: headerConfig.title,
+      title: titleEditorRef.current ? titleEditorRef.current.innerText.trim() : headerConfig.title,
+      titleHtml: titleEditorRef.current ? titleEditorRef.current.innerHTML : (headerConfig.titleHtml || headerConfig.title),
       salutation: headerConfig.salutation,
       captainName: headerConfig.captainName,
       captainTitle: headerConfig.captainTitle,
@@ -528,20 +864,15 @@ export default function TemplateEditorModal({
 
   const docKey = getRealDocumentTemplateKey(formData.template_name);
 
-  const fontMap = {
-    rockwell: '"Rockwell Condensed", "Rockwell", "Tw Cen MT Condensed", "Arial Narrow", serif',
-    times: '"Times New Roman", Times, "Liberation Serif", serif',
-    arial: 'Arial, "Helvetica Neue", Helvetica, sans-serif',
-    georgia: 'Georgia, "Times New Roman", serif',
-    felix: '"Felix Titling", "Felix-Titling", "Times New Roman", serif',
-    cooper: '"Cooper Std Black", "Cooper Black", serif, sans-serif',
-  };
+  const fontMap = FONT_MAP;
 
   const isSolo = docKey === "solo";
   const isClearance = docKey === "clearance";
   const isResidency = docKey === "residency";
   const isIndigency = docKey === "indigency";
   const isRsbsa = docKey === "rsbsa";
+
+  if (!isOpen) return null;
 
   const modalMarkup = (
     <div className="fixed inset-0 z-[99999] w-screen h-screen bg-[#cbd5e1] flex flex-col overflow-hidden select-none animate-fadeIn">
@@ -611,7 +942,8 @@ export default function TemplateEditorModal({
           <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
             <button
               type="button"
-              onClick={() => executeCommand("undo")}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={handleUndo}
               className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-700 hover:text-slate-900 transition cursor-pointer"
               title="Undo (Ctrl+Z)"
             >
@@ -619,7 +951,8 @@ export default function TemplateEditorModal({
             </button>
             <button
               type="button"
-              onClick={() => executeCommand("redo")}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={handleRedo}
               className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-700 hover:text-slate-900 transition cursor-pointer"
               title="Redo (Ctrl+Y)"
             >
@@ -661,33 +994,46 @@ export default function TemplateEditorModal({
           {/* 3. Font Family */}
           <select
             value={fontFamily}
-            onChange={(e) => setFontFamily(e.target.value)}
+            onMouseDown={() => saveCurrentSelection()}
+            onFocus={() => saveCurrentSelection()}
+            onChange={(e) => handleFontFamilyChange(e.target.value)}
             className="h-8 rounded-lg border border-slate-300 bg-slate-50 px-2 text-xs font-bold text-slate-800 outline-none hover:bg-white focus:border-emerald-500 cursor-pointer shadow-2xs"
             title="Font Family"
           >
-            <option value="times">Times New Roman (Standard)</option>
-            <option value="rockwell">Rockwell Condensed (Official)</option>
-            <option value="arial">Arial (Modern)</option>
-            <option value="georgia">Georgia (Serif)</option>
-            <option value="felix">Felix Titling (Certificates)</option>
-            <option value="cooper">Cooper Std Black (Bold Display)</option>
+            <option value="times" style={{ fontFamily: '"Times New Roman", serif' }}>Times New Roman (Headings CS)</option>
+            <option value="algerian" style={{ fontFamily: 'Algerian, Impact, serif' }}>Algerian</option>
+            <option value="felix" style={{ fontFamily: '"Felix Titling", serif' }}>Felix Titling</option>
+            <option value="bodoni" style={{ fontFamily: '"Bodoni MT Poster Compressed", serif' }}>Bodoni MT Poster Compressed</option>
+            <option value="agency" style={{ fontFamily: '"Agency FB", sans-serif' }}>Agency FB</option>
+            <option value="rockwell" style={{ fontFamily: '"Rockwell Condensed", serif' }}>Rockwell Condensed (Official)</option>
+            <option value="arial" style={{ fontFamily: 'Arial, sans-serif' }}>Arial (Modern)</option>
+            <option value="georgia" style={{ fontFamily: 'Georgia, serif' }}>Georgia (Serif)</option>
+            <option value="cooper" style={{ fontFamily: '"Cooper Std Black", serif' }}>Cooper Std Black</option>
+            <option value="calibri" style={{ fontFamily: 'Calibri, sans-serif' }}>Calibri</option>
+            <option value="arial-narrow" style={{ fontFamily: '"Arial Narrow", sans-serif' }}>Arial Narrow</option>
           </select>
 
           {/* 4. Font Size */}
           <select
             value={fontSize}
-            onChange={(e) => setFontSize(e.target.value)}
+            onMouseDown={() => saveCurrentSelection()}
+            onFocus={() => saveCurrentSelection()}
+            onChange={(e) => handleFontSizeChange(e.target.value)}
             className="h-8 rounded-lg border border-slate-300 bg-slate-50 px-2 text-xs font-bold text-slate-800 outline-none hover:bg-white focus:border-emerald-500 cursor-pointer shadow-2xs"
             title="Font Size"
           >
+            <option value="9">9 pt</option>
             <option value="10">10 pt</option>
             <option value="11">11 pt</option>
             <option value="12">12 pt (Clearance Standard)</option>
             <option value="13">13 pt</option>
-            <option value="14">14 pt (Residency Standard)</option>
+            <option value="14">14 pt (Official Standard)</option>
             <option value="15">15 pt</option>
-            <option value="16">16 pt</option>
-            <option value="18">18 pt</option>
+            <option value="16">16 pt (Headings)</option>
+            <option value="18">18 pt (Title Standard)</option>
+            <option value="20">20 pt</option>
+            <option value="22">22 pt</option>
+            <option value="24">24 pt</option>
           </select>
 
           {/* 5. Line Spacing */}
@@ -710,6 +1056,7 @@ export default function TemplateEditorModal({
           <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => executeCommand("bold")}
               className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 font-black transition cursor-pointer shadow-2xs"
               title="Bold (Ctrl+B)"
@@ -718,6 +1065,7 @@ export default function TemplateEditorModal({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => executeCommand("italic")}
               className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 italic transition cursor-pointer shadow-2xs"
               title="Italic (Ctrl+I)"
@@ -726,6 +1074,7 @@ export default function TemplateEditorModal({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => executeCommand("underline")}
               className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 underline transition cursor-pointer shadow-2xs"
               title="Underline (Ctrl+U)"
@@ -734,6 +1083,7 @@ export default function TemplateEditorModal({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => executeCommand("strikeThrough")}
               className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 line-through transition cursor-pointer shadow-2xs"
               title="Strikethrough"
@@ -746,6 +1096,7 @@ export default function TemplateEditorModal({
           <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => executeCommand("justifyLeft")}
               className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 transition cursor-pointer"
               title="Align Left"
@@ -754,6 +1105,7 @@ export default function TemplateEditorModal({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => executeCommand("justifyCenter")}
               className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 transition cursor-pointer"
               title="Align Center"
@@ -762,6 +1114,7 @@ export default function TemplateEditorModal({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => executeCommand("justifyRight")}
               className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 transition cursor-pointer"
               title="Align Right"
@@ -770,6 +1123,7 @@ export default function TemplateEditorModal({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => executeCommand("justifyFull")}
               className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 transition cursor-pointer"
               title="Justify"
@@ -782,6 +1136,7 @@ export default function TemplateEditorModal({
           <div className="flex items-center bg-slate-100 rounded-lg p-0.5 border border-slate-200">
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => executeCommand("insertUnorderedList")}
               className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 transition cursor-pointer"
               title="Bullet List"
@@ -790,6 +1145,7 @@ export default function TemplateEditorModal({
             </button>
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => executeCommand("insertOrderedList")}
               className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-white text-slate-800 transition cursor-pointer"
               title="Numbered List"
@@ -805,6 +1161,68 @@ export default function TemplateEditorModal({
               <Calendar size={12} className="text-emerald-700" />
               <span>Date</span>
             </button>
+          </div>
+
+          {/* Insert Variable Dropdown */}
+          <div className="relative inline-block">
+            <button
+              type="button"
+              onClick={() => {
+                setFieldMenuOpen(!fieldMenuOpen);
+                setLogoMenuOpen(false);
+                setZoomMenuOpen(false);
+              }}
+              className={`h-7 px-2 flex items-center gap-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                fieldMenuOpen
+                  ? "bg-emerald-600 text-white shadow-xs"
+                  : "bg-slate-100 hover:bg-white text-slate-800 border border-slate-200"
+              }`}
+              title="Insert Auto-Fill Placeholder Variable"
+            >
+              <Code size={12} className={fieldMenuOpen ? "text-white" : "text-emerald-700"} />
+              <span>Insert Field</span>
+              <ChevronDown size={11} />
+            </button>
+
+            {fieldMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setFieldMenuOpen(false)} />
+                <div className="absolute left-0 top-8 z-50 w-72 rounded-xl border border-slate-200 bg-white p-2 shadow-2xl space-y-1 max-h-80 overflow-y-auto">
+                  <div className="px-2 py-1 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                    Autofill Placeholders
+                  </div>
+                  {[
+                    { label: "Full Name (Underlined Bold)", token: "{{FULL_NAME}}" },
+                    { label: "Age", token: "{{AGE}}" },
+                    { label: "Civil Status (Auto-underline)", token: "{{CIVIL_STATUS}}" },
+                    { label: "Pronoun (him/her underline)", token: "{{him/her}}" },
+                    { label: "Pronoun (her/his underline)", token: "{{her/his}}" },
+                    { label: "Pronoun (he/she)", token: "{{he/she}}" },
+                    { label: "Purok", token: "{{PUROK}}" },
+                    { label: "Full Address", token: "{{ADDRESS}}" },
+                    { label: "Birthday", token: "{{BIRTHDAY}}" },
+                    { label: "Business Name", token: "{{BUSINESS_NAME}}" },
+                    { label: "Purpose", token: "{{PURPOSE}}" },
+                    { label: "Day (e.g. 9th)", token: "{{DAY}}" },
+                    { label: "Month (e.g. September)", token: "{{MONTH}}" },
+                    { label: "Year (e.g. 2026)", token: "{{YEAR}}" },
+                    { label: "Full Date", token: "{{DATE}}" },
+                  ].map((f) => (
+                    <button
+                      key={f.token}
+                      type="button"
+                      onClick={() => handleInsertPlaceholder(f.token)}
+                      className="w-full text-left px-2 py-1 rounded-lg text-xs hover:bg-emerald-50 hover:text-emerald-900 transition flex items-center justify-between text-slate-700 font-medium cursor-pointer"
+                    >
+                      <span>{f.label}</span>
+                      <code className="text-[10px] text-emerald-700 bg-emerald-100/60 px-1 py-0.5 rounded font-mono">
+                        {f.token}
+                      </code>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="h-5 w-px bg-slate-200 mx-0.5" />
@@ -1197,6 +1615,7 @@ export default function TemplateEditorModal({
             <article
               className={`real-doc-page real-doc-${docKey} bg-white shadow-2xl relative select-text`}
               style={{
+                "--doc-font-family": fontMap[fontFamily] || fontMap.times,
                 fontFamily: fontMap[fontFamily] || undefined,
                 "--doc-body-font-size": fontSize ? `${fontSize}pt` : undefined,
                 "--doc-line-height": lineHeight || undefined,
@@ -1465,15 +1884,15 @@ export default function TemplateEditorModal({
                 </div>
               </div>
 
-              {/* ── DOCUMENT TITLE ── */}
+              {/* ── DOCUMENT TITLE (Fully format-aware and editable like MS Word) ── */}
               <h1
+                ref={titleEditorRef}
                 contentEditable={true}
                 suppressContentEditableWarning={true}
-                className="real-doc-title outline-none"
-                onBlur={(e) => setHeaderConfig((prev) => ({ ...prev, title: e.target.innerText.trim() }))}
-              >
-                {headerConfig.title}
-              </h1>
+                className="real-doc-title outline-none cursor-text"
+                onInput={handleTitleInput}
+                onBlur={handleTitleInput}
+              />
 
               {/* ── SALUTATION ── */}
               <p
@@ -1511,6 +1930,14 @@ export default function TemplateEditorModal({
                         {headerConfig.captainName}
                       </strong>
                     </u>
+                  ) : docKey === "business" ? (
+                    <span
+                      contentEditable={true}
+                      suppressContentEditableWarning={true}
+                      onBlur={(e) => setHeaderConfig((prev) => ({ ...prev, captainName: e.target.innerText.trim() }))}
+                    >
+                      {headerConfig.captainName}
+                    </span>
                   ) : (
                     <strong
                       contentEditable={true}

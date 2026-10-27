@@ -289,11 +289,7 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
   const handleNotificationOpen = (notification) => {
     markAdminNotificationRead(notification.id);
     setNotifications((currentNotifications) =>
-      currentNotifications.map((currentNotification) =>
-        currentNotification.id === notification.id
-          ? { ...currentNotification, is_read: true }
-          : currentNotification
-      )
+      currentNotifications.filter((n) => n.id !== notification.id)
     );
     setShowNotifications(false);
     navigate(notification.path);
@@ -301,9 +297,7 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
 
   const handleMarkAllRead = () => {
     markAllAdminNotificationsRead(notifications.map((notification) => notification.id));
-    setNotifications((currentNotifications) =>
-      currentNotifications.map((notification) => ({ ...notification, is_read: true }))
-    );
+    setNotifications([]);
   };
 
   const handleDeleteNotification = (e, notificationId) => {
@@ -547,7 +541,7 @@ const Header = ({ title, subtitle, middleContent = null, actions = null, classNa
                         <button
                           type="button"
                           onClick={handleMarkAllRead}
-                          disabled={notifications.length === 0 || unreadCount === 0}
+                          disabled={notifications.length === 0}
                           className="rounded-md p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
                           aria-label="Mark all notifications as read"
                           title="Mark all read"

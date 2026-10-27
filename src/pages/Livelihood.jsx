@@ -98,6 +98,25 @@ const formatDate = (dateValue) => {
   return date.toLocaleDateString();
 };
 
+const ensureString = (val, fallback = "") => {
+  if (val == null) return fallback;
+  if (typeof val === "string") return val;
+  if (Array.isArray(val)) {
+    return val
+      .map((item) => (typeof item === "object" ? JSON.stringify(item) : String(item).trim()))
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (typeof val === "object") {
+    try {
+      return JSON.stringify(val, null, 2);
+    } catch {
+      return String(val);
+    }
+  }
+  return String(val);
+};
+
 const normalizePhone = normalizeSmsPhone;
 const hasPhone = (resident) => isValidSmsPhone(resident?.phone);
 
@@ -643,15 +662,15 @@ Return ONLY a valid JSON object with the following keys:
           if (parsed && parsed.title && parsed.description) {
             setFormData((current) => ({
               ...current,
-              title: parsed.title || current.title,
-              category: parsed.category || current.category,
-              organization: parsed.organization || current.organization,
-              location: parsed.location || current.location,
+              title: ensureString(parsed.title, current.title),
+              category: ensureString(parsed.category, current.category),
+              organization: ensureString(parsed.organization, current.organization),
+              location: ensureString(parsed.location, current.location),
               slots: String(parsed.slots || current.slots || "25"),
               deadline: current.deadline || new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
-              contact: parsed.contact || current.contact || "Barangay Livelihood Desk: 09306259795",
-              eligibility: parsed.eligibility || current.eligibility,
-              description: parsed.description || current.description,
+              contact: ensureString(parsed.contact, current.contact || "Barangay Livelihood Desk: 09306259795"),
+              eligibility: ensureString(parsed.eligibility, current.eligibility),
+              description: ensureString(parsed.description, current.description),
             }));
             setAiGeneratedNotice(`✨ AI Livelihood Draft generated for ${parsed.title.slice(0, 32)}...`);
             setTimeout(() => setAiGeneratedNotice(""), 4500);
@@ -859,16 +878,16 @@ Extract all key details and return a clean JSON object with the following fields
       if (parsed) {
         setFormData((prev) => ({
           ...prev,
-          title: parsed.title || prev.title,
+          title: ensureString(parsed.title, prev.title),
           category: ["Job", "Training", "Grant", "Program"].includes(parsed.category) ? parsed.category : prev.category,
           status: ["Open", "Ongoing", "Completed", "Closed"].includes(parsed.status) ? parsed.status : prev.status,
-          organization: parsed.organization || prev.organization,
-          location: parsed.location || prev.location,
+          organization: ensureString(parsed.organization, prev.organization),
+          location: ensureString(parsed.location, prev.location),
           slots: parsed.slots ? String(parsed.slots) : prev.slots,
           deadline: parsed.deadline || prev.deadline,
-          contact: parsed.contact || prev.contact,
-          eligibility: parsed.eligibility || prev.eligibility,
-          description: parsed.description || prev.description,
+          contact: ensureString(parsed.contact, prev.contact),
+          eligibility: ensureString(parsed.eligibility, prev.eligibility),
+          description: ensureString(parsed.description, prev.description),
         }));
         setExtractedOcrText(parsed.rawText || parsed.description || extracted);
         setAiGeneratedNotice("✨ Memo scanned and ALL form fields auto-filled!");
@@ -905,16 +924,16 @@ Extract all key details and return a clean JSON object with the following fields
     if (parsed) {
       setFormData((prev) => ({
         ...prev,
-        title: parsed.title || prev.title,
+        title: ensureString(parsed.title, prev.title),
         category: ["Job", "Training", "Grant", "Program"].includes(parsed.category) ? parsed.category : prev.category,
         status: ["Open", "Ongoing", "Completed", "Closed"].includes(parsed.status) ? parsed.status : prev.status,
-        organization: parsed.organization || prev.organization,
-        location: parsed.location || prev.location,
+        organization: ensureString(parsed.organization, prev.organization),
+        location: ensureString(parsed.location, prev.location),
         slots: parsed.slots ? String(parsed.slots) : prev.slots,
         deadline: parsed.deadline || prev.deadline,
-        contact: parsed.contact || prev.contact,
-        eligibility: parsed.eligibility || prev.eligibility,
-        description: parsed.description || prev.description,
+        contact: ensureString(parsed.contact, prev.contact),
+        eligibility: ensureString(parsed.eligibility, prev.eligibility),
+        description: ensureString(parsed.description, prev.description),
       }));
     } else {
       setFormData((prev) => ({
@@ -981,6 +1000,15 @@ Extract all key details and return a clean JSON object with the following fields
       const targetStatus = shouldPublish ? "Open" : "Draft";
       const payload = {
         ...formData,
+        title: ensureString(formData.title),
+        category: ensureString(formData.category) || "Program",
+        organization: ensureString(formData.organization) || null,
+        description: ensureString(formData.description) || null,
+        eligibility: ensureString(formData.eligibility) || null,
+        location: ensureString(formData.location) || null,
+        contact: ensureString(formData.contact) || null,
+        audience: ensureString(formData.audience) || "All Residents",
+        sms_recipient_phones: ensureString(formData.sms_recipient_phones) || null,
         status: targetStatus,
         slots: formData.slots === "" || formData.slots == null ? null : Number(formData.slots),
       };

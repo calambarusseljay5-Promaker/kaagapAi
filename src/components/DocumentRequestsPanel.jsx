@@ -49,8 +49,15 @@ const DocumentRequestsPanel = () => {
         const result = await fetchDocumentRequests({ limit: 10 });
         if (!isMounted) return;
         const requestsData = Array.isArray(result) ? result : result.data;
-        const activeRequests = (requestsData || []).filter(r => r.status !== "Cancelled");
-        setRequests(activeRequests);
+        const validRequests = (requestsData || []).filter(r => r.status !== "Cancelled");
+        
+        // FIFO Queue: Pending requests at top (oldest first), finished history at bottom
+        const pendingQueue = validRequests.filter(r => String(r.status || "").toLowerCase() === "pending");
+        const otherRequests = validRequests.filter(r => String(r.status || "").toLowerCase() !== "pending");
+        pendingQueue.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+        otherRequests.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+        setRequests([...pendingQueue, ...otherRequests]);
       } catch (e) {
         if (!isMounted) return;
         console.error("Error loading document requests:", e);
@@ -71,10 +78,15 @@ const DocumentRequestsPanel = () => {
     () => (iso) => {
       if (!iso) return "-";
       try {
-        return new Date(iso).toLocaleDateString(undefined, {
-          year: "numeric",
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return "-";
+        return d.toLocaleString("en-US", {
           month: "short",
           day: "2-digit",
+          year: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+          hour12: true,
         });
       } catch {
         return "-";

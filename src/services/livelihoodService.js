@@ -1,21 +1,35 @@
-import { supabase } from "../lib/supabaseClient";
+import { supabase } from "../lib/supabaseClient.js";
 import {
   deleteKnowledgeForSource,
   syncKnowledgeFromLivelihood,
-} from "./knowledgeService";
-import { moveToRecycleBin } from "./recycleBinService";
-import { broadcastSyncEvent } from "./realtimeSyncService";
+} from "./knowledgeService.js";
+import { moveToRecycleBin } from "./recycleBinService.js";
+import { broadcastSyncEvent } from "./realtimeSyncService.js";
 
 const TABLE = "livelihood_posts";
 const SETUP_MESSAGE =
   "Livelihood & Jobs table is missing in Supabase. Run supabase-new-modules.sql in the Supabase SQL Editor, then refresh the app.";
+const COLUMN_SETUP_MESSAGE =
+  "Livelihood table is missing new columns (audience / sms_recipient_phones). Run supabase-new-modules.sql in the Supabase SQL Editor, then refresh the app.";
 
 const normalizeSupabaseError = (error) => {
   const message = String(error?.message || "");
+  const code = error?.code;
+
   if (
-    error?.code === "PGRST205" ||
-    message.includes("schema cache") ||
-    message.includes("livelihood_posts")
+    message.includes("audience") ||
+    message.includes("sms_recipient_phones") ||
+    message.includes("'audience'") ||
+    message.includes("'sms_recipient_phones'")
+  ) {
+    return new Error(COLUMN_SETUP_MESSAGE);
+  }
+
+  if (
+    code === "PGRST205" ||
+    (message.includes("schema cache") && (message.includes("table") || message.includes("relation"))) ||
+    message.includes("relation \"public.livelihood_posts\" does not exist") ||
+    message.includes("relation \"livelihood_posts\" does not exist")
   ) {
     return new Error(SETUP_MESSAGE);
   }
@@ -23,19 +37,67 @@ const normalizeSupabaseError = (error) => {
   return error;
 };
 
-const preparePayload = (data = {}) => ({
-  title: data.title?.trim(),
-  category: data.category || "Program",
-  organization: data.organization?.trim() || null,
-  description: data.description?.trim() || null,
-  eligibility: data.eligibility?.trim() || null,
-  slots: data.slots === "" || data.slots == null ? null : Number(data.slots),
-  location: data.location?.trim() || null,
-  contact: data.contact?.trim() || null,
-  status: data.status || "Open",
-  deadline: data.deadline || null,
-  updated_at: new Date().toISOString(),
-});
+const toCleanString = (val) => {
+  if (val == null) return null;
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (Array.isArray(val)) {
+    const joined = val
+      .map((item) => (typeof item === "object" ? JSON.stringify(item) : String(item).trim()))
+      .filter(Boolean)
+      .join("\n");
+    return joined.length > 0 ? joined : null;
+  }
+  if (typeof val === "object") {
+    try {
+      return JSON.stringify(val);
+    } catch {
+      return String(val);
+    }
+  }
+  const str = String(val).trim();
+  return str.length > 0 ? str : null;
+};
+
+const preparePayload = (data = {}) => {
+  const title = toCleanString(data.title);
+  const category = toCleanString(data.category) || "Program";
+  const organization = toCleanString(data.organization);
+  const description = toCleanString(data.description);
+  const eligibility = toCleanString(data.eligibility);
+  const location = toCleanString(data.location);
+  const contact = toCleanString(data.contact);
+  const status = toCleanString(data.status) || "Open";
+  const deadline = toCleanString(data.deadline);
+  const audience = toCleanString(data.audience) || "All Residents";
+  const smsRecipientPhones = toCleanString(data.sms_recipient_phones);
+
+  let slots = null;
+  if (data.slots !== "" && data.slots != null) {
+    const parsedSlots = Number(data.slots);
+    if (!Number.isNaN(parsedSlots)) {
+      slots = parsedSlots;
+    }
+  }
+
+  return {
+    title,
+    category,
+    organization,
+    description,
+    eligibility,
+    slots,
+    location,
+    contact,
+    status,
+    deadline,
+    audience,
+    sms_recipient_phones: smsRecipientPhones,
+    updated_at: new Date().toISOString(),
+  };
+};
 
 export async function cleanupExpiredLivelihoodPosts() {
   try {
@@ -107,12 +169,32 @@ export async function createLivelihoodPost(postData) {
   const payload = preparePayload(postData);
   if (!payload.title) throw new Error("Title is required.");
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from(TABLE)
     .insert([payload])
     .select()
     .limit(1)
     .maybeSingle();
+
+  // Graceful fallback if database schema is missing newer columns (audience / sms_recipient_phones)
+  if (
+    error &&
+    (error.message?.includes("audience") ||
+      error.message?.includes("sms_recipient_phones") ||
+      error.code === "PGRST204")
+  ) {
+    const { audience, sms_recipient_phones, ...compatPayload } = payload;
+    const retry = await supabase
+      .from(TABLE)
+      .insert([compatPayload])
+      .select()
+      .limit(1)
+      .maybeSingle();
+    if (!retry.error) {
+      data = retry.data;
+      error = null;
+    }
+  }
 
   if (error) throw normalizeSupabaseError(error);
   syncKnowledgeFromLivelihood(data).catch((syncError) => {
@@ -127,13 +209,34 @@ export async function updateLivelihoodPost(id, updates) {
   const payload = preparePayload(updates);
   if (!payload.title) throw new Error("Title is required.");
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from(TABLE)
     .update(payload)
     .eq("id", id)
     .select()
     .limit(1)
     .maybeSingle();
+
+  // Graceful fallback if database schema is missing newer columns (audience / sms_recipient_phones)
+  if (
+    error &&
+    (error.message?.includes("audience") ||
+      error.message?.includes("sms_recipient_phones") ||
+      error.code === "PGRST204")
+  ) {
+    const { audience, sms_recipient_phones, ...compatPayload } = payload;
+    const retry = await supabase
+      .from(TABLE)
+      .update(compatPayload)
+      .eq("id", id)
+      .select()
+      .limit(1)
+      .maybeSingle();
+    if (!retry.error) {
+      data = retry.data;
+      error = null;
+    }
+  }
 
   if (error) throw normalizeSupabaseError(error);
   syncKnowledgeFromLivelihood(data).catch((syncError) => {

@@ -13,6 +13,9 @@ import {
   Send,
   Sparkles,
   Trash2,
+  Volume2,
+  VolumeX,
+  BellRing,
   Wand2,
   X,
 } from "lucide-react";
@@ -26,6 +29,7 @@ import {
   updateAnnouncement,
   isAnnouncementExpired,
 } from "../services/announcementService";
+import { testEmergencyAlarmSound, stopEmergencyAlarm } from "../utils/emergencyAlertSound";
 import { useRealtimeSync } from "../services/realtimeSyncService";
 import { showAdminSystemToast } from "../utils/toast";
 import { fetchResidents } from "../services/adminService";
@@ -1389,6 +1393,34 @@ const Announcements = () => {
                 ))}
               </select>
             </label>
+
+            {formData.category === "Emergency" && (
+              <div className="sm:col-span-2 rounded-2xl border border-red-300 bg-red-50/95 p-4 space-y-2 text-red-900 shadow-sm">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-3 w-3 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-red-600"></span>
+                    </span>
+                    <span className="text-xs font-black uppercase tracking-wider text-red-800 flex items-center gap-1.5">
+                      <BellRing className="h-4 w-4 text-red-600 animate-spin" />
+                      NDRRMC-Style Emergency Siren & Device Ringing Active
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => testEmergencyAlarmSound()}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white px-3.5 py-1.5 text-xs font-bold shadow transition active:scale-95 cursor-pointer"
+                  >
+                    <Volume2 className="h-4 w-4" />
+                    Test Siren & Vibrate
+                  </button>
+                </div>
+                <p className="text-xs text-red-700 leading-relaxed font-medium">
+                  When published, this emergency announcement will audibly ring mobile devices and laptops with an authentic NDRRMC siren alarm and device vibration to alert residents immediately.
+                </p>
+              </div>
+            )}
 
             {getAudienceSelectValue(formData.audience) === "Selected Resident" && (
               <div className="sm:col-span-2 rounded-2xl border border-indigo-200 bg-slate-50/90 p-4 space-y-3.5 shadow-2xs">

@@ -113,7 +113,20 @@ export async function testGeminiConnection(key, modelToTest) {
   }
 }
 
+import { getActiveAiProvider, generateOpenSourceText } from "./openSourceLlmService.js";
+
 export async function generateText(prompt, options = {}) {
+  const provider = getActiveAiProvider();
+
+  // If Admin selected Open-Source LLM (Groq / Meta Llama 3 / Mistral / Ollama)
+  if ((provider === "opensource" || provider === "ollama") && !options.fileData) {
+    try {
+      return await generateOpenSourceText(prompt, options);
+    } catch (openSourceErr) {
+      console.warn("Open-Source LLM unavailable, falling back to Gemini:", openSourceErr.message);
+    }
+  }
+
   const apiKey = getActiveGeminiApiKey();
   if (!apiKey) {
     throw new Error(

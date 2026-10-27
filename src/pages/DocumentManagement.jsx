@@ -26,12 +26,19 @@ import {
   getRealDocumentTemplateKey,
 } from "../utils/realDocumentTemplates";
 import {
+  generateFilledDocx,
+  downloadFilledDocx,
+  formatDocumentDataForTemplate,
+  getTemplateFilePath as getDocxTemplateFilePath,
+} from "../services/docxTemplateService";
+import {
   getOrganizationOfficials,
   fetchOrganizationOfficials,
   getActiveCaptain,
   getActiveSecretary,
 } from "../services/organizationService";
 import { showAdminSystemToast } from "../utils/toast";
+import ProofViewerModal from "../components/modals/ProofViewerModal";
 import {
   AlertCircle,
   AlignCenter,
@@ -45,8 +52,11 @@ import {
   CheckSquare,
   ChevronDown,
   ClipboardList,
+  Clock,
   Download,
   Eye,
+  FileDown,
+  FileImage,
   FilePlus,
   FileText,
   Filter,
@@ -102,12 +112,15 @@ const formatDateTime = (value) => {
   if (!value) return "-";
 
   try {
-    return new Date(value).toLocaleString(undefined, {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return "-";
+    return d.toLocaleString("en-US", {
       year: "numeric",
       month: "short",
       day: "2-digit",
       hour: "numeric",
       minute: "2-digit",
+      hour12: true,
     });
   } catch {
     return "-";
@@ -212,6 +225,7 @@ const buildResidentFields = (
 
   const extractedReason = parseDetailField(reqDocType, "Reason") || (reqDocType.toLowerCase().includes("reason:") ? parsePurpose(reqDocType) : "");
   const extractedBusiness = parseDetailField(reqDocType, "Business");
+  const extractedPurpose = parseDetailField(reqDocType, "Purpose") || parsePurpose(reqDocType);
   const extractedRecommendation = parseDetailField(reqDocType, "Recommendation") || (isResidency ? parsePurpose(reqDocType) : "");
   const extractedGrantee = parseDetailField(reqDocType, "Grantee") || parseDetailField(reqDocType, "Spouse");
   
@@ -232,12 +246,12 @@ const buildResidentFields = (
   const isFemale = residentGender.toLowerCase() === "female" || residentGender.toLowerCase() === "f";
 
   // Default recommendations / purpose based on document type
-  let defaultPurpose = parsePurpose(reqDocType) || "";
+  let defaultPurpose = request?.purpose || extractedPurpose || "";
   if (!defaultPurpose) {
     if (isClearance) defaultPurpose = "OWWA";
     else if (isIndigency) defaultPurpose = "FINANCIAL ASSISTANCE";
     else if (isResidency) defaultPurpose = "job and application";
-    else if (isBusiness) defaultPurpose = "BANANA BUY AND SALE";
+    else if (isBusiness) defaultPurpose = "Business Permit Application";
     else if (isSolo) defaultPurpose = "Solo Parent ID and Benefits Application";
     else if (is4ps) defaultPurpose = "Pantawid Pamilyang Pilipino Program (4Ps) Requirement";
     else if (isRsbsa) defaultPurpose = "RSBSA Registration";
@@ -288,10 +302,10 @@ const buildResidentFields = (
     remarks: savedFields.remarks || extractedCrops || (isRsbsa ? "Rice Field ½ hectare, and Fruits Crops 1 hectare" : ""),
     cropsText: savedFields.cropsText || extractedCrops || (isRsbsa ? "Rice Field ½ hectare, and Fruits Crops 1 hectare" : ""),
     documentText: savedFields.documentText || "",
-    printFontFamily: savedFields.printFontFamily || (isResidency || isIndigency || isBusiness || isRsbsa || is4ps ? "rockwell" : "times"),
-    printFontSize: savedFields.printFontSize || (isResidency || isIndigency || isBusiness || isRsbsa || is4ps ? "14" : "12"),
-    printLineHeight: savedFields.printLineHeight || "1.25",
-    printParagraphGap: savedFields.printParagraphGap || "0.16",
+    printFontFamily: template?.header_config?.fontFamily || savedFields.printFontFamily || (isResidency || isIndigency || isBusiness || isRsbsa || is4ps ? "rockwell" : "times"),
+    printFontSize: template?.header_config?.fontSize || savedFields.printFontSize || (isResidency || isIndigency || isBusiness || isRsbsa || is4ps ? "14" : "12"),
+    printLineHeight: template?.header_config?.lineHeight || savedFields.printLineHeight || "1.25",
+    printParagraphGap: template?.header_config?.paragraphGap || savedFields.printParagraphGap || "0.16",
     printMargin: savedFields.printMargin || "normal",
     ...savedFields,
   };
@@ -327,6 +341,17 @@ const getRequiredMissingFields = (fields, selectedTemplateId, selectedResidentId
   if (!fields.issueDate) missing.push("issue date");
 
   return missing;
+};
+
+const isRequestExpired = (request) => {
+  if (!request) return false;
+  if (["Released", "Rejected", "Cancelled"].includes(request.status)) return false;
+
+  const createdOrUpdatedTime = new Date(request.updated_at || request.created_at || 0).getTime();
+  const timeDifferenceMs = Date.now() - createdOrUpdatedTime;
+  const oneDayMs = 24 * 60 * 60 * 1000;
+
+  return timeDifferenceMs > oneDayMs;
 };
 
 const DocumentManagement = () => {
@@ -370,6 +395,8 @@ const DocumentManagement = () => {
   const [deletingSelected, setDeletingSelected] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [selectedProofRequest, setSelectedProofRequest] = useState(null);
+  const [showProofModal, setShowProofModal] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedResidentId, setSelectedResidentId] = useState("");
   const [residentSearch, setResidentSearch] = useState("");
@@ -414,6 +441,7 @@ const DocumentManagement = () => {
   const [creatingWalkIn, setCreatingWalkIn] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [savingDocument, setSavingDocument] = useState(false);
+  const [generatingDocx, setGeneratingDocx] = useState(false);
   const [uploadingTemplate, setUploadingTemplate] = useState(false);
   const [aiReview, setAiReview] = useState(null);
   const [documentZoom, setDocumentZoom] = useState(65);
@@ -508,19 +536,69 @@ const DocumentManagement = () => {
 
   const filteredRequests = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    if (!term) return requests;
+    const list = !term
+      ? [...requests]
+      : requests.filter((request) => {
+          const residentName = getNestedResident(request.residents)?.full_name || "";
+          const docType = request.document_type || "";
+          const reqId = request.id || "";
 
-    return requests.filter((request) => {
-      const residentName = getNestedResident(request.residents)?.full_name || "";
-      const docType = request.document_type || "";
-      const reqId = request.id || "";
+          return (
+            residentName.toLowerCase().includes(term) ||
+            docType.toLowerCase().includes(term) ||
+            reqId.toLowerCase().includes(term)
+          );
+        });
 
-      return (
-        residentName.toLowerCase().includes(term) ||
-        docType.toLowerCase().includes(term) ||
-        reqId.toLowerCase().includes(term)
-      );
+    // FIFO Queue (First-Come, First-Served):
+    // 1. Pending requests are separated and sorted by created_at ASC (First pending request ALWAYS at the top).
+    // 2. Next pending requests are placed below the first pending request.
+    // 3. Processing/Approved requests follow active pending requests.
+    // 4. Finished/Historical requests (Released, Completed, Rejected, Cancelled, Expired) appear at the bottom, sorted newest first.
+    const pendingQueue = [];
+    const processingQueue = [];
+    const finishedHistory = [];
+
+    list.forEach((req) => {
+      const st = String(req.status || "").trim().toLowerCase();
+      const expired = isRequestExpired(req);
+
+      if (!expired && st === "pending") {
+        pendingQueue.push(req);
+      } else if (!expired && (st === "processing" || st === "approved")) {
+        processingQueue.push(req);
+      } else {
+        finishedHistory.push(req);
+      }
     });
+
+    // FIFO Queue: Oldest requested date/time (earliest created_at) appears first at the top
+    pendingQueue.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+    processingQueue.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+
+    // Finished/Resolved requests: Newest first (created_at descending)
+    finishedHistory.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+    // Assign sequential queue positions to pending requests
+    const pendingWithQueue = pendingQueue.map((req, idx) => ({
+      ...req,
+      queuePosition: idx + 1,
+      isPendingQueue: true,
+    }));
+
+    const processingWithMeta = processingQueue.map((req) => ({
+      ...req,
+      queuePosition: null,
+      isProcessing: true,
+    }));
+
+    const finishedWithMeta = finishedHistory.map((req) => ({
+      ...req,
+      queuePosition: null,
+      isFinished: true,
+    }));
+
+    return [...pendingWithQueue, ...processingWithMeta, ...finishedWithMeta];
   }, [requests, searchTerm]);
 
   const stats = useMemo(
@@ -533,17 +611,6 @@ const DocumentManagement = () => {
     }),
     [requests]
   );
-
-  const isRequestExpired = (request) => {
-    if (!request) return false;
-    if (["Released", "Rejected", "Cancelled"].includes(request.status)) return false;
-
-    const createdOrUpdatedTime = new Date(request.updated_at || request.created_at || 0).getTime();
-    const timeDifferenceMs = Date.now() - createdOrUpdatedTime;
-    const oneDayMs = 24 * 60 * 60 * 1000;
-
-    return timeDifferenceMs > oneDayMs;
-  };
 
   const getStatusBadgeStyle = (status) => {
     switch (status) {
@@ -575,7 +642,7 @@ const DocumentManagement = () => {
       const [userData, results] = await Promise.all([
         getCurrentUserWithProfile(),
         Promise.allSettled([
-          fetchDocumentRequests({ status: statusFilter, limit: 300 }),
+          fetchDocumentRequests({ status: statusFilter, limit: 300, fifo: true }),
           fetchDocumentTemplates(),
           fetchResidents("", "", { withAccounts: false, excludeArchived: true }),
           fetchOrganizationOfficials(),
@@ -641,9 +708,20 @@ const DocumentManagement = () => {
 
     window.addEventListener("organization_officials_updated", handleOfficialsUpdate);
 
+    const handleTemplatesUpdate = () => {
+      if (isMounted) {
+        loadData({ showLoading: false });
+      }
+    };
+
+    window.addEventListener("kaagapai_templates_updated", handleTemplatesUpdate);
+    window.addEventListener("storage", handleTemplatesUpdate);
+
     return () => {
       isMounted = false;
       window.removeEventListener("organization_officials_updated", handleOfficialsUpdate);
+      window.removeEventListener("kaagapai_templates_updated", handleTemplatesUpdate);
+      window.removeEventListener("storage", handleTemplatesUpdate);
     };
   }, [loadData]);
 
@@ -652,7 +730,7 @@ const DocumentManagement = () => {
     loadData({ showLoading: false });
   });
 
-  const openRequest = (request) => {
+  const openRequest = async (request) => {
     if (isRequestExpired(request)) {
       setMessage({
         type: "error",
@@ -660,6 +738,7 @@ const DocumentManagement = () => {
       });
       return;
     }
+
     const requestResident = getNestedResident(request.residents);
     const matchedTemplate = findMatchingTemplate(templates, request.document_type);
     const savedDocument = getPreparedDocument(request.id);
@@ -822,12 +901,17 @@ const DocumentManagement = () => {
       } else if (docKey === "indigency") {
         finalPurpose = finalPurpose || "FINANCIAL ASSISTANCE";
       } else if (docKey === "business") {
-        finalPurpose = finalPurpose || walkInForm.businessName || "BANANA BUY AND SALE";
+        finalPurpose = finalPurpose || "Business Permit Application";
       }
+
+      const businessDocType = docKey === "business" && walkInForm.businessName
+        ? `${templateLabel} (Business: ${walkInForm.businessName}) (Purpose: ${finalPurpose})`
+        : finalPurpose ? `${templateLabel} (Purpose: ${finalPurpose})` : templateLabel;
 
       const createdRequest = await createDocumentRequest({
         resident_id: resolvedWalkInResident.id,
-        document_type: finalPurpose ? `${templateLabel} (Purpose: ${finalPurpose})` : templateLabel,
+        document_type: businessDocType,
+        purpose: finalPurpose,
         status: "Processing",
       });
       const requestWithResident = {
@@ -859,8 +943,9 @@ const DocumentManagement = () => {
           remarks: walkInForm.cropsText || "",
           cropsText: walkInForm.cropsText || (docKey === "rsbsa" ? "Rice Field ½ hectare, and Fruits Crops 1 hectare" : ""),
           tenure: walkInForm.tenure || "Owner",
-          printFontFamily: "rockwell",
-          printFontSize: "14",
+          printFontFamily: selectedWalkInTemplate?.header_config?.fontFamily || undefined,
+          printFontSize: selectedWalkInTemplate?.header_config?.fontSize || undefined,
+          printLineHeight: selectedWalkInTemplate?.header_config?.lineHeight || undefined,
         },
         captainOfficial?.name || PUNONG_BARANGAY
       );
@@ -880,6 +965,13 @@ const DocumentManagement = () => {
           "Document preview is 100% complete and ready for instant release.",
         ],
       };
+
+      savePreparedDocument(createdRequest.id, {
+        templateId: selectedWalkInTemplate.id,
+        residentId: resolvedWalkInResident.id,
+        fields,
+        aiReview: review,
+      });
 
       setRequests((currentRequests) => [
         requestWithResident,
@@ -1390,6 +1482,41 @@ const DocumentManagement = () => {
     }
   };
 
+  const handleDownloadFilledDocx = async () => {
+    if (!selectedRequest || !documentIsReady) return;
+    const fieldsToExport = commitPreviewEdits();
+    setGeneratingDocx(true);
+
+    try {
+      const templatePath = getDocxTemplateFilePath(selectedTemplate || selectedRequest.document_type);
+      const data = formatDocumentDataForTemplate(selectedResident || {}, fieldsToExport || {});
+
+      const docxBlob = await generateFilledDocx(templatePath, data);
+
+      const cleanDocType = (selectedRequest.document_type || selectedTemplate?.template_name || "Barangay-Document")
+        .replace(/[/\\?%*:|"<>]/g, "-")
+        .trim();
+      const cleanResident = (data.FULL_NAME || "Resident")
+        .replace(/[/\\?%*:|"<>]/g, "_")
+        .trim();
+      const filename = `${cleanDocType}_${cleanResident}.docx`;
+
+      downloadFilledDocx(docxBlob, filename);
+      setMessage({
+        type: "success",
+        text: `Official Word document generated: "${filename}". All details autofilled!`,
+      });
+    } catch (err) {
+      console.error("Error generating filled docx:", err);
+      setMessage({
+        type: "error",
+        text: err.message || "Failed to generate Word document.",
+      });
+    } finally {
+      setGeneratingDocx(false);
+    }
+  };
+
   const handleTemplateFileUpload = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
@@ -1579,25 +1706,75 @@ const DocumentManagement = () => {
       {
         field: "created_at",
         headerName: "Requested",
-        flex: 1.2,
-        renderCell: (params) => formatDate(params.row.created_at)
+        flex: 1.3,
+        minWidth: 160,
+        sortComparator: (v1, v2) => new Date(v1 || 0).getTime() - new Date(v2 || 0).getTime(),
+        renderCell: (params) => {
+          const raw = params.row?.created_at;
+          if (!raw) return <span className="text-slate-400 font-medium">-</span>;
+          try {
+            const dateObj = new Date(raw);
+            if (isNaN(dateObj.getTime())) return <span className="text-slate-400 font-medium">-</span>;
+            const dateStr = dateObj.toLocaleDateString("en-US", {
+              month: "short",
+              day: "2-digit",
+              year: "numeric",
+            });
+            const timeStr = dateObj.toLocaleTimeString("en-US", {
+              hour: "numeric",
+              minute: "2-digit",
+              hour12: true,
+            });
+            return (
+              <div className="flex flex-col justify-center leading-tight py-1">
+                <span className="text-xs font-bold text-slate-800 tracking-tight">{dateStr}</span>
+                <span className="text-[11px] font-semibold text-emerald-700 mt-0.5 flex items-center gap-1">
+                  <Clock size={11} className="shrink-0 text-emerald-600" />
+                  {timeStr}
+                </span>
+              </div>
+            );
+          } catch {
+            return <span className="text-slate-400 font-medium">-</span>;
+          }
+        }
       },
       {
         field: "actions",
         headerName: "Actions",
-        flex: 1,
+        flex: 1.4,
+        minWidth: 270,
         headerAlign: "right",
         align: "right",
         renderCell: (params) => {
           const request = params.row;
           const expired = isRequestExpired(request);
+          const hasAttachment = Boolean(request.attachment_url);
           return (
-            <div className="flex gap-2 justify-end">
+            <div className="flex gap-2 items-center justify-end w-full whitespace-nowrap">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedProofRequest(request);
+                  setShowProofModal(true);
+                }}
+                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold shrink-0 whitespace-nowrap transition shadow-2xs cursor-pointer active:scale-95 ${
+                  hasAttachment
+                    ? "border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 hover:border-emerald-400"
+                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+                title={hasAttachment ? "View attached documents / valid ID" : "Check attachments"}
+              >
+                <FileImage size={14} className={hasAttachment ? "text-emerald-700 shrink-0" : "text-slate-500 shrink-0"} />
+                <span className={hasAttachment ? "font-bold text-emerald-900" : "font-medium text-slate-700"}>
+                  View Attachments
+                </span>
+              </button>
               <button
                 type="button"
                 onClick={() => openRequest(request)}
                 disabled={expired}
-                className={`gov-action-btn view ${expired ? "opacity-50 cursor-not-allowed" : ""}`}
+                className={`gov-action-btn view shrink-0 ${expired ? "opacity-50 cursor-not-allowed" : ""}`}
                 title={expired ? "Expired" : "Open template and preview"}
               >
                 <Eye size={18} />
@@ -1605,7 +1782,7 @@ const DocumentManagement = () => {
               <button
                 type="button"
                 onClick={() => handleDeleteRequest(request.id)}
-                className="gov-action-btn delete"
+                className="gov-action-btn delete shrink-0"
                 title="Delete"
               >
                 <Trash2 size={18} />
@@ -1922,37 +2099,66 @@ const DocumentManagement = () => {
                     )}
 
                     {getRealDocumentTemplateKey(selectedWalkInTemplate) === "business" && (
-                      <div className="space-y-1 rounded-xl bg-emerald-50/50 p-2 border border-emerald-200/80">
-                        <label className="text-[9.5px] font-black uppercase tracking-wider text-[#00552E] block">Business Name & Nature</label>
-                        <div className="flex flex-wrap gap-1">
-                          {["BANANA BUY AND SALE", "SARI-SARI STORE", "AGRI-SUPPLY", "FOOD STALL / CARINDERIA"].map((p) => (
-                            <button
-                              key={p}
-                              type="button"
-                              onClick={() => {
-                                updateWalkInForm("businessName", p);
-                                updateWalkInForm("purpose", p);
-                              }}
-                              className={`rounded px-1.5 py-0.5 text-[8.5px] font-bold transition border cursor-pointer ${
-                                walkInForm.businessName === p
-                                  ? "bg-[#00552E] text-white border-[#00552E]"
-                                  : "bg-white text-emerald-950 hover:bg-emerald-100 border-emerald-200"
-                              }`}
-                            >
-                              {p}
-                            </button>
-                          ))}
+                      <div className="space-y-2 rounded-xl bg-emerald-50/50 p-2.5 border border-emerald-200/80">
+                        <div>
+                          <label className="text-[9.5px] font-black uppercase tracking-wider text-[#00552E] block">
+                            Business Name
+                          </label>
+                          <div className="flex flex-wrap gap-1 mt-0.5 mb-1">
+                            {["BANANA BUY AND SALE", "SARI-SARI STORE", "AGRI-SUPPLY", "FOOD STALL / CARINDERIA"].map((p) => (
+                              <button
+                                key={p}
+                                type="button"
+                                onClick={() => updateWalkInForm("businessName", p)}
+                                className={`rounded px-1.5 py-0.5 text-[8.5px] font-bold transition border cursor-pointer ${
+                                  walkInForm.businessName === p
+                                    ? "bg-[#00552E] text-white border-[#00552E]"
+                                    : "bg-white text-emerald-950 hover:bg-emerald-100 border-emerald-200"
+                                }`}
+                              >
+                                {p}
+                              </button>
+                            ))}
+                          </div>
+                          <input
+                            type="text"
+                            value={walkInForm.businessName || ""}
+                            onChange={(e) => updateWalkInForm("businessName", e.target.value)}
+                            placeholder="Enter business name (e.g. SARI-SARI STORE)..."
+                            className="w-full h-7 rounded-lg border border-emerald-300 bg-white px-2 text-xs font-semibold text-slate-900 outline-none"
+                            required
+                          />
                         </div>
-                        <input
-                          type="text"
-                          value={walkInForm.businessName || ""}
-                          onChange={(e) => {
-                            updateWalkInForm("businessName", e.target.value);
-                            updateWalkInForm("purpose", e.target.value);
-                          }}
-                          placeholder="Enter business name & nature..."
-                          className="w-full h-7 rounded-lg border border-emerald-300 bg-white px-2 text-xs font-semibold text-slate-900 outline-none"
-                        />
+
+                        {/* Business Purpose Field */}
+                        <div className="pt-1.5 border-t border-emerald-200/60">
+                          <label className="text-[9.5px] font-black uppercase tracking-wider text-[#00552E] block">
+                            Business Purpose
+                          </label>
+                          <div className="flex flex-wrap gap-1 mt-0.5 mb-1">
+                            {["For Renewal", "For Franchising", "New Business Permit Application", "Mayor's Permit Requirement"].map((p) => (
+                              <button
+                                key={p}
+                                type="button"
+                                onClick={() => updateWalkInForm("purpose", p)}
+                                className={`rounded px-1.5 py-0.5 text-[8.5px] font-bold transition border cursor-pointer ${
+                                  walkInForm.purpose === p
+                                    ? "bg-[#00552E] text-white border-[#00552E]"
+                                    : "bg-white text-emerald-950 hover:bg-emerald-100 border-emerald-200"
+                                }`}
+                              >
+                                {p}
+                              </button>
+                            ))}
+                          </div>
+                          <input
+                            type="text"
+                            value={walkInForm.purpose || ""}
+                            onChange={(e) => updateWalkInForm("purpose", e.target.value)}
+                            placeholder="e.g. Mayor's Permit Requirement / For Renewal..."
+                            className="w-full h-7 rounded-lg border border-emerald-300 bg-white px-2 text-xs font-semibold text-slate-900 outline-none"
+                          />
+                        </div>
                       </div>
                     )}
 
@@ -2329,6 +2535,26 @@ const DocumentManagement = () => {
                         {selectedRequest.status}
                       </span>
                     </div>
+
+                    <div className="pt-1.5 border-t border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 mb-1">Attached Valid ID / Proof</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedProofRequest(selectedRequest);
+                          setShowProofModal(true);
+                        }}
+                        className={`inline-flex w-full items-center justify-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition shadow-2xs cursor-pointer active:scale-95 ${
+                          selectedRequest.attachment_url
+                            ? "border-emerald-300 bg-emerald-50/70 text-emerald-800 hover:bg-emerald-100/80"
+                            : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                        }`}
+                        title={selectedRequest.attachment_url ? "Inspect uploaded attachments / valid ID" : "Check attachments"}
+                      >
+                        <FileImage size={14} className={selectedRequest.attachment_url ? "text-emerald-700" : "text-slate-400"} />
+                        <span>{selectedRequest.attachment_url ? "View Attachments" : "Check Attachments"}</span>
+                      </button>
+                    </div>
                   </div>
                 </details>
 
@@ -2491,20 +2717,54 @@ const DocumentManagement = () => {
                       </div>
                     )}
 
-                    {/* Business Permit Specific Field */}
+                    {/* Business Permit Specific Field: Business Name, Purpose, and Attachment Viewer */}
                     {getRealDocumentTemplateKey(selectedTemplate) === "business" && (
-                      <div className="pt-2 border-t border-slate-200">
-                        <label className="text-[10px] font-bold text-slate-600 block">Business Name & Nature</label>
-                        <input
-                          type="text"
-                          value={documentFields.businessName || documentFields.purpose || ""}
-                          onChange={(e) => {
-                            updateDocumentField("businessName", e.target.value);
-                            updateDocumentField("purpose", e.target.value);
-                          }}
-                          placeholder="e.g. BANANA BUY AND SALE / SARI-SARI STORE"
-                          className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold outline-none focus:border-emerald-500"
-                        />
+                      <div className="pt-2 border-t border-slate-200 space-y-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-700 block uppercase">
+                            Business Name
+                          </label>
+                          <input
+                            type="text"
+                            value={documentFields.businessName || documentFields.businessDetails || ""}
+                            onChange={(e) => {
+                              updateDocumentField("businessName", e.target.value);
+                              updateDocumentField("businessDetails", e.target.value);
+                            }}
+                            placeholder="e.g. BANANA BUY AND SALE / SARI-SARI STORE"
+                            className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold outline-none focus:border-emerald-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-700 block uppercase flex items-center justify-between">
+                            <span>Business Purpose</span>
+                            <span className="text-[9px] text-emerald-700 font-normal">Editable</span>
+                          </label>
+                          <div className="flex flex-wrap gap-1 mt-1 mb-1">
+                            {["For Renewal", "For Franchising", "New Business Permit Application", "Mayor's Permit Requirement"].map((p) => (
+                              <button
+                                key={p}
+                                type="button"
+                                onClick={() => updateDocumentField("purpose", p)}
+                                className={`rounded px-1.5 py-0.5 text-[8.5px] font-bold transition border cursor-pointer ${
+                                  documentFields.purpose === p
+                                    ? "bg-[#00552E] text-white border-[#00552E]"
+                                    : "bg-white text-emerald-950 hover:bg-emerald-100 border-emerald-200"
+                                }`}
+                              >
+                                {p}
+                              </button>
+                            ))}
+                          </div>
+                          <input
+                            type="text"
+                            value={documentFields.purpose || ""}
+                            onChange={(e) => updateDocumentField("purpose", e.target.value)}
+                            placeholder="e.g. Mayor's Permit Requirement / For Renewal / For Franchising..."
+                            className="w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold outline-none focus:border-emerald-500"
+                          />
+                        </div>
                       </div>
                     )}
 
@@ -2832,6 +3092,13 @@ const DocumentManagement = () => {
             </footer>
           </div>
         )}
+
+      <ProofViewerModal
+        isOpen={showProofModal}
+        onClose={() => setShowProofModal(false)}
+        request={selectedProofRequest}
+        onOpenStudio={openRequest}
+      />
     </>
   );
 };

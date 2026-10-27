@@ -14,6 +14,8 @@ const SMS_SETUP_MESSAGE =
 
 const normalizeSupabaseError = (error) => {
   const message = String(error?.message || "");
+  const code = error?.code;
+
   if (
     message.includes("sms_recipient_phones") ||
     message.includes("'sms_recipient_phones'")
@@ -22,9 +24,10 @@ const normalizeSupabaseError = (error) => {
   }
 
   if (
-    error?.code === "PGRST205" ||
-    message.includes("schema cache") ||
-    message.includes("announcements")
+    code === "PGRST205" ||
+    (message.includes("schema cache") && (message.includes("table") || message.includes("relation"))) ||
+    message.includes("relation \"public.announcements\" does not exist") ||
+    message.includes("relation \"announcements\" does not exist")
   ) {
     return new Error(SETUP_MESSAGE);
   }
@@ -122,7 +125,11 @@ export async function fetchAnnouncements({ search = "", status = "", category = 
   for (const item of list) {
     if (isAnnouncementExpired(item)) {
       moveToRecycleBin(TABLE, item.id, item, `Auto-expired (${item.expires_at})`);
-      supabase.from(TABLE).delete().eq("id", item.id).catch(() => {});
+      try {
+        await supabase.from(TABLE).delete().eq("id", item.id);
+      } catch (delErr) {
+        console.warn("Failed to auto-clean expired announcement:", delErr);
+      }
       deleteKnowledgeForSource("announcement", item.id).catch(() => {});
     } else {
       validList.push(item);

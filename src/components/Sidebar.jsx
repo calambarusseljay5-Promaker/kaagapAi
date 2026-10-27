@@ -206,6 +206,13 @@ const Sidebar = ({ isCollapsed, setIsCollapsed }) => {
     if (path === "/dashboard") {
       return location.pathname === "/" || location.pathname === "/dashboard";
     }
+    if (path === "/ai-knowledge") {
+      return (
+        location.pathname === "/ai-knowledge" ||
+        location.pathname === "/ai-settings" ||
+        location.pathname === "/ai-logs"
+      );
+    }
     return location.pathname === path;
   };
 

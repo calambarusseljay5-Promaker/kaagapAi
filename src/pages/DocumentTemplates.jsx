@@ -22,6 +22,7 @@ import {
   ArrowLeft,
   ChevronRight,
   Download,
+  FileDown,
   Upload,
   Loader,
 } from "lucide-react";
@@ -38,6 +39,8 @@ import {
   toggleDocumentTemplateStatus,
   archiveDocumentTemplate,
   deletePermanentDocumentTemplate,
+  clearAllDocumentTemplates,
+  DEFAULT_TEMPLATES_CONTENT,
   TEMPLATE_CATEGORIES,
 } from "../services/documentTemplateService";
 import { moveToRecycleBin } from "../services/recycleBinService";
@@ -153,14 +156,24 @@ export default function DocumentTemplates() {
         templateFilePath = `/files/document-templates/${file.name}`;
       }
 
-      // 3. Save template record
+      // 3. Match appropriate official template content
+      const matchingKey = Object.keys(DEFAULT_TEMPLATES_CONTENT).find(
+        (k) =>
+          templateName.toLowerCase().includes(k.toLowerCase()) ||
+          k.toLowerCase().includes(templateName.toLowerCase())
+      );
+      const contentToSave = matchingKey
+        ? DEFAULT_TEMPLATES_CONTENT[matchingKey]
+        : `<p>This is to certify that <strong>{{FULL_NAME}}</strong>, <strong>{{AGE}}</strong> yrs. old, Filipino, <strong>{{CIVIL_STATUS}}</strong>, a bona fide resident of Purok <strong>{{PUROK}}</strong>, Barangay Upper Mingading, Aleosan, Cotabato.</p><p>This certification is issued for <strong>{{PURPOSE}}</strong> and whatever legal purpose it may serve best.</p><p>Issued this <u>{{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`;
+
+      // 4. Save template record
       await createDocumentTemplate({
         template_name: templateName,
         category,
         description: `Official template uploaded from ${file.name}`,
         template_file_path: templateFilePath,
         status: "Active",
-        content: `<p>This is to certify that <strong>{{FULL_NAME}}</strong>, <strong>{{AGE}}</strong> yrs. old, Filipino, <strong>{{CIVIL_STATUS}}</strong>, a bona fide resident of Purok <strong>{{PUROK}}</strong>, Barangay Upper Mingading, Aleosan, Cotabato.</p><p>This certification is issued for <strong>{{PURPOSE}}</strong> and whatever legal purpose it may serve best.</p><p>Issued this <u>{{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>`,
+        content: contentToSave,
       });
 
       showAdminSystemToast(`Template "${templateName}" uploaded and saved successfully!`, { type: "success" });
@@ -195,6 +208,10 @@ export default function DocumentTemplates() {
       }
       setIsEditorOpen(false);
       loadData();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("kaagapai_templates_updated"));
+        window.dispatchEvent(new Event("storage"));
+      }
     } catch (err) {
       console.error("Error saving template:", err);
       showAdminSystemToast(err.message || "Failed to save template.", { type: "error" });
@@ -249,6 +266,31 @@ export default function DocumentTemplates() {
     } catch (err) {
       console.error("Error deleting template:", err);
       showAdminSystemToast("Failed to delete template.", { type: "error" });
+    }
+  };
+
+  const handleClearAllTemplates = async () => {
+    const confirmed = await showConfirm({
+      title: "Alisin Lahat ng Templates?",
+      message:
+        "Sigurado ka bang nais mong alisin ang lahat ng templates? Malilinis ang listahan upang makapag-upload ka ng iyong sariling mga original na dokumento.",
+      confirmLabel: "Alisin Lahat",
+      cancelLabel: "Cancel",
+      variant: "danger",
+    });
+
+    if (!confirmed) return;
+
+    try {
+      await clearAllDocumentTemplates();
+      showAdminSystemToast(
+        "Lahat ng templates ay naalis na. Handa na para sa iyong mga original na dokumento!",
+        { type: "success" }
+      );
+      loadData();
+    } catch (err) {
+      console.error("Error clearing templates:", err);
+      showAdminSystemToast("Failed to clear templates.", { type: "error" });
     }
   };
 
@@ -331,6 +373,18 @@ export default function DocumentTemplates() {
               onChange={handleFileUpload}
               className="hidden"
             />
+
+            {templates.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAllTemplates}
+                className="px-3.5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+                title="Alisin lahat ng templates para makapag-upload ng sariling mga original"
+              >
+                <Trash2 size={15} className="text-rose-600" />
+                <span>Alisin Lahat</span>
+              </button>
+            )}
 
             {/* Direct Upload / File Explorer Button */}
             <button
@@ -465,14 +519,25 @@ export default function DocumentTemplates() {
             <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
               Create your first document template to start managing and generating official barangay documents.
             </p>
-            <button
-              type="button"
-              onClick={handleOpenCreate}
-              className="mt-5 px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition inline-flex items-center gap-2 cursor-pointer"
-            >
-              <Plus size={15} />
-              <span>+ Create Template</span>
-            </button>
+            <div className="mt-5 flex items-center justify-center gap-2.5 flex-wrap">
+              <button
+                type="button"
+                onClick={handleTriggerFilePicker}
+                disabled={uploadingFile}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition inline-flex items-center gap-2 cursor-pointer"
+              >
+                {uploadingFile ? <Loader size={15} className="animate-spin" /> : <Upload size={15} />}
+                <span>Upload Original Document (.docx)</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenCreate}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition inline-flex items-center gap-2 cursor-pointer"
+              >
+                <Plus size={15} />
+                <span>Custom Editor</span>
+              </button>
+            </div>
           </div>
         ) : (
           /* Table of Templates */

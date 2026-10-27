@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { supabase } from "../lib/supabaseClient";
+import { supabase } from "../lib/supabaseClient.js";
 
 const CHANNEL_NAME = "kaagapai_realtime_bus";
 

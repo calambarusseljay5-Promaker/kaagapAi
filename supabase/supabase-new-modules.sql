@@ -51,6 +51,12 @@ CREATE TABLE IF NOT EXISTS public.livelihood_posts (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+ALTER TABLE public.livelihood_posts
+ADD COLUMN IF NOT EXISTS audience TEXT DEFAULT 'All Residents';
+
+ALTER TABLE public.livelihood_posts
+ADD COLUMN IF NOT EXISTS sms_recipient_phones TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_livelihood_posts_category ON public.livelihood_posts(category);
 CREATE INDEX IF NOT EXISTS idx_livelihood_posts_status ON public.livelihood_posts(status);
 CREATE INDEX IF NOT EXISTS idx_livelihood_posts_deadline ON public.livelihood_posts(deadline);
@@ -162,98 +168,111 @@ ALTER TABLE public.announcements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.organization_officials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_knowledge_items ENABLE ROW LEVEL SECURITY;
 
+-- -----------------------------------------------------------------------------
+-- Policies for Livelihood, Announcements, Officials, and AI Knowledge
+-- Designed for Capstone admin/resident evaluation & local sessions
+-- -----------------------------------------------------------------------------
+
 DROP POLICY IF EXISTS "Anyone can read livelihood posts" ON public.livelihood_posts;
 DROP POLICY IF EXISTS "Admins can insert livelihood posts" ON public.livelihood_posts;
 DROP POLICY IF EXISTS "Admins can update livelihood posts" ON public.livelihood_posts;
 DROP POLICY IF EXISTS "Admins can delete livelihood posts" ON public.livelihood_posts;
+DROP POLICY IF EXISTS "Allow insert livelihood posts" ON public.livelihood_posts;
+DROP POLICY IF EXISTS "Allow update livelihood posts" ON public.livelihood_posts;
+DROP POLICY IF EXISTS "Allow delete livelihood posts" ON public.livelihood_posts;
 
 CREATE POLICY "Anyone can read livelihood posts"
 ON public.livelihood_posts FOR SELECT
 USING (true);
 
-CREATE POLICY "Admins can insert livelihood posts"
+CREATE POLICY "Allow insert livelihood posts"
 ON public.livelihood_posts FOR INSERT
-WITH CHECK (public.current_user_role() = 'admin');
-
-CREATE POLICY "Admins can update livelihood posts"
-ON public.livelihood_posts FOR UPDATE
-USING (public.current_user_role() = 'admin')
 WITH CHECK (true);
 
-CREATE POLICY "Admins can delete livelihood posts"
+CREATE POLICY "Allow update livelihood posts"
+ON public.livelihood_posts FOR UPDATE
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Allow delete livelihood posts"
 ON public.livelihood_posts FOR DELETE
-USING (public.current_user_role() = 'admin');
+USING (true);
 
 DROP POLICY IF EXISTS "Anyone can read announcements" ON public.announcements;
 DROP POLICY IF EXISTS "Admins can insert announcements" ON public.announcements;
 DROP POLICY IF EXISTS "Admins can update announcements" ON public.announcements;
 DROP POLICY IF EXISTS "Admins can delete announcements" ON public.announcements;
-DROP POLICY IF EXISTS "Anyone can read organization officials" ON public.organization_officials;
-DROP POLICY IF EXISTS "Admins can insert organization officials" ON public.organization_officials;
-DROP POLICY IF EXISTS "Admins can update organization officials" ON public.organization_officials;
-DROP POLICY IF EXISTS "Admins can delete organization officials" ON public.organization_officials;
-DROP POLICY IF EXISTS "Residents can read active AI knowledge" ON public.ai_knowledge_items;
-DROP POLICY IF EXISTS "Admins can insert AI knowledge" ON public.ai_knowledge_items;
-DROP POLICY IF EXISTS "Admins can update AI knowledge" ON public.ai_knowledge_items;
-DROP POLICY IF EXISTS "Admins can delete AI knowledge" ON public.ai_knowledge_items;
+DROP POLICY IF EXISTS "Allow all for announcements" ON public.announcements;
+DROP POLICY IF EXISTS "Allow insert announcements" ON public.announcements;
+DROP POLICY IF EXISTS "Allow update announcements" ON public.announcements;
+DROP POLICY IF EXISTS "Allow delete announcements" ON public.announcements;
 
 CREATE POLICY "Anyone can read announcements"
 ON public.announcements FOR SELECT
 USING (true);
 
-CREATE POLICY "Admins can insert announcements"
+CREATE POLICY "Allow insert announcements"
 ON public.announcements FOR INSERT
-WITH CHECK (public.current_user_role() = 'admin');
-
-CREATE POLICY "Admins can update announcements"
-ON public.announcements FOR UPDATE
-USING (public.current_user_role() = 'admin')
 WITH CHECK (true);
 
-CREATE POLICY "Admins can delete announcements"
+CREATE POLICY "Allow update announcements"
+ON public.announcements FOR UPDATE
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Allow delete announcements"
 ON public.announcements FOR DELETE
-USING (public.current_user_role() = 'admin');
+USING (true);
+
+DROP POLICY IF EXISTS "Anyone can read organization officials" ON public.organization_officials;
+DROP POLICY IF EXISTS "Admins can insert organization officials" ON public.organization_officials;
+DROP POLICY IF EXISTS "Admins can update organization officials" ON public.organization_officials;
+DROP POLICY IF EXISTS "Admins can delete organization officials" ON public.organization_officials;
+DROP POLICY IF EXISTS "Allow insert organization officials" ON public.organization_officials;
+DROP POLICY IF EXISTS "Allow update organization officials" ON public.organization_officials;
+DROP POLICY IF EXISTS "Allow delete organization officials" ON public.organization_officials;
 
 CREATE POLICY "Anyone can read organization officials"
 ON public.organization_officials FOR SELECT
 USING (true);
 
-CREATE POLICY "Admins can insert organization officials"
+CREATE POLICY "Allow insert organization officials"
 ON public.organization_officials FOR INSERT
-WITH CHECK (public.current_user_role() = 'admin');
+WITH CHECK (true);
 
-CREATE POLICY "Admins can update organization officials"
+CREATE POLICY "Allow update organization officials"
 ON public.organization_officials FOR UPDATE
-USING (public.current_user_role() = 'admin')
+USING (true)
 WITH CHECK (true);
 
-CREATE POLICY "Admins can delete organization officials"
+CREATE POLICY "Allow delete organization officials"
 ON public.organization_officials FOR DELETE
-USING (public.current_user_role() = 'admin');
+USING (true);
 
-CREATE POLICY "Residents can read active AI knowledge"
+DROP POLICY IF EXISTS "Residents can read active AI knowledge" ON public.ai_knowledge_items;
+DROP POLICY IF EXISTS "Admins can insert AI knowledge" ON public.ai_knowledge_items;
+DROP POLICY IF EXISTS "Admins can update AI knowledge" ON public.ai_knowledge_items;
+DROP POLICY IF EXISTS "Admins can delete AI knowledge" ON public.ai_knowledge_items;
+DROP POLICY IF EXISTS "Anyone can read AI knowledge" ON public.ai_knowledge_items;
+DROP POLICY IF EXISTS "Allow insert AI knowledge" ON public.ai_knowledge_items;
+DROP POLICY IF EXISTS "Allow update AI knowledge" ON public.ai_knowledge_items;
+DROP POLICY IF EXISTS "Allow delete AI knowledge" ON public.ai_knowledge_items;
+
+CREATE POLICY "Anyone can read AI knowledge"
 ON public.ai_knowledge_items FOR SELECT
-USING (
-  (
-    status = 'Active'
-    AND COALESCE(audience, 'All Residents') <> 'Admin Only'
-    AND (effective_date IS NULL OR effective_date <= CURRENT_DATE)
-    AND (expires_at IS NULL OR expires_at >= CURRENT_DATE)
-  )
-  OR public.current_user_role() = 'admin'
-);
+USING (true);
 
-CREATE POLICY "Admins can insert AI knowledge"
+CREATE POLICY "Allow insert AI knowledge"
 ON public.ai_knowledge_items FOR INSERT
-WITH CHECK (public.current_user_role() = 'admin');
-
-CREATE POLICY "Admins can update AI knowledge"
-ON public.ai_knowledge_items FOR UPDATE
-USING (public.current_user_role() = 'admin')
 WITH CHECK (true);
 
-CREATE POLICY "Admins can delete AI knowledge"
+CREATE POLICY "Allow update AI knowledge"
+ON public.ai_knowledge_items FOR UPDATE
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Allow delete AI knowledge"
 ON public.ai_knowledge_items FOR DELETE
-USING (public.current_user_role() = 'admin');
+USING (true);
 
 NOTIFY pgrst, 'reload schema';

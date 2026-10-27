@@ -15,8 +15,8 @@
  * ──────────────────────────────────────────────────────────────────────────────
  */
 
-import { supabase } from "../lib/supabaseClient";
-import { recordAuditEvent } from "./adminActivityService";
+import { supabase } from "../lib/supabaseClient.js";
+import { recordAuditEvent } from "./adminActivityService.js";
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
 const RECYCLE_BIN_KEY = "kaagapai_recycle_bin";

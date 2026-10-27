@@ -64,7 +64,7 @@ export const AVAILABLE_PLACEHOLDERS = [
   },
 ];
 
-const DEFAULT_TEMPLATES_CONTENT = {
+export const DEFAULT_TEMPLATES_CONTENT = {
   "Barangay Clearance": `
 <p>This is to certify according to our existing records that Ms./<u>Mr</u>/Mrs. <strong>{{FULL_NAME}}</strong>, <strong>{{AGE}}</strong> yrs. Old, Filipino, <strong>{{CIVIL_STATUS}}</strong>, whose signature and thumbmark appear below is presently a resident of Purok <strong>{{PUROK}}</strong>, Upper Mingading, Aleosan, Cotabato and no current position in the Barangay.</p>
 <p>This is to certify further, that their character, reputation and moral standing in the community are beyond reproach and that as of the date of this issued there is no pending case whatsoever filed against the above – named person for whatever any legal purpose which may serve them best.</p>
@@ -82,9 +82,9 @@ const DEFAULT_TEMPLATES_CONTENT = {
 <p>Issued this <u>{{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>
 `,
   "Business Permit": `
-<p>This is to certify that <strong>{{FULL_NAME}}</strong>, <strong>{{AGE}}</strong> yrs. old, Filipino, <strong>{{CIVIL_STATUS}}</strong>, a bona fide resident of Purok <strong>{{PUROK}}</strong>, Barangay Upper Mingading, Aleosan, Cotabato, and they have a <strong>{{BUSINESS_NAME}}</strong> at the said place.</p>
-<p>This certification is being issued upon the request of the above-mentioned name person for Business Permit Application and for whatever any legal purposes may serve them best.</p>
-<p>Issued this <u>{{DAY}}</u> day of <u>{{MONTH}} {{YEAR}}</u> at Barangay Upper Mingading, Aleosan, Cotabato.</p>
+<p>This is to certify that <u>{{FULL_NAME}}</u>, {{AGE}} yrs. old, Filipino, {{CIVIL_STATUS}}, a bona fide resident of Purok {{PUROK}}, Barangay Upper Mingading, Aleosan, Cotabato, and they have a <strong>{{BUSINESS_NAME}}</strong> at the said place.</p>
+<p>This certification is being issued upon the request of the above-mentioned name person for <strong>{{PURPOSE}}</strong> and for whatever any legal purposes may serve them best.</p>
+<p>Issued this <u>{{DAY}}</u> day of <strong>{{MONTH}} {{YEAR}}</strong> at Barangay Upper Mingading, Aleosan, Cotabato.</p>
 `,
   "RSBSA Certification": `
 <p>THIS IS TO CERTIFY THAT <strong>{{FULL_NAME}}</strong> <strong>{{AGE}}</strong> y/o, residing at <strong>{{ADDRESS}}</strong>, Upper Mingading Aleosan, Cotabato, is tilling the following crop(s) <strong>{{CROPS_DETAILS}}</strong> as <u>Owner</u>/Farmer at Purok <strong>{{PUROK}}</strong>, Upper Mingading, Cotabato with size <strong>{{FARM_SIZE}}</strong>.</p>
@@ -231,7 +231,10 @@ const normalizeTemplate = (raw, index = 0) => {
   const category = raw.category || (name.toLowerCase().includes("clearance") ? "Clearance" : name.toLowerCase().includes("permit") ? "Permit" : "Certification");
   const status = raw.status || "Active";
   const description = raw.description || "Official barangay document template.";
-  const content = raw.content || DEFAULT_TEMPLATES_CONTENT[name] || `<p>This is to certify that <strong>{{FULL_NAME}}</strong> is a resident of <strong>{{ADDRESS}}</strong>.</p>`;
+  let content = raw.content || DEFAULT_TEMPLATES_CONTENT[name] || `<p>This is to certify that <strong>{{FULL_NAME}}</strong> is a resident of <strong>{{ADDRESS}}</strong>.</p>`;
+  if ((name.toLowerCase().includes("business") || name.toLowerCase().includes("permit")) && content && content.includes("Business Permit Application") && !content.includes("{{PURPOSE}}")) {
+    content = content.replace(/(?:<strong>|<b>)*Business Permit Application(?:<\/b>|<\/strong>)*/g, "<strong>{{PURPOSE}}</strong>");
+  }
   const createdAt = raw.created_at || new Date().toISOString();
   const updatedAt = raw.updated_at || createdAt;
 
@@ -270,9 +273,11 @@ export async function fetchDocumentTemplatesList({ search = "", status = "", cat
 
   const localMap = getLocalCustomTemplates();
   const mergedMap = new Map();
+  const isExplicitlyCleared =
+    typeof window !== "undefined" && localStorage.getItem("kaagapai_templates_cleared") === "true";
 
-  // First seed defaults if DB is empty
-  if (dbTemplates.length === 0) {
+  // Only seed defaults if DB is empty AND user hasn't explicitly cleared them
+  if (dbTemplates.length === 0 && !isExplicitlyCleared && Object.keys(localMap).length === 0) {
     Object.keys(DEFAULT_TEMPLATES_CONTENT).forEach((name, i) => {
       const tpl = normalizeTemplate({ template_name: name }, i);
       mergedMap.set(tpl.id, tpl);
@@ -386,6 +391,10 @@ export async function createDocumentTemplate(payload) {
   localMap[savedRecord.id] = savedRecord;
   setLocalCustomTemplates(localMap);
 
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("kaagapai_templates_cleared");
+  }
+
   return savedRecord;
 }
 
@@ -486,6 +495,22 @@ export async function deletePermanentDocumentTemplate(id) {
   if (localMap[id]) {
     delete localMap[id];
     setLocalCustomTemplates(localMap);
+  }
+  return true;
+}
+
+/**
+ * Permanently delete ALL templates to allow clean original re-upload
+ */
+export async function clearAllDocumentTemplates() {
+  try {
+    await supabase.from(TABLE).delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  } catch (err) {
+    console.warn("Notice clearing templates from Supabase:", err);
+  }
+  if (typeof window !== "undefined") {
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    localStorage.setItem("kaagapai_templates_cleared", "true");
   }
   return true;
 }

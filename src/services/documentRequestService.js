@@ -8,8 +8,8 @@ const DOCUMENT_REQUESTS_TABLE = "document_requests";
 const RESIDENTS_TABLE = "residents";
 const DOCUMENT_TEMPLATES_TABLE = "document_templates";
 const RESIDENT_NOTIFICATIONS_TABLE = "resident_notifications";
-const DOCUMENT_REQUEST_COLUMNS = "id,resident_id,document_type,status,created_at,updated_at";
-const DOCUMENT_REQUEST_WITH_RESIDENT_COLUMNS = `${DOCUMENT_REQUEST_COLUMNS},${RESIDENTS_TABLE}(id,full_name,email,phone,house_no,age,gender,is_pwd,pwd_type,purok,address,status,created_at,updated_at)`;
+const DOCUMENT_REQUEST_COLUMNS = "*";
+const DOCUMENT_REQUEST_WITH_RESIDENT_COLUMNS = `*,${RESIDENTS_TABLE}(id,full_name,email,phone,house_no,age,gender,is_pwd,pwd_type,purok,address,status,created_at,updated_at)`;
 const PREPARED_DOCUMENTS_KEY = "kaagapai_prepared_documents";
 const DOCUMENT_TEMPLATE_BUCKET = "document-templates";
 const DOCUMENT_TEMPLATE_FILE_TYPES = new Set(["doc", "docx", "dot", "dotx", "pdf"]);
@@ -190,29 +190,53 @@ export async function cleanupExpiredDocumentRequests(retentionDays = 14, force =
  * @param {string} [params.search] - search resident full_name or document_type
  * @param {number} [params.limit] - limit number of results
  */
-export async function fetchDocumentRequests({ status = "", search = "", limit = 50 } = {}) {
+export async function fetchDocumentRequests({ status = "", search = "", limit = 50, fifo = true } = {}) {
   // Non-blocking background cleanup for old requests
   cleanupExpiredDocumentRequests().catch(() => {});
 
-  let query = supabase
-    .from(DOCUMENT_REQUESTS_TABLE)
-    .select(DOCUMENT_REQUEST_WITH_RESIDENT_COLUMNS, { count: "exact" })
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  // FIFO Queue: Oldest eligible request is processed first (created_at ASC)
+  // First come, first served / last request, last served
+  const isFifoQueue = fifo !== false;
 
-  if (status) {
-    query = query.eq("status", status);
+  const buildQuery = (columns) => {
+    // If querying a specific status (e.g. Pending), sort ascending (FIFO).
+    // If fetching all/mixed statuses, fetch recent records (created_at DESC) up to the limit
+    // so new pending requests are never truncated by old historical requests.
+    const sortAscending = status ? isFifoQueue : false;
+
+    let query = supabase
+      .from(DOCUMENT_REQUESTS_TABLE)
+      .select(columns, { count: "exact" })
+      .order("created_at", { ascending: sortAscending })
+      .limit(limit);
+
+    if (status) {
+      query = query.eq("status", status);
+    }
+
+    if (search) {
+      // Supabase text search using ilike; for joined table use the nested filter.
+      const escaped = search.replace(/%/g, "\\%").replace(/_/g, "\\_");
+      query = query.or(
+        `document_type.ilike.%${escaped}%,${RESIDENTS_TABLE}.full_name.ilike.%${escaped}%`
+      );
+    }
+    return query;
+  };
+
+  try {
+    const { data, error, count } = await buildQuery(DOCUMENT_REQUEST_WITH_RESIDENT_COLUMNS);
+    if (!error) {
+      return { data: data || [], count };
+    }
+    console.warn("fetchDocumentRequests initial query failed, trying safe columns fallback:", error.message);
+  } catch (err) {
+    console.warn("fetchDocumentRequests exception:", err);
   }
 
-  if (search) {
-    // Supabase text search using ilike; for joined table use the nested filter.
-    const escaped = search.replace(/%/g, "\\%").replace(/_/g, "\\_");
-    query = query.or(
-      `document_type.ilike.%${escaped}%,${RESIDENTS_TABLE}.full_name.ilike.%${escaped}%`
-    );
-  }
-
-  const { data, error, count } = await query;
+  // Safe fallback with guaranteed base columns
+  const SAFE_JOIN_COLUMNS = `id,resident_id,document_type,status,purpose,attachment_url,attachment_name,created_at,updated_at,${RESIDENTS_TABLE}(id,full_name,email,phone,house_no,age,gender,is_pwd,pwd_type,purok,address,status,created_at,updated_at)`;
+  const { data, error, count } = await buildQuery(SAFE_JOIN_COLUMNS);
   if (error) throw error;
 
   return { data: data || [], count };
@@ -374,16 +398,173 @@ export async function updateDocumentRequestStatus(id, status) {
   return updatedRow;
 }
 
+export const PROOF_ATTACHMENT_BUCKET = "resident-registration-proofs";
+
+/**
+ * Convert a base64 Data URL to a Blob for safe storage uploading
+ */
+export function dataUrlToBlob(dataUrl) {
+  if (!dataUrl || typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) return null;
+  try {
+    const parts = dataUrl.split(",");
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
+    const bstr = atob(parts[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+  } catch (err) {
+    console.error("dataUrlToBlob conversion failed:", err);
+    return null;
+  }
+}
+
+/**
+ * Upload resident proof or valid ID to Supabase Storage
+ */
+export async function uploadDocumentRequestProof(fileOrBlob, residentId = "general", originalName = "") {
+  if (!fileOrBlob) return null;
+
+  const rawName = originalName || fileOrBlob.name || "proof_document.jpg";
+  const ext = (rawName.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+  const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const safeName = rawName.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40) || "proof";
+  const filePath = `document-requests/${residentId}/${uniqueId}-${safeName}.${ext}`;
+
+  const contentType = fileOrBlob.type || (ext === "pdf" ? "application/pdf" : "image/jpeg");
+
+  let uploadError = null;
+  let targetBucket = PROOF_ATTACHMENT_BUCKET;
+
+  const { data, error } = await supabase.storage
+    .from(targetBucket)
+    .upload(filePath, fileOrBlob, {
+      cacheControl: "3600",
+      contentType,
+      upsert: true,
+    });
+
+  if (error) {
+    console.warn("Storage upload to resident-registration-proofs notice, trying fallback bucket:", error.message);
+    targetBucket = DOCUMENT_TEMPLATE_BUCKET;
+    const { error: fallbackError } = await supabase.storage
+      .from(targetBucket)
+      .upload(filePath, fileOrBlob, {
+        cacheControl: "3600",
+        contentType,
+        upsert: true,
+      });
+    uploadError = fallbackError;
+  }
+
+  if (uploadError) {
+    console.error("Failed to upload proof document to storage:", uploadError);
+    throw new Error(`Failed to upload proof document: ${uploadError.message || "Storage error"}`);
+  }
+
+  const { data: publicData } = supabase.storage
+    .from(targetBucket)
+    .getPublicUrl(filePath);
+
+  return {
+    url: publicData?.publicUrl || filePath,
+    path: filePath,
+    name: rawName,
+    bucket: targetBucket,
+  };
+}
+
 /**
  * Create a new document request
  */
-export async function createDocumentRequest({ resident_id, document_type, status = "Pending" }) {
+export async function createDocumentRequest({
+  resident_id,
+  document_type,
+  status = "Pending",
+  purpose = "",
+  attachment_file = null,
+  attachment_url = null,
+  attachment_name = null,
+}) {
+  let finalAttachmentUrl = attachment_url || null;
+  let finalAttachmentName = attachment_name || null;
+
+  // 1. If a raw File or Blob was passed, upload it to Supabase Storage
+  if (attachment_file) {
+    try {
+      const uploadResult = await uploadDocumentRequestProof(
+        attachment_file,
+        resident_id,
+        attachment_name || attachment_file.name
+      );
+      if (uploadResult?.url) {
+        finalAttachmentUrl = uploadResult.url;
+        finalAttachmentName = uploadResult.name || finalAttachmentName;
+      }
+    } catch (uploadErr) {
+      console.error("Error uploading attachment_file:", uploadErr);
+      throw uploadErr;
+    }
+  } else if (finalAttachmentUrl && finalAttachmentUrl.startsWith("data:")) {
+    // 2. If attachment_url is a base64 Data URL, convert to Blob and upload so it fits the Postgres index limit!
+    try {
+      const blob = dataUrlToBlob(finalAttachmentUrl);
+      if (blob) {
+        const uploadResult = await uploadDocumentRequestProof(
+          blob,
+          resident_id,
+          finalAttachmentName || "proof.jpg"
+        );
+        if (uploadResult?.url) {
+          finalAttachmentUrl = uploadResult.url;
+          finalAttachmentName = uploadResult.name || finalAttachmentName;
+        }
+      }
+    } catch (dataUrlUploadErr) {
+      console.warn("Notice uploading dataURL blob, falling back to original URL:", dataUrlUploadErr);
+    }
+  }
+
+  const payload = { resident_id, document_type, status };
+  if (purpose && String(purpose).trim()) {
+    payload.purpose = String(purpose).trim();
+  }
+  if (finalAttachmentUrl) {
+    payload.attachment_url = finalAttachmentUrl;
+  }
+  if (finalAttachmentName) {
+    payload.attachment_name = finalAttachmentName;
+  }
+
   const { data, error } = await supabase
     .from(DOCUMENT_REQUESTS_TABLE)
-    .insert([{ resident_id, document_type, status }])
+    .insert([payload])
     .select();
 
-  if (error) throw error;
+  if (error) {
+    console.error("createDocumentRequest insert error:", error.message || error);
+    // If column doesn't exist in older DB migrations (PGRST204), try inserting without attachment
+    if (error.code === "PGRST204" || error.message?.includes("column")) {
+      const fallbackPayload = { resident_id, document_type, status };
+      if (purpose && String(purpose).trim()) {
+        fallbackPayload.purpose = String(purpose).trim();
+      }
+      const { data: fbData, error: fbError } = await supabase
+        .from(DOCUMENT_REQUESTS_TABLE)
+        .insert([fallbackPayload])
+        .select();
+      if (fbError) throw fbError;
+      const created = Array.isArray(fbData) ? fbData[0] : fbData;
+      broadcastSyncEvent("documents", created);
+      broadcastSyncEvent("notifications", { resident_id });
+      return created;
+    }
+    throw error;
+  }
+
   const created = Array.isArray(data) ? data[0] : data;
   broadcastSyncEvent("documents", created);
   broadcastSyncEvent("notifications", { resident_id });
@@ -656,13 +837,22 @@ export function savePreparedDocument(requestId, documentData) {
   return savedDocument;
 }
 
-/**
- * Get a resident's document requests
- */
 export async function getResidentDocumentRequests(residentId) {
+  try {
+    const { data, error } = await supabase
+      .from(DOCUMENT_REQUESTS_TABLE)
+      .select(DOCUMENT_REQUEST_COLUMNS)
+      .eq("resident_id", residentId)
+      .order("created_at", { ascending: false });
+
+    if (!error) return data || [];
+  } catch (err) {
+    console.warn("getResidentDocumentRequests with purpose failed, fallback to standard columns:", err);
+  }
+
   const { data, error } = await supabase
     .from(DOCUMENT_REQUESTS_TABLE)
-    .select(DOCUMENT_REQUEST_COLUMNS)
+    .select("id,resident_id,document_type,status,created_at,updated_at")
     .eq("resident_id", residentId)
     .order("created_at", { ascending: false });
 

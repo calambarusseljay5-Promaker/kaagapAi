@@ -1,5 +1,5 @@
-import { supabase } from "../lib/supabaseClient";
-import { buildPurokSummary, getPurokDefinition, getResidentAge } from "../utils/residentProfile";
+import { supabase } from "../lib/supabaseClient.js";
+import { buildPurokSummary, getPurokDefinition, getResidentAge } from "../utils/residentProfile.js";
 
 const RESIDENT_COLUMNS = "id,status,age,birthday,sex,gender,purok,household_no,house_no,is_pwd,is_solo_parent,is_4ps_member";
 

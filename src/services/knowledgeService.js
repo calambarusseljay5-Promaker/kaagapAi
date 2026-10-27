@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabaseClient.js";
 import { moveToRecycleBin } from "./recycleBinService.js";
+import { indexKnowledgeItemWithChunks } from "./aiKnowledgeRagService.js";
 
 const TABLE = "ai_knowledge_items";
 const SETUP_MESSAGE =
@@ -177,6 +178,14 @@ export async function createKnowledgeItem(item) {
     .maybeSingle();
 
   if (error) throw normalizeKnowledgeError(error);
+
+  // Automatically chunk and index vector embeddings for pgvector RAG
+  if (data?.id) {
+    indexKnowledgeItemWithChunks(data.id, data.title, data.content).catch((err) =>
+      console.warn("Auto-indexing chunks warning:", err.message)
+    );
+  }
+
   return data;
 }
 
@@ -194,6 +203,14 @@ export async function updateKnowledgeItem(id, updates) {
     .maybeSingle();
 
   if (error) throw normalizeKnowledgeError(error);
+
+  // Automatically re-chunk and update vector embeddings
+  if (data?.id) {
+    indexKnowledgeItemWithChunks(data.id, data.title, data.content).catch((err) =>
+      console.warn("Auto-reindexing chunks warning:", err.message)
+    );
+  }
+
   return data;
 }
 

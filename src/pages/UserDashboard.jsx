@@ -79,12 +79,23 @@ import {
   Volume2,
   VolumeX,
   PieChart as PieChartIcon,
-  BarChart3
+  BarChart3,
+  AlertTriangle,
+  FileCheck,
+  ShieldAlert,
+  Paperclip,
+  UploadCloud,
 } from "lucide-react";
+import ProofViewerModal from "../components/modals/ProofViewerModal";
 import { supabase } from "../lib/supabaseClient";
 import { getCurrentUserWithProfile, logoutUser, uploadProfilePhoto } from "../services/authService";
 import { getResidentById } from "../services/adminService";
 import { fetchPublishedAnnouncements } from "../services/announcementService";
+import EmergencyBroadcastModal from "../components/EmergencyBroadcastModal";
+import {
+  isEmergencyAnnouncement,
+  isEmergencyAcknowledged,
+} from "../utils/emergencyAlertSound";
 import {
   cancelDocumentRequest,
   createDocumentRequest,
@@ -133,13 +144,15 @@ import {
   standardOccupationOptions,
   getCustomPurokDefinitions,
 } from "../utils/residentProfile";
-import { getRealDocumentTemplateKey, formatBirthdate } from "../utils/realDocumentTemplates";
+import { getRealDocumentTemplateKey, formatBirthdate, DOCUMENT_TYPE_REQUIREMENTS } from "../utils/realDocumentTemplates";
 import TypingIndicator from "../components/TypingIndicator";
 import FloatingModal from "../components/FloatingModal";
 import { useBarangayLogo } from "../services/logoService";
 
 const ANNOUNCEMENT_READ_KEY = "kaagapai_read_announcements";
 const LIVELIHOOD_READ_KEY = "kaagapai_read_livelihood_posts";
+const ANNOUNCEMENT_DISMISSED_KEY = "kaagapai_dismissed_announcements";
+const LIVELIHOOD_DISMISSED_KEY = "kaagapai_dismissed_livelihood_posts";
 const ASSISTANT_HISTORY_KEY = "kaagapai_resident_assistant_messages";
 const MAX_ASSISTANT_HISTORY_MESSAGES = 80;
 const RESIDENT_KNOWLEDGE_LIMIT = 100;
@@ -685,12 +698,13 @@ const getAnnouncementVisualTheme = (title = "", body = "", category = "") => {
       type: "health",
       icon: "🏥",
       headerBg: "from-[#044E35] via-[#0D9488] to-[#0F766E] text-white border-teal-300/40",
-      cardBg: "bg-teal-950/30 backdrop-blur-xl border border-teal-400/35 hover:border-teal-300/60 shadow-lg",
-      badgeBg: "bg-teal-500/30 text-teal-200 border-teal-400/40 shadow-xs font-black",
-      titleColor: "text-white font-black",
-      bodyColor: "text-teal-100/90 font-medium",
+      cardBg: "bg-white border-2 border-teal-200 hover:border-teal-500 shadow-sm hover:shadow-md",
+      badgeBg: "bg-teal-50 text-teal-800 border border-teal-300 font-black",
+      iconBg: "bg-gradient-to-br from-teal-500 to-emerald-600 text-white shadow-md shadow-teal-500/20",
+      titleColor: "text-slate-900 font-black",
+      bodyColor: "text-slate-700 font-normal leading-relaxed text-sm",
       patternSvg: (
-        <div className="absolute right-1 -bottom-2 pointer-events-none opacity-20 text-teal-300">
+        <div className="absolute right-1 -bottom-2 pointer-events-none opacity-10 text-teal-600">
           <svg width="90" height="90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
             <path d="M3.22 12H9.5l.5-1 2 4.5 2-7 1.5 3.5h4.28" />
@@ -713,12 +727,13 @@ const getAnnouncementVisualTheme = (title = "", body = "", category = "") => {
       type: "fire",
       icon: "🔥",
       headerBg: "from-[#9A3412] via-[#EA580C] to-[#F97316] text-white border-amber-400/40",
-      cardBg: "bg-orange-950/30 backdrop-blur-xl border border-orange-400/35 hover:border-orange-300/60 shadow-lg",
-      badgeBg: "bg-orange-500/30 text-orange-200 border-orange-400/40 shadow-xs font-black",
-      titleColor: "text-white font-black",
-      bodyColor: "text-orange-100/90 font-medium",
+      cardBg: "bg-white border-2 border-orange-200 hover:border-orange-500 shadow-sm hover:shadow-md",
+      badgeBg: "bg-orange-50 text-orange-800 border border-orange-300 font-black",
+      iconBg: "bg-gradient-to-br from-orange-500 to-amber-600 text-white shadow-md shadow-orange-500/20",
+      titleColor: "text-slate-900 font-black",
+      bodyColor: "text-slate-700 font-normal leading-relaxed text-sm",
       patternSvg: (
-        <div className="absolute right-1 -bottom-2 pointer-events-none opacity-20 text-orange-300">
+        <div className="absolute right-1 -bottom-2 pointer-events-none opacity-10 text-orange-600">
           <svg width="90" height="90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
           </svg>
@@ -743,12 +758,13 @@ const getAnnouncementVisualTheme = (title = "", body = "", category = "") => {
       type: "storm",
       icon: "⛈️",
       headerBg: "from-[#1E3A8A] via-[#0284C7] to-[#0EA5E9] text-white border-sky-400/40",
-      cardBg: "bg-sky-950/30 backdrop-blur-xl border border-sky-400/35 hover:border-sky-300/60 shadow-lg",
-      badgeBg: "bg-sky-500/30 text-sky-200 border-sky-400/40 shadow-xs font-black",
-      titleColor: "text-white font-black",
-      bodyColor: "text-sky-100/90 font-medium",
+      cardBg: "bg-white border-2 border-sky-200 hover:border-sky-500 shadow-sm hover:shadow-md",
+      badgeBg: "bg-sky-50 text-sky-800 border border-sky-300 font-black",
+      iconBg: "bg-gradient-to-br from-sky-500 to-blue-600 text-white shadow-md shadow-sky-500/20",
+      titleColor: "text-slate-900 font-black",
+      bodyColor: "text-slate-700 font-normal leading-relaxed text-sm",
       patternSvg: (
-        <div className="absolute right-1 -bottom-2 pointer-events-none opacity-20 text-sky-300">
+        <div className="absolute right-1 -bottom-2 pointer-events-none opacity-10 text-sky-600">
           <svg width="90" height="90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
             <path d="m9.2 22 3-7" />
@@ -774,12 +790,13 @@ const getAnnouncementVisualTheme = (title = "", body = "", category = "") => {
       type: "earthquake",
       icon: "🌋",
       headerBg: "from-[#78350F] via-[#B45309] to-[#D97706] text-white border-amber-400/40",
-      cardBg: "bg-amber-950/30 backdrop-blur-xl border border-amber-400/35 hover:border-amber-300/60 shadow-lg",
-      badgeBg: "bg-gradient-to-r from-amber-700 to-yellow-700 text-white border-amber-300/40 shadow-xs font-black",
-      titleColor: "text-white font-black",
-      bodyColor: "text-amber-100/90 font-medium",
+      cardBg: "bg-white border-2 border-amber-200 hover:border-amber-500 shadow-sm hover:shadow-md",
+      badgeBg: "bg-amber-50 text-amber-800 border border-amber-300 font-black",
+      iconBg: "bg-gradient-to-br from-amber-600 to-yellow-600 text-white shadow-md shadow-amber-600/20",
+      titleColor: "text-slate-900 font-black",
+      bodyColor: "text-slate-700 font-normal leading-relaxed text-sm",
       patternSvg: (
-        <div className="absolute right-1 -bottom-2 pointer-events-none opacity-20 text-amber-300">
+        <div className="absolute right-1 -bottom-2 pointer-events-none opacity-10 text-amber-600">
           <svg width="90" height="90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
           </svg>
@@ -804,12 +821,13 @@ const getAnnouncementVisualTheme = (title = "", body = "", category = "") => {
       type: "power",
       icon: "⚡",
       headerBg: "from-[#312E81] via-[#4F46E5] to-[#7C3AED] text-white border-indigo-400/40",
-      cardBg: "bg-indigo-950/30 backdrop-blur-xl border border-indigo-400/35 hover:border-indigo-300/60 shadow-lg",
-      badgeBg: "bg-indigo-500/30 text-indigo-200 border-indigo-400/40 shadow-xs font-black",
-      titleColor: "text-white font-black",
-      bodyColor: "text-indigo-100/90 font-medium",
+      cardBg: "bg-white border-2 border-indigo-200 hover:border-indigo-500 shadow-sm hover:shadow-md",
+      badgeBg: "bg-indigo-50 text-indigo-800 border border-indigo-300 font-black",
+      iconBg: "bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md shadow-indigo-500/20",
+      titleColor: "text-slate-900 font-black",
+      bodyColor: "text-slate-700 font-normal leading-relaxed text-sm",
       patternSvg: (
-        <div className="absolute right-1 -bottom-2 pointer-events-none opacity-20 text-indigo-300">
+        <div className="absolute right-1 -bottom-2 pointer-events-none opacity-10 text-indigo-600">
           <svg width="90" height="90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
           </svg>
@@ -835,12 +853,13 @@ const getAnnouncementVisualTheme = (title = "", body = "", category = "") => {
       type: "livelihood",
       icon: "🌾",
       headerBg: "from-[#064E3B] via-[#059669] to-[#10B981] text-white border-emerald-400/40",
-      cardBg: "bg-emerald-950/30 backdrop-blur-xl border border-emerald-400/35 hover:border-emerald-300/60 shadow-lg",
-      badgeBg: "bg-emerald-500/30 text-emerald-200 border-emerald-300/40 shadow-xs font-black",
-      titleColor: "text-white font-black",
-      bodyColor: "text-emerald-100/90 font-medium",
+      cardBg: "bg-white border-2 border-emerald-200 hover:border-emerald-500 shadow-sm hover:shadow-md",
+      badgeBg: "bg-emerald-50 text-emerald-800 border border-emerald-300 font-black",
+      iconBg: "bg-gradient-to-br from-emerald-600 to-teal-600 text-white shadow-md shadow-emerald-500/20",
+      titleColor: "text-slate-900 font-black",
+      bodyColor: "text-slate-700 font-normal leading-relaxed text-sm",
       patternSvg: (
-        <div className="absolute right-1 -bottom-2 pointer-events-none opacity-20 text-emerald-300">
+        <div className="absolute right-1 -bottom-2 pointer-events-none opacity-10 text-emerald-600">
           <svg width="90" height="90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z" />
             <path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 12" />
@@ -865,12 +884,13 @@ const getAnnouncementVisualTheme = (title = "", body = "", category = "") => {
       type: "emergency",
       icon: "🚨",
       headerBg: "from-[#991B1B] via-[#DC2626] to-[#EA580C] text-white border-rose-400/40",
-      cardBg: "bg-rose-950/30 backdrop-blur-xl border border-rose-500/35 hover:border-rose-400/60 shadow-lg",
-      badgeBg: "bg-rose-500/30 text-rose-200 border-rose-400/40 shadow-xs font-black animate-pulse",
-      titleColor: "text-white font-black",
-      bodyColor: "text-rose-100/90 font-medium",
+      cardBg: "bg-white border-2 border-rose-200 hover:border-rose-500 shadow-sm hover:shadow-md",
+      badgeBg: "bg-rose-50 text-rose-800 border border-rose-300 font-black animate-pulse",
+      iconBg: "bg-gradient-to-br from-rose-600 to-red-600 text-white shadow-md shadow-rose-500/20",
+      titleColor: "text-slate-900 font-black",
+      bodyColor: "text-slate-700 font-normal leading-relaxed text-sm",
       patternSvg: (
-        <div className="absolute right-1 -bottom-2 pointer-events-none opacity-25 text-rose-400">
+        <div className="absolute right-1 -bottom-2 pointer-events-none opacity-10 text-rose-600">
           <svg width="90" height="90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
             <path d="m12 8 0 4" />
@@ -886,12 +906,13 @@ const getAnnouncementVisualTheme = (title = "", body = "", category = "") => {
     type: "advisory",
     icon: "📢",
     headerBg: "from-[#044E35] via-[#057A55] to-[#046C4E] text-white border-emerald-400/30",
-    cardBg: "bg-emerald-950/30 backdrop-blur-xl border border-emerald-400/35 hover:border-emerald-300/60 shadow-lg",
-    badgeBg: "bg-emerald-500/30 text-emerald-200 border-emerald-400/30 shadow-xs font-black",
-    titleColor: "text-white font-black",
-    bodyColor: "text-emerald-100/90 font-medium",
+    cardBg: "bg-white border-2 border-blue-200 hover:border-blue-500 shadow-sm hover:shadow-md",
+    badgeBg: "bg-blue-50 text-blue-800 border border-blue-300 font-black",
+    iconBg: "bg-gradient-to-br from-[#0284C7] to-[#035E8C] text-white shadow-md shadow-sky-500/20",
+    titleColor: "text-slate-900 font-black",
+    bodyColor: "text-slate-700 font-normal leading-relaxed text-sm",
     patternSvg: (
-      <div className="absolute right-1 -bottom-2 pointer-events-none opacity-20 text-emerald-300">
+      <div className="absolute right-1 -bottom-2 pointer-events-none opacity-10 text-blue-600">
         <svg width="90" height="90" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="m3 11 18-5v12L3 14v-3z" />
           <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
@@ -907,43 +928,34 @@ const getEventVisualTheme = (title = "", location = "") => {
   if (text.includes("computer") || text.includes("tesda") || text.includes("tech") || text.includes("digital") || text.includes("it") || text.includes("literacy")) {
     return {
       type: "tech",
-      cardBg: "bg-gradient-to-br from-slate-950/80 via-[#031B33]/80 to-[#021324]/80 backdrop-blur-xl border-cyan-400/60 shadow-2xl",
-      headerBg: "from-cyan-900 via-blue-800 to-teal-900 text-white border-cyan-400/50",
-      dateBg: "bg-gradient-to-br from-cyan-500 to-blue-600 text-white border-cyan-300/60 shadow-cyan-500/50 font-black",
-      titleColor: "text-white font-black drop-shadow-md",
-      subColor: "text-cyan-300 font-bold",
+      cardBg: "bg-white border-2 border-cyan-200 hover:border-cyan-400 shadow-sm hover:shadow-md",
+      headerBg: "from-blue-700 via-sky-600 to-cyan-600 text-white border-cyan-400/50",
+      dateBg: "bg-gradient-to-br from-cyan-600 to-blue-700 text-white border border-cyan-400 font-black shadow-sm",
+      titleColor: "text-slate-900 font-black",
+      subColor: "text-blue-700 font-bold",
       icon: "💻",
-      animation: (
-        <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-2xl z-0 opacity-30">
-          <div className="absolute -top-6 -right-6 w-36 h-36 bg-cyan-500 rounded-full blur-2xl animate-pulse" />
-          <div className="absolute bottom-0 left-10 w-28 h-28 bg-blue-600 rounded-full blur-2xl animate-ping opacity-20" />
-        </div>
-      )
+      animation: null
     };
   }
   if (text.includes("farm") || text.includes("livelihood") || text.includes("agriculture") || text.includes("tanim") || text.includes("tesda farm")) {
     return {
       type: "farm",
-      cardBg: "bg-gradient-to-br from-slate-950/80 via-emerald-950/80 to-green-950/80 backdrop-blur-xl border-emerald-400/60 shadow-2xl",
-      headerBg: "from-emerald-900 via-green-800 to-teal-900 text-white border-emerald-400/50",
-      dateBg: "bg-gradient-to-br from-emerald-500 to-green-600 text-white border-emerald-300/60 shadow-emerald-500/50 font-black",
-      titleColor: "text-white font-black drop-shadow-md",
-      subColor: "text-emerald-300 font-bold",
+      cardBg: "bg-white border-2 border-emerald-200 hover:border-emerald-400 shadow-sm hover:shadow-md",
+      headerBg: "from-emerald-700 via-teal-600 to-emerald-600 text-white border-emerald-400/50",
+      dateBg: "bg-gradient-to-br from-emerald-600 to-teal-700 text-white border border-emerald-400 font-black shadow-sm",
+      titleColor: "text-slate-900 font-black",
+      subColor: "text-emerald-800 font-bold",
       icon: "🌾",
-      animation: (
-        <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-2xl z-0 opacity-25">
-          <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-emerald-500 rounded-full blur-2xl animate-pulse" />
-        </div>
-      )
+      animation: null
     };
   }
   return {
     type: "default",
-    cardBg: "bg-teal-950/30 backdrop-blur-xl border border-teal-400/35 shadow-lg text-white",
-    headerBg: "from-[#044E35] via-[#057A55] to-[#046C4E] text-white border-emerald-400/30",
-    dateBg: "bg-[#047857] text-white font-black",
-    titleColor: "text-white font-black",
-    subColor: "text-teal-200 font-bold",
+    cardBg: "bg-white border-2 border-emerald-200 hover:border-emerald-400 shadow-sm hover:shadow-md",
+    headerBg: "from-emerald-700 via-emerald-600 to-teal-600 text-white border-emerald-400/30",
+    dateBg: "bg-gradient-to-br from-emerald-600 to-teal-700 text-white font-black shadow-sm",
+    titleColor: "text-slate-900 font-black",
+    subColor: "text-emerald-800 font-bold",
     icon: "📅",
     animation: null
   };
@@ -1204,20 +1216,67 @@ const isRequestExpired = (request) => {
   return timeDifferenceMs > oneDayMs;
 };
 
+export const getFifoOrderedRequests = (requestsList = []) => {
+  if (!requestsList || !requestsList.length) return [];
+  const activeQueue = [];
+  const resolvedHistory = [];
+
+  requestsList.forEach((r) => {
+    const st = String(r.status || "").trim().toLowerCase();
+    const isExpired = isRequestExpired(r);
+    if (!isExpired && (st === "pending" || st === "processing")) {
+      activeQueue.push(r);
+    } else {
+      resolvedHistory.push(r);
+    }
+  });
+
+  // FIFO Queue: Oldest eligible request comes first (created_at ascending)
+  activeQueue.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+
+  // Resolved/Historical: Newest first (created_at descending)
+  resolvedHistory.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+
+  return [...activeQueue, ...resolvedHistory];
+};
+
+export const formatResidentDocumentStatus = (status, isExpired = false) => {
+  if (isExpired) return "Expired";
+  if (!status) return "Pending";
+  const norm = String(status).trim().toLowerCase();
+  if (
+    norm === "completed" ||
+    norm === "ready" ||
+    norm === "ready for pickup" ||
+    norm === "ready for pick-up" ||
+    norm === "ready to pick up" ||
+    norm === "ready to pickup"
+  ) {
+    return "Ready for Pick-up";
+  }
+  return status;
+};
+
 const getStatusClass = (status) => {
-  switch (status) {
-    case "Pending":
+  const norm = String(status || "").trim().toLowerCase();
+  switch (norm) {
+    case "pending":
       return "bg-amber-500/25 border-amber-400/40 text-amber-200";
-    case "Processing":
+    case "processing":
       return "bg-blue-500/25 border-blue-400/40 text-blue-200";
-    case "Approved":
+    case "approved":
       return "bg-emerald-500/25 border-emerald-400/40 text-emerald-200";
-    case "Completed":
-    case "Released":
+    case "completed":
+    case "ready":
+    case "ready for pick-up":
+    case "ready for pickup":
+    case "ready to pick up":
+    case "ready to pickup":
+    case "released":
       return "bg-emerald-500/30 border-emerald-300/50 text-emerald-100 font-bold";
-    case "Rejected":
-    case "Cancelled":
-    case "Expired":
+    case "rejected":
+    case "cancelled":
+    case "expired":
       return "bg-rose-500/25 border-rose-400/40 text-rose-200 font-bold";
     default:
       return "bg-white/10 border-white/20 text-white/80";
@@ -1428,10 +1487,12 @@ const UserDashboard = () => {
   });
   const [loading, setLoading] = useState(() => !getResidentSession());
   const [requests, setRequests] = useState([]);
+  const fifoOrderedRequests = useMemo(() => getFifoOrderedRequests(requests), [requests]);
   const [allSystemRequests, setAllSystemRequests] = useState([]);
   const [documentTemplates, setDocumentTemplates] = useState([]);
   const [selectedDocumentType, setSelectedDocumentType] = useState("");
   const [requestPurpose, setRequestPurpose] = useState("");
+  const [showPendingAttemptWarning, setShowPendingAttemptWarning] = useState(false);
   const [requestResidencyPreset, setRequestResidencyPreset] = useState("for a CAFGU");
   const [requestResidencyRecommendation, setRequestResidencyRecommendation] = useState("for a CAFGU");
   const [requestFourPsPreset, setRequestFourPsPreset] = useState("change_grantee_abroad");
@@ -1444,10 +1505,20 @@ const UserDashboard = () => {
   const [requestCropsText, setRequestCropsText] = useState("Rice Field ½ hectare, and Fruits Crops 1 hectare");
   const [requestFarmSize, setRequestFarmSize] = useState("One (1) hectare");
   const [requestTenure, setRequestTenure] = useState("Owner");
+  const [requestAttachmentFile, setRequestAttachmentFile] = useState(null);
+  const [requestAttachmentUrl, setRequestAttachmentUrl] = useState("");
+  const [requestAttachmentName, setRequestAttachmentName] = useState("");
+  const [requestAttachmentPreview, setRequestAttachmentPreview] = useState("");
+  const [requestAttachmentError, setRequestAttachmentError] = useState("");
+  const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [selectedResidentProofRequest, setSelectedResidentProofRequest] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [announcementReadIds, setAnnouncementReadIds] = useState([]);
   const [livelihoodReadIds, setLivelihoodReadIds] = useState([]);
+  const [announcementDismissedIds, setAnnouncementDismissedIds] = useState([]);
+  const [livelihoodDismissedIds, setLivelihoodDismissedIds] = useState([]);
   const [publishedAnnouncements, setPublishedAnnouncements] = useState([]);
+  const [activeEmergencyBroadcast, setActiveEmergencyBroadcast] = useState(null);
   const [activeVmTab, setActiveVmTab] = useState("vision");
   
   const [opportunities, setOpportunities] = useState([]);
@@ -1756,6 +1827,11 @@ const UserDashboard = () => {
               const isInsert = payload.eventType === "INSERT";
               const isUpdate = payload.eventType === "UPDATE";
               if (isInsert || isUpdate) {
+                // Urgent Emergency: sound device alarm & vibrate mobile phone/laptop
+                if (isEmergencyAnnouncement(newAnn)) {
+                  setActiveEmergencyBroadcast(newAnn);
+                }
+
                 const lastViewedId = localStorage.getItem(`kaagapai_last_viewed_announcement_id_${resident.id}`);
                 if (lastViewedId !== String(newAnn.id)) {
                   setLatestAnnouncementToast(newAnn);
@@ -1869,6 +1945,23 @@ const UserDashboard = () => {
       setLatestAnnouncementToast(latest);
     }
   }, [publishedAnnouncements, resident?.id, resident]);
+
+  // Active Emergency Broadcast Monitor: Detects active unacknowledged emergency announcements
+  useEffect(() => {
+    if (!publishedAnnouncements || publishedAnnouncements.length === 0) return;
+    const residentKey = resident?.id || "guest";
+    const emergencyAnn = publishedAnnouncements.find((a) => {
+      if (!isEmergencyAnnouncement(a)) return false;
+      if (isAnnouncementExpired(a)) return false;
+      if (isEmergencyAcknowledged(a.id, residentKey)) return false;
+      if (resident && !doesAnnouncementApplyToResident(a, resident)) return false;
+      return true;
+    });
+
+    if (emergencyAnn) {
+      setActiveEmergencyBroadcast(emergencyAnn);
+    }
+  }, [publishedAnnouncements, resident]);
 
   useEffect(() => {
     if (notifications.length === 0 || !resident?.id) return;
@@ -2596,8 +2689,12 @@ const UserDashboard = () => {
     if (!resident?.id) return undefined;
     const readIds = getStoredReadIds(`${ANNOUNCEMENT_READ_KEY}:${resident.id}`);
     const livelihoodIds = getStoredReadIds(`${LIVELIHOOD_READ_KEY}:${resident.id}`);
+    const dismissedAnn = getStoredReadIds(`${ANNOUNCEMENT_DISMISSED_KEY}:${resident.id}`);
+    const dismissedLiv = getStoredReadIds(`${LIVELIHOOD_DISMISSED_KEY}:${resident.id}`);
     setAnnouncementReadIds(readIds);
     setLivelihoodReadIds(livelihoodIds);
+    setAnnouncementDismissedIds(dismissedAnn);
+    setLivelihoodDismissedIds(dismissedLiv);
   }, [resident?.id]);
 
   const allNotificationsMerged = useMemo(() => {
@@ -2615,6 +2712,7 @@ const UserDashboard = () => {
     const applicableAnn = publishedAnnouncements
       .filter((a) => !isAnnouncementExpired(a))
       .filter((a) => doesAnnouncementApplyToResident(a, resident))
+      .filter((a) => !announcementDismissedIds.includes(a.id))
       .map((a) => {
         const isRead = announcementReadIds.includes(a.id);
         return {
@@ -2632,6 +2730,7 @@ const UserDashboard = () => {
 
     const applicableLivelihood = opportunities
       .filter((o) => o.status === "Open")
+      .filter((o) => !livelihoodDismissedIds.includes(o.id))
       .map((o) => {
         const isRead = livelihoodReadIds.includes(o.id);
         return {
@@ -2650,7 +2749,7 @@ const UserDashboard = () => {
     return [...systemNotifs, ...applicableAnn, ...applicableLivelihood].sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
-  }, [notifications, publishedAnnouncements, opportunities, resident, announcementReadIds, livelihoodReadIds]);
+  }, [notifications, publishedAnnouncements, opportunities, resident, announcementReadIds, livelihoodReadIds, announcementDismissedIds, livelihoodDismissedIds]);
 
   const unreadNotificationCount = useMemo(
     () => allNotificationsMerged.filter((notification) => !notification.is_read).length,
@@ -2681,15 +2780,15 @@ const UserDashboard = () => {
     e.stopPropagation();
     if (!notif) return;
     if (notif.isAnnouncement) {
-      const next = [...new Set([...announcementReadIds, notif.announcement_id])];
-      saveStoredReadIds(`${ANNOUNCEMENT_READ_KEY}:${resident?.id}`, next);
-      setAnnouncementReadIds(next);
+      const next = [...new Set([...announcementDismissedIds, notif.announcement_id])];
+      saveStoredReadIds(`${ANNOUNCEMENT_DISMISSED_KEY}:${resident?.id}`, next);
+      setAnnouncementDismissedIds(next);
       return;
     }
     if (notif.isLivelihood) {
-      const next = [...new Set([...livelihoodReadIds, notif.livelihood_id])];
-      saveStoredReadIds(`${LIVELIHOOD_READ_KEY}:${resident?.id}`, next);
-      setLivelihoodReadIds(next);
+      const next = [...new Set([...livelihoodDismissedIds, notif.livelihood_id])];
+      saveStoredReadIds(`${LIVELIHOOD_DISMISSED_KEY}:${resident?.id}`, next);
+      setLivelihoodDismissedIds(next);
       return;
     }
     setNotifications((prev) => prev.filter((item) => String(item.id) !== String(notif.id)));
@@ -2700,6 +2799,39 @@ const UserDashboard = () => {
     }
   };
 
+  const handleDeleteAllResidentNotifications = async () => {
+    if (!resident?.id || allNotificationsMerged.length === 0) return;
+    const ok = await confirm({
+      title: "Delete All Notifications?",
+      message: "Are you sure you want to clear all notifications? Any new announcements or status updates in the future will still appear here.",
+      confirmText: "Delete All",
+      variant: "danger",
+    });
+    if (!ok) return;
+
+    // 1. Dismiss all current announcements in notification bell
+    const allAnnIds = publishedAnnouncements.map((a) => a.id);
+    const nextAnnDismissed = [...new Set([...announcementDismissedIds, ...allAnnIds])];
+    saveStoredReadIds(`${ANNOUNCEMENT_DISMISSED_KEY}:${resident.id}`, nextAnnDismissed);
+    setAnnouncementDismissedIds(nextAnnDismissed);
+
+    // 2. Dismiss all current livelihood posts in notification bell
+    const allLivIds = opportunities.map((o) => o.id);
+    const nextLivDismissed = [...new Set([...livelihoodDismissedIds, ...allLivIds])];
+    saveStoredReadIds(`${LIVELIHOOD_DISMISSED_KEY}:${resident.id}`, nextLivDismissed);
+    setLivelihoodDismissedIds(nextLivDismissed);
+
+    // 3. Clear system notifications state
+    setNotifications([]);
+
+    // 4. Delete system notifications from database
+    try {
+      await clearAllResidentNotifications(resident.id);
+    } catch (e) {
+      console.warn("Failed to clear all resident notifications:", e);
+    }
+  };
+
   const recentRequests = useMemo(() => {
     return [...requests]
       .slice(0, 5)
@@ -2707,7 +2839,7 @@ const UserDashboard = () => {
         const expired = isRequestExpired(request);
         return {
           ...request,
-          status: expired ? "Expired" : request.status,
+          status: formatResidentDocumentStatus(request.status, expired),
           title: request.document_type || "Document Request",
           dateLabel: new Date(request.created_at).toLocaleDateString(undefined, {
             year: "numeric",
@@ -2875,12 +3007,13 @@ const UserDashboard = () => {
     // 8. Recent Activities (what user has done)
     const recentActivities = [];
     requests.slice(0, 5).forEach((r) => {
+      const formattedStatus = formatResidentDocumentStatus(r.status, isRequestExpired(r));
       recentActivities.push({
         id: `doc-${r.id}`,
         type: "document",
         title: r.document_type || "Document Request",
-        subtitle: `Status: ${r.status}`,
-        status: isRequestExpired(r) ? "Expired" : r.status,
+        subtitle: `Status: ${formattedStatus}`,
+        status: formattedStatus,
         date: r.created_at,
         actionKey: "my_documents",
       });
@@ -3110,6 +3243,7 @@ const UserDashboard = () => {
         requests,
         resident,
         residentStats,
+        conversationHistory: assistantMessages,
       });
 
       const finalMessages = [
@@ -3177,34 +3311,68 @@ const UserDashboard = () => {
     }
 
     const docKey = getRealDocumentTemplateKey(selectedDocumentType);
+    const cleanSelectedType = (selectedDocumentType || "").split(" (")[0].trim().toLowerCase();
+
+    // ─── VALIDATE BEFORE SUBMISSION: BLOCK DUPLICATE SAME-DOCUMENT REQUESTS WHILE PENDING/ACTIVE ───
+    const existingPending = (requests || []).find((r) => {
+      if (isRequestExpired(r)) return false;
+      const rStatus = String(r.status || "").trim().toLowerCase();
+      const isStillActive = ["pending", "processing", "approved", "ready", "ready for pick-up", "ready for pickup", "ready to pick up"].includes(rStatus);
+      if (!isStillActive) return false;
+
+      const rCleanType = String(r.document_type || "").split(" (")[0].trim().toLowerCase();
+      const rDocKey = getRealDocumentTemplateKey(r.document_type);
+
+      if (docKey && rDocKey && docKey === rDocKey) return true;
+      if (rCleanType === cleanSelectedType) return true;
+      if (cleanSelectedType.includes("clearance") && rCleanType.includes("clearance")) return true;
+      if (cleanSelectedType.includes("residency") && rCleanType.includes("residency")) return true;
+      if (cleanSelectedType.includes("indigency") && rCleanType.includes("indigency")) return true;
+      if (cleanSelectedType.includes("business") && rCleanType.includes("business")) return true;
+      if (cleanSelectedType.includes("solo") && rCleanType.includes("solo")) return true;
+      if (cleanSelectedType.includes("4ps") && rCleanType.includes("4ps")) return true;
+      if (cleanSelectedType.includes("rsbsa") && rCleanType.includes("rsbsa")) return true;
+      if (cleanSelectedType.includes("id") && rCleanType.includes("id")) return true;
+      return false;
+    });
+
+    if (existingPending) {
+      const activeStatusDisplay = formatResidentDocumentStatus(existingPending.status);
+      setRequestMessage({
+        type: "error",
+        text: `You currently have an active/pending request for this document (${activeStatusDisplay}). Please wait for it to be released or completed before submitting a new request.`
+      });
+      return;
+    }
+
     let detailSuffix = "";
 
-    if (docKey === "residency") {
-      const rec = (requestResidencyRecommendation || requestPurpose || "for a CAFGU").trim();
-      detailSuffix = `(Recommendation: ${rec})`;
-    } else if (docKey === "4ps") {
+    if (docKey === "4ps") {
       const spouse = (requestFourPsSpouse || "").trim();
       const p = (requestPurpose || (spouse ? `Change Grantee of wife/husband ${spouse} working Abroad` : "4Ps Cash Grant Requirement")).trim();
       detailSuffix = spouse ? `(Grantee: ${spouse}) (Purpose: ${p})` : `(Purpose: ${p})`;
+    } else if (docKey === "residency") {
+      const p = (requestPurpose || "for a CAFGU").trim();
+      detailSuffix = `(Recommendation: ${p})`;
+    } else if (docKey === "clearance") {
+      const p = (requestPurpose || "OWWA").trim();
+      detailSuffix = `(Purpose: ${p})`;
     } else if (docKey === "indigency") {
-      const p = (requestPurpose || "whatever legal purpose it may serve best").trim();
+      const p = (requestPurpose || "FINANCIAL ASSISTANCE").trim();
       detailSuffix = `(Purpose: ${p})`;
     } else if (docKey === "solo") {
       const isFemale = String(resident?.gender || resident?.sex || "").toLowerCase().includes("female");
       const defaultReason = isFemale ? "death of her husband" : "death of his wife";
       const finalReason = (requestSoloReason || defaultReason).trim();
       if (!finalReason) {
-        setRequestMessage({ type: "error", text: "Pakilagay ang dahilan ng pagiging Solo Parent." });
+        setRequestMessage({ type: "error", text: "Please provide the reason for your Solo Parent request." });
         return;
       }
       detailSuffix = `(Reason: ${finalReason})`;
     } else if (docKey === "business") {
-      const biz = (requestBusinessName || requestPurpose || "BANANA BUY AND SALE").trim();
-      if (!biz) {
-        setRequestMessage({ type: "error", text: "Pakilagay ang Pangalan at Uri ng Negosyo." });
-        return;
-      }
-      detailSuffix = `(Business: ${biz})`;
+      const biz = (requestBusinessName || "BANANA BUY AND SALE").trim();
+      const p = (requestPurpose || "For Renewal").trim();
+      detailSuffix = `(Business: ${biz}) (Purpose: ${p})`;
     } else if (docKey === "rsbsa") {
       const crops = (requestCropsText || "Rice Field ½ hectare, and Fruits Crops 1 hectare").trim();
       const size = (requestFarmSize || "One (1) hectare").trim();
@@ -3218,6 +3386,16 @@ const UserDashboard = () => {
       detailSuffix = `(Purpose: ${requestPurpose.trim()})`;
     }
 
+    const finalPurpose = (requestPurpose || detailSuffix.replace(/^\(|\)$/g, "") || "Whatever legal purpose it may serve best").trim();
+
+    if (!requestAttachmentUrl) {
+      setRequestMessage({
+        type: "error",
+        text: "Please upload your valid ID or required supporting document before submitting your request.",
+      });
+      return;
+    }
+
     setRequesting(true);
     setRequestMessage(null);
 
@@ -3227,17 +3405,22 @@ const UserDashboard = () => {
       const newRequest = await createDocumentRequest({
         resident_id: resident.id,
         document_type: finalDocType,
+        purpose: finalPurpose,
+        attachment_file: requestAttachmentFile,
+        attachment_url: requestAttachmentUrl,
+        attachment_name: requestAttachmentName || requestAttachmentFile?.name || "Proof_Document",
       });
       setRequests((current) => [newRequest, ...current]);
       await refreshResidentActivity(resident.id);
       setRequestMessage({
         type: "success",
-        text: `Application for ${cleanDocType} submitted successfully.`,
+        text: `Application for ${cleanDocType} submitted successfully with supporting proof.`,
       });
       setRequestPurpose("");
       setRequestSoloReason("");
       setRequestBusinessName("");
       setRequestFourPsSpouse("");
+      handleRemoveAttachment();
       setDocumentModalOpen(false);
     } catch (error) {
       setRequestMessage({
@@ -3247,6 +3430,91 @@ const UserDashboard = () => {
     } finally {
       setRequesting(false);
     }
+  };
+
+  const compressAndReadFile = (file) => {
+    return new Promise((resolve, reject) => {
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      if (isPdf) {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ dataUrl: reader.result, name: file.name, isPdf: true });
+        reader.onerror = (err) => reject(err);
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDimension = 1400;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.82);
+          resolve({ dataUrl: compressedDataUrl, name: file.name, isPdf: false });
+        };
+        img.onerror = () => {
+          resolve({ dataUrl: e.target.result, name: file.name, isPdf: false });
+        };
+        img.src = e.target.result;
+      };
+      reader.onerror = (err) => reject(err);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleAttachmentChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setRequestAttachmentError("");
+
+    const validTypes = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+    const isValidType = validTypes.includes(file.type) || /\.(jpe?g|png|webp|pdf)$/i.test(file.name);
+    if (!isValidType) {
+      setRequestAttachmentError("Please select an image (JPG, PNG, WebP) or PDF file.");
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setRequestAttachmentError("File is too large. Maximum allowed size is 10 MB.");
+      return;
+    }
+
+    setUploadingAttachment(true);
+    try {
+      const { dataUrl, name, isPdf } = await compressAndReadFile(file);
+      setRequestAttachmentFile(file);
+      setRequestAttachmentUrl(dataUrl);
+      setRequestAttachmentName(name);
+      setRequestAttachmentPreview(isPdf ? "pdf" : dataUrl);
+    } catch (err) {
+      console.error("Error reading attachment:", err);
+      setRequestAttachmentError("Failed to process attachment file.");
+    } finally {
+      setUploadingAttachment(false);
+    }
+  };
+
+  const handleRemoveAttachment = () => {
+    setRequestAttachmentFile(null);
+    setRequestAttachmentUrl("");
+    setRequestAttachmentName("");
+    setRequestAttachmentPreview("");
+    setRequestAttachmentError("");
   };
 
   const [editingRequest, setEditingRequest] = useState(null);
@@ -3294,7 +3562,9 @@ const UserDashboard = () => {
       setEditSoloReason(reasonMatch ? reasonMatch[1].trim() : (isFemale ? "death of her husband" : "death of his wife"));
     } else if (docKey === "business") {
       const bizMatch = docTypeRaw.match(/Business:\s*([^)]+)/i);
+      const purposeMatch = docTypeRaw.match(/Purpose:\s*([^)]+)/i);
       setEditBusinessName(bizMatch ? bizMatch[1].trim() : "BANANA BUY AND SALE");
+      setEditPurpose(purposeMatch ? purposeMatch[1].trim() : (parsePurpose(docTypeRaw) || "For Renewal"));
     } else if (docKey === "rsbsa") {
       const cropsMatch = docTypeRaw.match(/Crops:\s*([^|)]+)/i);
       const sizeMatch = docTypeRaw.match(/Size:\s*([^|)]+)/i);
@@ -3331,8 +3601,9 @@ const UserDashboard = () => {
       const finalReason = (editSoloReason || defaultReason).trim();
       detailSuffix = `(Reason: ${finalReason})`;
     } else if (docKey === "business") {
-      const biz = (editBusinessName || editPurpose || "BANANA BUY AND SALE").trim();
-      detailSuffix = `(Business: ${biz})`;
+      const biz = (editBusinessName || "BANANA BUY AND SALE").trim();
+      const p = (editPurpose || "For Renewal").trim();
+      detailSuffix = `(Business: ${biz}) (Purpose: ${p})`;
     } else if (docKey === "rsbsa") {
       const crops = (editCropsText || "Rice Field ½ hectare, and Fruits Crops 1 hectare").trim();
       const size = (editFarmSize || "One (1) hectare").trim();
@@ -3943,12 +4214,38 @@ const UserDashboard = () => {
   const renderDocumentRequestForm = () => {
     const docKey = getRealDocumentTemplateKey(selectedDocumentType);
     const isFemale = String(resident?.gender || resident?.sex || "").toLowerCase().includes("female");
+    const cleanSelectedType = (selectedDocumentType || "").split(" (")[0].trim().toLowerCase();
+
+    // ─── CHECK FOR EXISTING PENDING/ACTIVE REQUEST FOR THIS SAME DOCUMENT ───
+    const existingPending = (requests || []).find((r) => {
+      if (isRequestExpired(r)) return false;
+      const rStatus = String(r.status || "").trim().toLowerCase();
+      const isStillActive = ["pending", "processing", "approved", "ready", "ready for pick-up", "ready for pickup", "ready to pick up"].includes(rStatus);
+      if (!isStillActive) return false;
+
+      const rCleanType = String(r.document_type || "").split(" (")[0].trim().toLowerCase();
+      const rDocKey = getRealDocumentTemplateKey(r.document_type);
+
+      if (docKey && rDocKey && docKey === rDocKey) return true;
+      if (rCleanType === cleanSelectedType) return true;
+      if (cleanSelectedType.includes("clearance") && rCleanType.includes("clearance")) return true;
+      if (cleanSelectedType.includes("residency") && rCleanType.includes("residency")) return true;
+      if (cleanSelectedType.includes("indigency") && rCleanType.includes("indigency")) return true;
+      if (cleanSelectedType.includes("business") && rCleanType.includes("business")) return true;
+      if (cleanSelectedType.includes("solo") && rCleanType.includes("solo")) return true;
+      if (cleanSelectedType.includes("4ps") && rCleanType.includes("4ps")) return true;
+      if (cleanSelectedType.includes("rsbsa") && rCleanType.includes("rsbsa")) return true;
+      if (cleanSelectedType.includes("id") && rCleanType.includes("id")) return true;
+      return false;
+    });
+
+    const activeRequirementsData = DOCUMENT_TYPE_REQUIREMENTS[docKey] || DOCUMENT_TYPE_REQUIREMENTS.general;
 
     return (
       <form onSubmit={handleDocumentRequest} className="space-y-4 text-slate-800">
         {/* Document Selector */}
         <div className="space-y-1.5">
-          <label className="block text-xs font-black uppercase tracking-wider text-emerald-200 drop-shadow-xs">
+          <label className="block text-xs font-black uppercase tracking-wider text-slate-800 dark:text-sky-200 drop-shadow-xs">
             SELECT DOCUMENT (CLEARANCE / CERTIFICATE) *
           </label>
           <select
@@ -3956,9 +4253,35 @@ const UserDashboard = () => {
             onChange={(event) => {
               const val = event.target.value;
               setSelectedDocumentType(val);
+              setShowPendingAttemptWarning(false);
+              setRequestMessage(null);
               const nextKey = getRealDocumentTemplateKey(val);
-              if (nextKey === "solo" && !requestSoloReason) {
-                setRequestSoloReason(isFemale ? "death of her husband" : "death of his wife");
+              if (nextKey === "clearance") {
+                setRequestClearancePreset("OWWA");
+                setRequestPurpose("OWWA");
+              } else if (nextKey === "residency") {
+                setRequestResidencyPreset("for a CAFGU");
+                setRequestResidencyRecommendation("for a CAFGU");
+                setRequestPurpose("for a CAFGU");
+              } else if (nextKey === "indigency") {
+                setRequestIndigencyPreset("MEDICAL ASSISTANCE");
+                setRequestPurpose("MEDICAL ASSISTANCE");
+              } else if (nextKey === "4ps") {
+                setRequestFourPsPreset("change_grantee_abroad");
+                const rel = isFemale ? "her husband" : "her wife";
+                setRequestPurpose(requestFourPsSpouse ? `Change Grantee of ${rel} ${requestFourPsSpouse} working Abroad` : `Change Grantee of ${rel} working Abroad`);
+              } else if (nextKey === "solo") {
+                const defaultReason = isFemale ? "death of her husband" : "death of his wife";
+                if (!requestSoloReason) setRequestSoloReason(defaultReason);
+                setRequestPurpose("Solo Parent ID & Benefits Application");
+              } else if (nextKey === "business") {
+                const bName = requestBusinessName || "BANANA BUY AND SALE";
+                setRequestBusinessName(bName);
+                setRequestPurpose("For Renewal");
+              } else if (nextKey === "rsbsa") {
+                setRequestPurpose("RSBSA Farmer Registration");
+              } else {
+                setRequestPurpose("");
               }
             }}
             className="w-full rounded-2xl border border-slate-300 bg-white/95 backdrop-blur-md px-4 py-3 text-xs font-bold text-slate-900 outline-none transition-all focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-500/20 shadow-xs cursor-pointer"
@@ -3974,6 +4297,30 @@ const UserDashboard = () => {
             )}
           </select>
         </div>
+
+        {/* ⚠️ DUPLICATE ACTIVE REQUEST WARNING BANNER (Shows only on attempt) */}
+        {showPendingAttemptWarning && existingPending && (
+          <div className="rounded-2xl border-2 border-amber-400 bg-amber-950/90 p-4 text-amber-100 text-xs shadow-xl animate-fadeIn space-y-2">
+            <div className="flex items-center gap-2 text-amber-300 font-black">
+              <AlertTriangle size={18} className="text-amber-400 shrink-0" />
+              <span className="uppercase tracking-wider text-xs">Existing Request In Progress (Limit Reached)</span>
+            </div>
+            <p className="text-xs leading-relaxed text-amber-100">
+              You already have an active request for <b className="text-white underline">{existingPending.document_type?.split(" (")[0] || selectedDocumentType}</b> with current status:
+            </p>
+            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+              <span className="px-3 py-1 rounded-full bg-amber-500/30 text-amber-200 border border-amber-400/50 font-black text-xs">
+                Status: {formatResidentDocumentStatus(existingPending.status)}
+              </span>
+              <span className="text-[11px] font-mono text-amber-300/80">
+                Ref: {existingPending.tracking_number || existingPending.ref || `REQ-${String(existingPending.id).slice(0, 8)}`}
+              </span>
+            </div>
+            <p className="text-[10.5px] text-amber-200/90 italic pt-1 border-t border-amber-500/30">
+              Note: You cannot submit a duplicate request for the same document while it is still in progress. Please wait for it to be released at the Barangay Hall.
+            </p>
+          </div>
+        )}
 
         {/* Auto-filled Info Summary Card */}
         <div className="rounded-2xl bg-white/95 border-2 border-emerald-300/80 p-3.5 text-xs space-y-1.5 shadow-sm">
@@ -3997,11 +4344,11 @@ const UserDashboard = () => {
         {docKey === "residency" && (
           <div className="space-y-2 rounded-2xl bg-white/95 border-2 border-blue-300 p-3.5 shadow-sm">
             <label className="block text-xs font-black uppercase tracking-wider text-blue-950 flex items-center justify-between">
-              <span>RECOMMENDATION / PURPOSE (PEACE & ORDER) *</span>
+              <span>PURPOSE OF REQUEST *</span>
               <span className="text-[10px] text-blue-700 font-bold">Certificate of Residency</span>
             </label>
             <p className="text-[10.5px] text-blue-900 font-medium">
-              Select purpose or specify why the barangay peace and order committee recommends you:
+              Select or enter the purpose for recommendation by the Barangay Peace and Order Committee:
             </p>
             <select
               value={requestResidencyPreset}
@@ -4029,7 +4376,7 @@ const UserDashboard = () => {
             </select>
             <input
               type="text"
-              value={requestResidencyRecommendation}
+              value={requestPurpose || requestResidencyRecommendation}
               onChange={(e) => {
                 setRequestResidencyPreset("custom");
                 setRequestResidencyRecommendation(e.target.value);
@@ -4040,7 +4387,7 @@ const UserDashboard = () => {
               required
             />
             <p className="text-[10px] text-blue-800 italic font-medium">
-              Will appear on certificate as: <em>"From our barangay peace and order committee we are recommending {isFemale ? "her" : "him"} <b>{requestResidencyRecommendation || "____________________"}</b>.."</em>
+              Will appear on certificate as: <em>"From our barangay peace and order committee we are recommending {isFemale ? "her" : "him"} <b>{requestPurpose || requestResidencyRecommendation || "____________________"}</b>.."</em>
             </p>
           </div>
         )}
@@ -4049,9 +4396,12 @@ const UserDashboard = () => {
         {docKey === "4ps" && (
           <div className="space-y-2.5 rounded-2xl bg-white/95 border-2 border-emerald-300 p-3.5 shadow-sm">
             <label className="block text-xs font-black uppercase tracking-wider text-emerald-950 flex items-center justify-between">
-              <span>4PS PURPOSE / GRANTEE DETAILS *</span>
+              <span>PURPOSE OF REQUEST *</span>
               <span className="text-[10px] text-emerald-700 font-bold">4Ps Certificate</span>
             </label>
+            <p className="text-[10.5px] text-emerald-900 font-medium">
+              Select or click a quick purpose for your 4Ps Certification:
+            </p>
             <select
               value={requestFourPsPreset}
               onChange={(e) => {
@@ -4068,6 +4418,8 @@ const UserDashboard = () => {
                   setRequestPurpose("4Ps Beneficiary & Household Member Verification");
                 } else if (val === "profile_update") {
                   setRequestPurpose("Updating of 4Ps Household Profile & Records");
+                } else if (val === "custom") {
+                  setRequestPurpose("");
                 } else {
                   setRequestPurpose("whatever legal purpose it may serve best");
                 }
@@ -4083,27 +4435,73 @@ const UserDashboard = () => {
               <option value="custom">Other Purpose (Custom)</option>
             </select>
 
-            <div>
-              <label className="text-[10.5px] font-bold text-slate-700 block mb-1">Name of Spouse / Current Grantee Abroad (for Change Grantee):</label>
-              <input
-                type="text"
-                value={requestFourPsSpouse}
-                onChange={(e) => {
-                  const spouse = e.target.value;
-                  setRequestFourPsSpouse(spouse);
-                  const rel = isFemale ? "her husband" : "her wife";
-                  setRequestPurpose(spouse ? `Change Grantee of ${rel} ${spouse} working Abroad` : `Change Grantee of ${rel} working Abroad`);
-                }}
-                placeholder="e.g., Maria Balad"
-                className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-emerald-500 shadow-2xs"
-              />
+            {/* Quick Suggestion Chips for 4Ps */}
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              {[
+                { label: "Change Grantee (Abroad)", preset: "change_grantee_abroad" },
+                { label: "Transfer Beneficiary", preset: "change_grantee_transfer" },
+                { label: "4Ps Cash Grant", preset: "cash_grant_requirement" },
+                { label: "Member Verification", preset: "member_verification" },
+                { label: "Profile Update", preset: "profile_update" },
+                { label: "Legal Purpose", preset: "legal_purpose" },
+              ].map((chip) => {
+                const isSelected = requestFourPsPreset === chip.preset;
+                return (
+                  <button
+                    key={chip.preset}
+                    type="button"
+                    onClick={() => {
+                      setRequestFourPsPreset(chip.preset);
+                      const rel = isFemale ? "her husband" : "her wife";
+                      if (chip.preset === "change_grantee_abroad") {
+                        setRequestPurpose(requestFourPsSpouse ? `Change Grantee of ${rel} ${requestFourPsSpouse} working Abroad` : `Change Grantee of ${rel} working Abroad`);
+                      } else if (chip.preset === "change_grantee_transfer") {
+                        setRequestPurpose("Change Grantee / Transfer of Cash Grant Beneficiary");
+                      } else if (chip.preset === "cash_grant_requirement") {
+                        setRequestPurpose("Pantawid Pamilyang Pilipino Program (4Ps) Requirement");
+                      } else if (chip.preset === "member_verification") {
+                        setRequestPurpose("4Ps Beneficiary & Household Member Verification");
+                      } else if (chip.preset === "profile_update") {
+                        setRequestPurpose("Updating of 4Ps Household Profile & Records");
+                      } else {
+                        setRequestPurpose("whatever legal purpose it may serve best");
+                      }
+                    }}
+                    className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer ${
+                      isSelected
+                        ? "bg-emerald-700 text-white border-emerald-700 shadow-xs"
+                        : "bg-slate-100 hover:bg-emerald-50 text-slate-800 border-slate-200"
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
+                );
+              })}
             </div>
 
+            {requestFourPsPreset === "change_grantee_abroad" && (
+              <div>
+                <label className="text-[10.5px] font-bold text-slate-700 block mb-1">Name of Spouse / Current Grantee Abroad (for Change Grantee):</label>
+                <input
+                  type="text"
+                  value={requestFourPsSpouse}
+                  onChange={(e) => {
+                    const spouse = e.target.value;
+                    setRequestFourPsSpouse(spouse);
+                    const rel = isFemale ? "her husband" : "her wife";
+                    setRequestPurpose(spouse ? `Change Grantee of ${rel} ${spouse} working Abroad` : `Change Grantee of ${rel} working Abroad`);
+                  }}
+                  placeholder="e.g., Maria Balad"
+                  className="w-full rounded-xl border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-emerald-500 shadow-2xs"
+                />
+              </div>
+            )}
+
             <div>
-              <label className="text-[10.5px] font-bold text-slate-700 block mb-1">Full Purpose Text (Appears on Certificate):</label>
+              <label className="text-[10.5px] font-bold text-slate-700 block mb-1">Full Purpose of Request:</label>
               <input
                 type="text"
-                value={requestPurpose || `Change Grantee of ${isFemale ? "her husband" : "her wife"} working Abroad`}
+                value={requestPurpose}
                 onChange={(e) => {
                   setRequestFourPsPreset("custom");
                   setRequestPurpose(e.target.value);
@@ -4119,9 +4517,12 @@ const UserDashboard = () => {
         {docKey === "indigency" && (
           <div className="space-y-2 rounded-2xl bg-white/95 border-2 border-emerald-300 p-3.5 shadow-sm">
             <label className="block text-xs font-black uppercase tracking-wider text-emerald-950 flex items-center justify-between">
-              <span>TYPE OF ASSISTANCE / PURPOSE *</span>
+              <span>PURPOSE OF REQUEST *</span>
               <span className="text-[10px] text-emerald-700 font-bold">Certificate of Indigency</span>
             </label>
+            <p className="text-[10.5px] text-emerald-900 font-medium">
+              Select or enter the assistance purpose:
+            </p>
             <select
               value={requestIndigencyPreset}
               onChange={(e) => {
@@ -4162,9 +4563,12 @@ const UserDashboard = () => {
         {docKey === "clearance" && (
           <div className="space-y-2 rounded-2xl bg-white/95 border-2 border-emerald-300 p-3.5 shadow-sm">
             <label className="block text-xs font-black uppercase tracking-wider text-emerald-950 flex items-center justify-between">
-              <span>PURPOSE OF BARANGAY CLEARANCE *</span>
+              <span>PURPOSE OF REQUEST *</span>
               <span className="text-[10px] text-emerald-700 font-bold">Barangay Clearance</span>
             </label>
+            <p className="text-[10.5px] text-emerald-900 font-medium">
+              Select or enter the purpose for your Barangay Clearance:
+            </p>
             <select
               value={requestClearancePreset}
               onChange={(e) => {
@@ -4180,6 +4584,7 @@ const UserDashboard = () => {
             >
               <option value="OWWA">OWWA / Overseas Worker</option>
               <option value="LOCAL EMPLOYMENT">Local Employment</option>
+              <option value="JOB APPLICATION">Job Application</option>
               <option value="POSTAL ID">Postal ID Application</option>
               <option value="NBI CLEARANCE">NBI Clearance Application</option>
               <option value="POLICE CLEARANCE">Police Clearance Application</option>
@@ -4188,6 +4593,35 @@ const UserDashboard = () => {
               <option value="LEGAL PURPOSE">Whatever legal purpose it may serve best</option>
               <option value="custom">Other Purpose (Custom)</option>
             </select>
+            {/* Quick Suggestion Chips for Clearance */}
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              {[
+                "OWWA",
+                "Local Employment",
+                "Job Application",
+                "Postal ID",
+                "NBI Clearance",
+                "Police Clearance",
+                "Bank Account",
+                "Scholarship",
+              ].map((cPreset) => (
+                <button
+                  key={cPreset}
+                  type="button"
+                  onClick={() => {
+                    setRequestClearancePreset("custom");
+                    setRequestPurpose(cPreset);
+                  }}
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer ${
+                    (requestPurpose || "").toUpperCase() === cPreset.toUpperCase()
+                      ? "bg-emerald-700 text-white border-emerald-700 shadow-xs"
+                      : "bg-slate-100 hover:bg-emerald-50 text-slate-800 border-slate-200"
+                  }`}
+                >
+                  {cPreset}
+                </button>
+              ))}
+            </div>
             <input
               type="text"
               value={requestPurpose || requestClearancePreset}
@@ -4216,19 +4650,22 @@ const UserDashboard = () => {
               onChange={(e) => {
                 const val = e.target.value;
                 setRequestSoloReasonPreset(val);
+                let reason = "";
                 if (val === "death") {
-                  setRequestSoloReason(isFemale ? "death of her husband" : "death of his wife");
+                  reason = isFemale ? "death of her husband" : "death of his wife";
                 } else if (val === "separation") {
-                  setRequestSoloReason(isFemale ? "separation from her husband" : "separation from his wife");
+                  reason = isFemale ? "separation from her husband" : "separation from his wife";
                 } else if (val === "abandonment") {
-                  setRequestSoloReason(isFemale ? "abandonment by her husband" : "abandonment by his wife");
+                  reason = isFemale ? "abandonment by her husband" : "abandonment by his wife";
                 } else if (val === "unwed") {
-                  setRequestSoloReason(isFemale ? "being an unmarried mother" : "being a single father");
+                  reason = isFemale ? "being an unmarried mother" : "being a single father";
                 } else if (val === "detention") {
-                  setRequestSoloReason("incarceration / detention of spouse");
+                  reason = "incarceration / detention of spouse";
                 } else {
-                  setRequestSoloReason("");
+                  reason = "";
                 }
+                setRequestSoloReason(reason);
+                setRequestPurpose("Solo Parent ID & Benefits Application");
               }}
               className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-amber-500 shadow-2xs cursor-pointer"
             >
@@ -4246,6 +4683,7 @@ const UserDashboard = () => {
               onChange={(e) => {
                 setRequestSoloReasonPreset("custom");
                 setRequestSoloReason(e.target.value);
+                setRequestPurpose("Solo Parent ID & Benefits Application");
               }}
               placeholder="e.g., death of her husband / separation from spouse"
               className="w-full rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-amber-500 shadow-2xs"
@@ -4257,26 +4695,110 @@ const UserDashboard = () => {
           </div>
         )}
 
-        {/* 6. BUSINESS PERMIT FIELDS */}
+        {/* 6. BUSINESS PERMIT FIELDS (Only shown for Business Permit) */}
         {docKey === "business" && (
-          <div className="space-y-2 rounded-2xl bg-white/95 border-2 border-blue-300 p-3.5 shadow-sm">
-            <label className="block text-xs font-black uppercase tracking-wider text-blue-950">
-              BUSINESS NAME & NATURE *
-            </label>
-            <input
-              type="text"
-              value={requestBusinessName || requestPurpose}
-              onChange={(e) => {
-                setRequestBusinessName(e.target.value);
-                setRequestPurpose(e.target.value);
-              }}
-              placeholder="e.g., BANANA BUY AND SALE / SARI-SARI STORE"
-              className="w-full rounded-xl border border-blue-300 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-900 outline-none focus:border-blue-500 shadow-2xs"
-              required
-            />
-            <p className="text-[10px] text-blue-800 italic font-medium">
-              Preview: "...and he/she has a <b>{(requestBusinessName || requestPurpose || "BANANA BUY AND SALE").toUpperCase()}</b> at the said place."
-            </p>
+          <div className="space-y-4 rounded-2xl bg-white/95 border-2 border-sky-300 p-4 shadow-sm">
+            {/* Field 1: Business Name */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-black uppercase tracking-wider text-sky-950">
+                  BUSINESS NAME *
+                </label>
+                <span className="text-[10px] font-black uppercase tracking-wide bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full border border-sky-300">
+                  Required
+                </span>
+              </div>
+              <p className="text-[10.5px] text-slate-600 font-medium">
+                Enter or select your registered business name:
+              </p>
+              {/* Quick Suggestion Chips for Business Name */}
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                {[
+                  "BANANA BUY AND SALE",
+                  "SARI-SARI STORE",
+                  "AGRI-SUPPLY",
+                  "FOOD STALL / CARINDERIA",
+                  "RICE TRADING",
+                  "MOTORCYCLE PARTS & REPAIR",
+                ].map((bPreset) => (
+                  <button
+                    key={bPreset}
+                    type="button"
+                    onClick={() => {
+                      setRequestBusinessName(bPreset);
+                    }}
+                    className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer ${
+                      requestBusinessName === bPreset
+                        ? "bg-[#035E8C] text-white border-[#035E8C] shadow-xs"
+                        : "bg-slate-100 hover:bg-sky-50 text-slate-800 border-slate-200"
+                    }`}
+                  >
+                    {bPreset}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={requestBusinessName}
+                onChange={(e) => setRequestBusinessName(e.target.value)}
+                placeholder="e.g., SARI-SARI STORE / BANANA BUY AND SALE / RICE TRADING"
+                className="w-full rounded-xl border border-sky-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-sky-600 shadow-2xs"
+                required
+              />
+              <p className="text-[10px] text-sky-800 italic font-medium">
+                Preview: "...and they have a <b>{(requestBusinessName || "BANANA BUY AND SALE").toUpperCase()}</b> at the said place."
+              </p>
+            </div>
+
+            {/* Field 2: Business Purpose with Clickable Chips */}
+            <div className="space-y-2 pt-3 border-t border-sky-100">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-black uppercase tracking-wider text-sky-950">
+                  BUSINESS PURPOSE *
+                </label>
+                <span className="text-[10px] font-black uppercase tracking-wide bg-sky-100 text-sky-800 px-2 py-0.5 rounded-full border border-sky-300">
+                  Required
+                </span>
+              </div>
+              <p className="text-[10.5px] text-slate-600 font-medium">
+                Click a purpose or enter details (e.g., For Renewal, For Franchising):
+              </p>
+              {/* Clickable Quick Purpose Chips for Business */}
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                {[
+                  "For Renewal",
+                  "For Franchising",
+                  "New Business Permit Application",
+                  "Mayor's Permit Requirement",
+                  "Annual Barangay Clearance",
+                  "Bank / Loan Requirement",
+                ].map((bPurpose) => (
+                  <button
+                    key={bPurpose}
+                    type="button"
+                    onClick={() => setRequestPurpose(bPurpose)}
+                    className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer ${
+                      requestPurpose === bPurpose
+                        ? "bg-[#035E8C] text-white border-[#035E8C] shadow-xs"
+                        : "bg-slate-100 hover:bg-sky-50 text-slate-800 border-slate-200"
+                    }`}
+                  >
+                    {bPurpose}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="text"
+                value={requestPurpose}
+                onChange={(e) => setRequestPurpose(e.target.value)}
+                placeholder="e.g., For Renewal / For Franchising / New Business Permit Application"
+                className="w-full rounded-xl border border-sky-300 bg-white px-3.5 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-sky-600 shadow-2xs"
+                required
+              />
+              <p className="text-[10px] text-sky-800 italic font-medium">
+                Preview: "...issued upon request for <b>{requestPurpose || "For Renewal"}</b> and for whatever legal purpose it may serve best."
+              </p>
+            </div>
           </div>
         )}
 
@@ -4344,39 +4866,115 @@ const UserDashboard = () => {
           </div>
         )}
 
-        {/* 8. FALLBACK GENERAL PURPOSE */}
-        {docKey !== "residency" && docKey !== "4ps" && docKey !== "indigency" && docKey !== "clearance" && docKey !== "solo" && docKey !== "business" && docKey !== "rsbsa" && (
-          <div className="space-y-2">
-            <label className="block text-xs font-black uppercase tracking-wider text-emerald-200 drop-shadow-xs">
-              PURPOSE OF REQUEST *
+        {/* Fallback for any other document type that doesn't have custom inputs */}
+        {!["clearance", "residency", "indigency", "4ps", "solo", "rsbsa", "business"].includes(docKey) && (
+          <div className="space-y-2 rounded-2xl bg-white/95 border-2 border-sky-300 p-3.5 shadow-sm">
+            <label className="block text-xs font-black uppercase tracking-wider text-sky-950 flex items-center justify-between">
+              <span>PURPOSE OF REQUEST *</span>
+              <span className="text-[10px] text-sky-700 font-bold">Required</span>
             </label>
-            <textarea
+            <input
+              type="text"
               value={requestPurpose}
-              onChange={(event) => setRequestPurpose(event.target.value)}
-              placeholder="Enter purpose (e.g., OWWA, Local Employment, Scholarship, Postal ID, Bank, etc.)"
-              className="w-full rounded-2xl border border-slate-300 bg-white/95 backdrop-blur-md px-4 py-3 text-xs font-semibold text-slate-900 placeholder-slate-400 outline-none transition-all focus:border-emerald-600 focus:bg-white focus:ring-4 focus:ring-emerald-500/20 shadow-xs"
-              rows={2}
+              onChange={(e) => setRequestPurpose(e.target.value)}
+              placeholder="Enter purpose of request"
+              className="w-full rounded-xl border border-sky-300 bg-white px-3 py-2 text-xs font-semibold text-slate-900 outline-none focus:border-sky-500 shadow-2xs"
               required
             />
-            {/* Quick Purpose Suggestion Chips */}
-            <div className="flex flex-wrap gap-1.5 pt-0.5">
-              {quickPurposes.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setRequestPurpose(p)}
-                  className={`text-[10px] font-bold px-2.5 py-1 rounded-lg border transition cursor-pointer ${
-                    requestPurpose === p
-                      ? "bg-[#0B5D3B] text-white border-[#0B5D3B] shadow-xs"
-                      : "bg-white/90 hover:bg-emerald-50 text-slate-800 border-slate-200"
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
           </div>
         )}
+
+        {/* ─── ATTACHMENT / VALID ID UPLOAD SECTION (Required for all 7 documents) ─── */}
+        <div className="space-y-2 rounded-2xl bg-white/95 border-2 border-emerald-300/80 p-3.5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <label className="block text-xs font-black uppercase tracking-wider text-emerald-950 flex items-center gap-1.5">
+              <Paperclip size={14} className="text-emerald-700" />
+              <span>UPLOAD VALID ID OR ATTACHMENT *</span>
+            </label>
+            <span className="text-[10px] font-black uppercase tracking-wide bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full border border-emerald-300">
+              Required
+            </span>
+          </div>
+
+          <p className="text-[10.5px] text-slate-600 font-medium leading-relaxed">
+            {docKey === "business" && "Please attach your Business Name Registration (DTI / SEC), Mayor's Permit, or Owner's Valid ID."}
+            {docKey === "4ps" && "Please attach your 4Ps ID card, Pantawid verification slip, or Grantee Valid ID."}
+            {docKey === "clearance" && "Please attach your Valid Government-issued ID, Cedula (Community Tax Certificate), or Voter's ID."}
+            {docKey === "residency" && "Please attach your Valid Government ID, Barangay ID, or Proof of Billing / Residency."}
+            {docKey === "rsbsa" && "Please attach your RSBSA Enrollment stub, Farmer's ID, or Land Ownership / Tenancy certificate."}
+            {docKey === "indigency" && "Please attach your Valid ID and Supporting Document (Medical prescription, Hospital bill, or Burial doc)."}
+            {docKey === "solo" && "Please attach your Valid ID and Child's Birth Certificate, Death Certificate of Spouse, or Affidavit."}
+            {!["business", "4ps", "clearance", "residency", "rsbsa", "indigency", "solo"].includes(docKey) && "Please attach a clear photo or copy of your valid ID or required supporting document."}
+          </p>
+
+          {requestAttachmentUrl ? (
+            <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs">
+              <div className="flex items-center gap-2.5 min-w-0">
+                {requestAttachmentPreview === "pdf" ? (
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-100 text-rose-600 font-black text-xs">
+                    PDF
+                  </div>
+                ) : (
+                  <img
+                    src={requestAttachmentUrl}
+                    alt="Preview"
+                    className="h-10 w-10 shrink-0 rounded-lg object-cover border border-emerald-300 shadow-2xs"
+                  />
+                )}
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-black text-slate-900 truncate max-w-[180px] sm:max-w-xs" title={requestAttachmentName}>
+                      {requestAttachmentName || "Proof_Document"}
+                    </span>
+                    <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded">
+                      <CheckCircle2 size={11} /> Attached
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-medium">Ready for verification</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleRemoveAttachment}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                title="Remove attachment"
+              >
+                <Trash2 size={15} />
+              </button>
+            </div>
+          ) : (
+            <div>
+              <label className="flex flex-col items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed border-emerald-300 hover:border-emerald-500 bg-emerald-50/40 hover:bg-emerald-50/80 transition-all cursor-pointer group text-center">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 group-hover:scale-105 transition">
+                  <UploadCloud size={18} />
+                </div>
+                <div>
+                  <p className="text-xs font-black text-slate-800 group-hover:text-emerald-900">
+                    {uploadingAttachment ? "Processing attachment..." : "Click to browse or take photo of Valid ID / Proof"}
+                  </p>
+                  <p className="text-[10px] text-slate-500 font-medium mt-0.5">
+                    Supports JPG, PNG, WebP, or PDF (Max 10MB)
+                  </p>
+                </div>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  onChange={handleAttachmentChange}
+                  className="hidden"
+                  disabled={uploadingAttachment}
+                />
+              </label>
+            </div>
+          )}
+
+          {requestAttachmentError && (
+            <p className="text-[11px] font-bold text-rose-600 flex items-center gap-1 mt-1">
+              <AlertCircle size={13} className="shrink-0" />
+              <span>{requestAttachmentError}</span>
+            </p>
+          )}
+        </div>
 
         {requestMessage && (
           <div
@@ -4393,10 +4991,16 @@ const UserDashboard = () => {
         <button
           type="submit"
           disabled={requesting || !selectedDocumentType}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#033E2A] via-[#045438] to-[#03442E] hover:opacity-95 active:scale-[0.99] py-3.5 text-xs font-black uppercase tracking-wider text-white shadow-lg shadow-emerald-950/30 transition-all border border-emerald-400/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+          className="flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-xs font-black uppercase tracking-wider text-white shadow-lg transition-all border bg-gradient-to-r from-[#035E8C] via-[#0284C7] to-[#0E7490] hover:opacity-95 active:scale-[0.99] shadow-sky-950/20 border-sky-300/40 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {requesting ? <Loader size={14} className="animate-spin text-white" /> : <PlusCircle size={14} className="text-white" />}
-          <span className="text-white font-bold">{requesting ? "Submitting application..." : "Submit Application"}</span>
+          {requesting ? (
+            <Loader size={14} className="animate-spin text-white" />
+          ) : (
+            <FileCheck2 size={16} className="text-white" />
+          )}
+          <span className="text-white font-bold">
+            {requesting ? "Submitting application..." : "Submit Application"}
+          </span>
         </button>
       </form>
     );
@@ -4424,11 +5028,16 @@ const UserDashboard = () => {
 
   return (
     <div 
-      className={`app-shell font-sans antialiased bg-gradient-to-br from-[#1c6448] via-[#247b59] to-[#17523c] text-white relative overflow-hidden min-h-screen ${isDarkMode ? "dark" : ""} ${fontSize === "small" ? "text-sm" : fontSize === "large" ? "text-sm" : "text-xs"}`}
+      className={`app-shell font-sans antialiased bg-gradient-to-br from-[#F0FDF4] via-[#F0F9FF] to-[#ECFDF5] text-slate-800 relative overflow-hidden min-h-screen ${fontSize === "small" ? "text-xs" : fontSize === "large" ? "text-base" : "text-sm"}`}
       style={{
         gridTemplateColumns: isDesktop ? (sidebarCollapsed ? "80px 1fr" : "260px 1fr") : "1fr"
       }}
     >
+      {/* Ambient background design accents: subtle light blue and soft emerald glows */}
+      <div className="absolute top-1/4 left-1/3 w-[520px] h-[520px] bg-sky-300/20 rounded-full blur-3xl pointer-events-none -z-0" />
+      <div className="absolute -top-24 -right-24 w-[480px] h-[480px] bg-blue-200/25 rounded-full blur-3xl pointer-events-none -z-0" />
+      <div className="absolute -bottom-24 right-1/4 w-[450px] h-[450px] bg-sky-200/25 rounded-full blur-3xl pointer-events-none -z-0" />
+      <div className="absolute top-2/3 -left-20 w-[400px] h-[400px] bg-sky-300/15 rounded-full blur-3xl pointer-events-none -z-0" />
       
       {/* 1. Desktop Sidebar Container */}
       <div 
@@ -4436,7 +5045,7 @@ const UserDashboard = () => {
         style={{ width: sidebarCollapsed ? "80px" : "260px" }}
       >
         <aside 
-          className={`app-sidebar ${effectiveSidebarCollapsed ? "collapsed-sidebar" : "expanded-sidebar-hover"} flex flex-col justify-between transition-all duration-300 ease-in-out absolute left-0 top-0 h-full shadow-2xl bg-emerald-950/40 backdrop-blur-2xl border-r border-white/20 text-white overflow-hidden`}
+          className={`app-sidebar ${effectiveSidebarCollapsed ? "collapsed-sidebar" : "expanded-sidebar-hover"} flex flex-col justify-between transition-all duration-300 ease-in-out absolute left-0 top-0 h-full shadow-xl bg-white/95 backdrop-blur-2xl border-r border-emerald-100/90 text-slate-800 overflow-hidden`}
           style={{
             width: effectiveSidebarCollapsed ? "80px" : "260px",
             padding: effectiveSidebarCollapsed ? "20px 8px" : "20px 14px",
@@ -4446,22 +5055,23 @@ const UserDashboard = () => {
           {/* Subtle Graphic Background Silk Curves */}
           {!effectiveSidebarCollapsed && (
             <svg className="absolute bottom-0 left-0 w-full h-80 pointer-events-none opacity-20 z-0" viewBox="0 0 260 320" fill="none">
-              <path d="M-20 200 C60 140, 160 280, 280 180" stroke="#34D399" strokeWidth="1.5" />
-              <path d="M-40 240 C40 180, 180 300, 300 220" stroke="#10B981" strokeWidth="1" />
-              <path d="M-10 280 C80 220, 140 320, 270 260" stroke="#059669" strokeWidth="1.2" />
+              <path d="M-20 200 C60 140, 160 280, 280 180" stroke="#10B981" strokeWidth="1.5" />
+              <path d="M-40 240 C40 180, 180 300, 300 220" stroke="#38BDF8" strokeWidth="1.2" />
+              <path d="M-10 280 C80 220, 140 320, 270 260" stroke="#34D399" strokeWidth="1.2" />
             </svg>
           )}
 
           <div className="flex flex-col justify-between h-full w-full relative z-10">
             <div>
-              <div className="flex items-center justify-between mb-6 pb-3 border-b border-white/15">
+              <div className="flex items-center justify-between mb-6 pb-3 border-b border-emerald-100/80">
                 {!effectiveSidebarCollapsed && (
                   <div className="flex items-center gap-3 animate-fadeIn">
                     <div className="relative flex items-center justify-center shrink-0">
+                      <div className="absolute inset-0 rounded-full bg-emerald-500 opacity-20 blur-xs" />
                       <img
                         src={barangayLogo || "/logo.png"}
                         alt="Brgy. Seal"
-                        className="h-10 w-10 shrink-0 object-contain rounded-full shadow-md relative z-10"
+                        className="h-10 w-10 shrink-0 object-contain rounded-full shadow-md relative z-10 ring-2 ring-emerald-500/40 ring-offset-2 ring-offset-white"
                         style={{ width: "40px", height: "40px", minWidth: "40px", minHeight: "40px" }}
                         onError={(e) => {
                           e.target.src = "/logo.png";
@@ -4469,8 +5079,8 @@ const UserDashboard = () => {
                       />
                     </div>
                     <div className="min-w-0 animate-fadeIn">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-emerald-200">Upper Mingading</p>
-                      <h2 className="text-sm font-black text-white truncate tracking-tight">KaagapAI</h2>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Upper Mingading</p>
+                      <h2 className="text-sm font-black text-slate-900 truncate tracking-tight">KaagapAI</h2>
                     </div>
                   </div>
                 )}
@@ -4480,7 +5090,7 @@ const UserDashboard = () => {
                       <img
                         src={barangayLogo || "/logo.png"}
                         alt="Brgy. Seal"
-                        className="h-9 w-9 object-contain rounded-full shadow-md relative z-10"
+                        className="h-9 w-9 object-contain rounded-full shadow-md relative z-10 ring-2 ring-emerald-500/40 ring-offset-1 ring-offset-white"
                         onError={(e) => {
                           e.target.src = "/logo.png";
                         }}
@@ -4493,7 +5103,7 @@ const UserDashboard = () => {
                 <button
                   type="button"
                   onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-                  className="hidden lg:flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/20 bg-white/10 text-white transition hover:bg-white/20 active:scale-95 ml-auto cursor-pointer"
+                  className="hidden lg:flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-emerald-200/80 bg-emerald-50/70 text-emerald-800 transition hover:bg-emerald-100 active:scale-95 ml-auto cursor-pointer"
                   title={sidebarCollapsed ? "Pin Sidebar Open" : "Collapse Sidebar"}
                 >
                   {sidebarCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
@@ -4513,18 +5123,18 @@ const UserDashboard = () => {
                       }}
                       className={`nav-item relative w-full transition-all duration-200 cursor-pointer ${
                         active 
-                          ? "bg-emerald-500/25 text-white shadow-lg border border-emerald-400/50 backdrop-blur-md rounded-xl" 
-                          : "text-emerald-100/90 hover:bg-white/10 hover:text-white rounded-xl"
+                          ? "bg-emerald-600 text-white font-black shadow-md shadow-emerald-700/20 border border-emerald-500 rounded-xl" 
+                          : "text-slate-600 hover:text-emerald-800 hover:bg-emerald-50/90 rounded-xl font-bold"
                       } ${effectiveSidebarCollapsed ? "justify-center px-2 py-2.5" : "px-3.5 py-2.5"}`}
                       title={effectiveSidebarCollapsed ? item.label : undefined}
                     >
                       {/* Active Left Glowing Indicator Bar */}
                       {active && (
-                        <span className="absolute -left-1 top-1/2 -translate-y-1/2 w-1.5 h-6 rounded-r-full bg-[#10B981] shadow-[0_0_12px_#10B981]" />
+                        <span className="absolute -left-1 top-1/2 -translate-y-1/2 w-1.5 h-6 rounded-r-full bg-emerald-400 shadow-[0_0_10px_#34D399]" />
                       )}
-                      <Icon size={18} className={`shrink-0 ${active ? "text-emerald-300" : "text-emerald-200/80"}`} />
+                      <Icon size={18} className={`shrink-0 ${active ? "text-white" : "text-emerald-700"}`} />
                       {!effectiveSidebarCollapsed && (
-                        <span className={`nav-label ml-2.5 truncate text-left text-xs ${active ? "font-black text-white" : "font-bold text-emerald-100/90"}`}>
+                        <span className={`nav-label ml-2.5 truncate text-left text-xs ${active ? "font-black text-white" : "font-bold text-slate-700"}`}>
                           {item.label}
                         </span>
                       )}
@@ -4535,11 +5145,11 @@ const UserDashboard = () => {
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className={`nav-item w-full text-rose-200 hover:bg-rose-950/40 hover:text-rose-100 border border-transparent hover:border-rose-400/30 rounded-xl mt-3 cursor-pointer transition ${effectiveSidebarCollapsed ? "justify-center px-2 py-2.5" : "px-3.5 py-2.5"}`}
+                  className={`nav-item w-full text-rose-600 hover:bg-rose-50 hover:text-rose-700 border border-transparent hover:border-rose-200 rounded-xl mt-3 cursor-pointer transition ${effectiveSidebarCollapsed ? "justify-center px-2 py-2.5" : "px-3.5 py-2.5"}`}
                   title={effectiveSidebarCollapsed ? "Logout" : undefined}
                 >
-                  <LogOut size={18} className="shrink-0 text-rose-400" />
-                  {!effectiveSidebarCollapsed && <span className="nav-label ml-2.5 text-xs font-bold text-rose-200">Logout</span>}
+                  <LogOut size={18} className="shrink-0 text-rose-500" />
+                  {!effectiveSidebarCollapsed && <span className="nav-label ml-2.5 text-xs font-bold text-rose-600">Logout</span>}
                 </button>
               </nav>
             </div>
@@ -4547,17 +5157,17 @@ const UserDashboard = () => {
             {/* Bottom Sidebar Office Card */}
             {!effectiveSidebarCollapsed && (
               <div className="mt-auto pt-4 pb-2 px-1">
-                <div className="rounded-2xl bg-white/10 border border-white/20 p-3 text-center text-white space-y-1.5 shadow-lg backdrop-blur-xl relative overflow-hidden group">
-                  <div className="relative mx-auto w-14 h-14 rounded-2xl overflow-hidden shadow-md border border-white/20 bg-emerald-900/40 p-1 flex items-center justify-center">
+                <div className="rounded-2xl bg-emerald-50/50 backdrop-blur-md border border-emerald-200/80 p-3 text-center text-slate-800 space-y-1.5 shadow-sm relative overflow-hidden group">
+                  <div className="relative mx-auto w-14 h-14 rounded-2xl overflow-hidden shadow-sm border border-emerald-200/80 bg-white p-1 flex items-center justify-center">
                     <img
                       src="/3d-barangay-hall.png"
                       alt="Barangay Hall 3D"
-                      className="w-full h-full object-contain drop-shadow-md group-hover:scale-110 transition-transform duration-300"
+                      className="w-full h-full object-contain drop-shadow-sm group-hover:scale-110 transition-transform duration-300"
                     />
                   </div>
-                  <h4 className="text-xs font-black text-white tracking-wide">Barangay Office</h4>
-                  <p className="text-[10.5px] font-bold text-emerald-300">Barangay Hall</p>
-                  <p className="text-[9.5px] italic text-emerald-200/85 pt-1 border-t border-white/10">Serbisyong Tapat, Para sa Lahat.</p>
+                  <h4 className="text-xs font-black text-slate-900 tracking-wide">Barangay Office</h4>
+                  <p className="text-[10.5px] font-bold text-emerald-700">Barangay Hall</p>
+                  <p className="text-[9.5px] italic text-slate-500 pt-1 border-t border-emerald-100">Serbisyong Tapat, Para sa Lahat.</p>
                 </div>
               </div>
             )}
@@ -4568,44 +5178,55 @@ const UserDashboard = () => {
       {/* Mobile Drawer Backdrop & Overlay */}
       {mobileSidebarOpen && (
         <div
-          className="fixed inset-0 bg-slate-900/60 z-[9900] lg:hidden animate-fadeIn backdrop-blur-xs"
+          className="fixed inset-0 bg-slate-900/60 z-[9985] lg:hidden backdrop-blur-xs transition-opacity"
           onClick={() => setMobileSidebarOpen(false)}
         />
       )}
 
-      {/* Mobile Drawer */}
+      {/* Dedicated Resident Mobile Sidebar Drawer */}
       <aside 
-        className={`app-sidebar lg:hidden ${mobileSidebarOpen ? "open" : ""} flex flex-col justify-between p-4 z-[9950] bg-emerald-950/80 backdrop-blur-2xl border-r border-white/20 text-white shadow-2xl overflow-hidden`}
+        className={`resident-mobile-drawer fixed top-0 left-0 bottom-0 w-72 max-w-[85vw] z-[9995] lg:hidden flex flex-col justify-between p-4 shadow-2xl transition-transform duration-300 ease-in-out ${
+          mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        } border-r border-emerald-500/30 overflow-y-auto`}
+        style={{
+          background: "linear-gradient(180deg, #022c1e 0%, #043d2b 45%, #011a12 100%)",
+          color: "#ffffff"
+        }}
       >
         <div className="flex flex-col justify-between h-full w-full relative z-10">
           <div>
-            <div className="flex items-center justify-between mb-5 pb-3 border-b border-white/15">
-              <div className="flex items-center gap-2.5">
+            <div className="flex items-center justify-between mb-5 pb-3 border-b border-emerald-500/30">
+              <div className="flex items-center gap-3 min-w-0">
                 <div className="relative flex items-center justify-center shrink-0">
                   <img
                     src={barangayLogo || "/logo.png"}
                     alt="Brgy. Seal"
-                    className="h-9 w-9 shrink-0 object-contain rounded-full shadow-sm relative z-10"
+                    className="h-10 w-10 object-contain rounded-full shadow-md ring-2 ring-emerald-400/50 ring-offset-2 ring-offset-[#022c1e]"
                     onError={(e) => {
                       e.target.src = "/logo.png";
                     }}
                   />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-emerald-200">Upper Mingading</p>
-                  <h2 className="text-xs font-black text-white truncate">KaagapAI</h2>
+                  <p className="drawer-subtitle text-[10.5px] font-black uppercase tracking-widest text-[#34d399] drop-shadow-xs" style={{ color: "#34d399" }}>
+                    Upper Mingading
+                  </p>
+                  <h2 className="drawer-title text-base font-black text-white truncate tracking-tight drop-shadow-sm" style={{ color: "#ffffff" }}>
+                    KaagapAI Menu
+                  </h2>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setMobileSidebarOpen(false)}
-                className="rounded-full p-1.5 hover:bg-white/10 text-white cursor-pointer"
+                className="drawer-close-btn rounded-full p-2 bg-white/10 hover:bg-white/20 active:bg-white/30 text-white transition cursor-pointer border border-white/15"
+                aria-label="Close menu"
               >
-                <X size={18} />
+                <X size={20} className="text-white" />
               </button>
             </div>
 
-            <nav className="space-y-1">
+            <nav className="space-y-1.5">
               {sidebarNavItems.map((item) => {
                 const Icon = item.icon;
                 const active = activeNav === item.key;
@@ -4617,86 +5238,99 @@ const UserDashboard = () => {
                       openModule(item.key);
                       setMobileSidebarOpen(false);
                     }}
-                    className={`nav-item relative w-full ${
+                    className={`drawer-nav-item relative w-full flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-200 cursor-pointer ${
                       active 
-                        ? "bg-emerald-500/25 text-white font-black shadow-md border border-emerald-400/50 backdrop-blur-md rounded-xl" 
-                        : "text-emerald-100/90 hover:bg-white/10 hover:text-white rounded-xl"
-                    } px-3 py-2.5 cursor-pointer`}
+                        ? "active bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-black shadow-lg shadow-emerald-950/60 border border-emerald-300/50" 
+                        : "text-white hover:bg-white/10 font-bold border border-transparent hover:border-white/15"
+                    }`}
+                    style={{ color: "#ffffff" }}
                   >
                     {active && (
-                      <span className="absolute -left-1 top-1/2 -translate-y-1/2 w-1.5 h-5 rounded-r-full bg-[#10B981] shadow-[0_0_8px_#10B981]" />
+                      <span className="absolute -left-1 top-1/2 -translate-y-1/2 w-1.5 h-6 rounded-r-full bg-[#34d399] shadow-[0_0_12px_#34d399]" />
                     )}
-                    <Icon size={17} className={`shrink-0 ${active ? "text-emerald-300" : "text-emerald-200/80"}`} />
-                    <span className="nav-label ml-2.5 truncate text-left text-xs font-bold">{item.label}</span>
+                    <Icon size={20} className={`shrink-0 ${active ? "text-white" : "text-[#34d399]"}`} />
+                    <span className={`text-sm tracking-wide text-left truncate ${active ? "font-black text-white" : "font-bold text-white"}`} style={{ color: "#ffffff" }}>
+                      {item.label}
+                    </span>
                   </button>
                 );
               })}
+
               <button
                 type="button"
-                onClick={handleLogout}
-                className="nav-item w-full text-rose-200 hover:bg-rose-950/40 hover:text-rose-100 mt-2 px-3 py-2.5 cursor-pointer border-t border-white/10 rounded-xl"
+                onClick={() => {
+                  setMobileSidebarOpen(false);
+                  setIsSettingsDrawerOpen(true);
+                }}
+                className="drawer-nav-item w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-white hover:bg-white/10 font-bold transition cursor-pointer border border-transparent hover:border-white/15 mt-2"
+                style={{ color: "#ffffff" }}
               >
-                <LogOut size={17} className="shrink-0 text-rose-400" />
-                <span className="nav-label ml-2.5 text-xs font-bold text-rose-200">Logout</span>
+                <Settings size={20} className="shrink-0 text-[#34d399]" />
+                <span className="text-sm tracking-wide text-left font-bold text-white truncate" style={{ color: "#ffffff" }}>
+                  Settings
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileSidebarOpen(false);
+                  handleLogout();
+                }}
+                className="drawer-logout w-full flex items-center gap-3 px-3.5 py-3 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-[#fda4af] hover:text-white border border-rose-500/30 mt-3 transition cursor-pointer font-bold"
+                style={{ color: "#fda4af" }}
+              >
+                <LogOut size={20} className="shrink-0 text-[#fb7185]" />
+                <span className="text-sm tracking-wide text-left font-black text-[#fda4af] truncate" style={{ color: "#fda4af" }}>
+                  Logout
+                </span>
               </button>
             </nav>
           </div>
 
-          <div className="mt-auto pt-4 pb-2 text-center">
-            <div className="rounded-xl bg-white/10 p-3 text-white text-xs border border-white/20 space-y-1 shadow-md backdrop-blur-xl">
-              <div className="w-11 h-11 mx-auto rounded-xl overflow-hidden bg-emerald-900/60 p-0.5 border border-white/20 flex items-center justify-center">
-                <img
-                  src="/3d-barangay-hall.png"
-                  alt="Barangay Hall 3D"
-                  className="w-full h-full object-contain drop-shadow-md"
-                />
-              </div>
-              <p className="font-bold text-xs mt-1">Barangay Office</p>
-              <p className="text-[10px] text-emerald-300">Serbisyong Tapat, Para sa Lahat.</p>
+          <div className="mt-auto pt-6 pb-2 px-1">
+            <div className="drawer-office-card rounded-2xl bg-black/30 border border-emerald-400/30 p-3 text-center text-white space-y-1 shadow-inner backdrop-blur-md">
+              <h4 className="text-xs font-black text-white tracking-wide uppercase drop-shadow-xs" style={{ color: "#ffffff" }}>Barangay Upper Mingading</h4>
+              <p className="text-[10.5px] italic text-emerald-200 font-medium" style={{ color: "#a7f3d0" }}>Serbisyong Tapat, Para sa Lahat.</p>
             </div>
           </div>
         </div>
       </aside>
 
-        {/* Main Content Area: Medium Emerald Glass Green Finish (Matching Sample 2) */}
-        <main className="flex-1 flex flex-col min-w-0 bg-gradient-to-br from-[#1c6448] via-[#247b59] to-[#17523c] text-white relative overflow-hidden min-h-screen">
-          {/* Ambient Glass Reflection Glows */}
-          <div className="absolute top-10 right-10 w-96 h-96 bg-emerald-300/20 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-20 left-10 w-96 h-96 bg-teal-200/15 rounded-full blur-3xl pointer-events-none" />
-
-          {/* DEDICATED FULLSCREEN TOP HEADER BAR (Sleek Dark Green Finish!) */}
-          <header className="w-full relative bg-gradient-to-r from-[#033E2A] via-[#045438] to-[#03442E] text-white border-b-2 border-emerald-400/40 px-3 sm:px-8 py-2.5 sm:py-4.5 min-h-[58px] sm:min-h-[95px] flex items-center justify-between sticky top-0 z-30 shadow-xl">
-            {/* Top Glossy Glass Sheen Effect */}
-            <div className="absolute inset-0 bg-gradient-to-b from-white/25 via-white/10 to-transparent pointer-events-none rounded-b-xl" />
+        {/* Main Content Area: Clean Civic Canvas */}
+        <main className="flex-1 flex flex-col min-w-0 bg-transparent text-slate-800 relative overflow-hidden min-h-screen">
+          {/* DEDICATED FULLSCREEN TOP HEADER BAR (Clean White Glass) */}
+          <header className="w-full relative bg-white/95 backdrop-blur-2xl text-slate-800 border-b border-emerald-100/90 px-3 sm:px-8 py-2.5 sm:py-3.5 min-h-[58px] sm:min-h-[76px] flex items-center justify-between sticky top-0 z-30 shadow-xs">
+            {/* Top Glossy Sheen Effect */}
+            <div className="absolute inset-0 bg-gradient-to-b from-white/60 via-transparent to-transparent pointer-events-none" />
 
             {/* Left: Greeting & Resident Name */}
-            <div className="flex items-center gap-2.5 sm:gap-4.5 min-w-0 flex-1 relative z-10">
-
-              <div className="min-w-0 space-y-0.5 sm:space-y-1">
-                <div className="inline-flex items-center gap-1.5 bg-white/25 backdrop-blur-md border border-white/35 text-white text-[9.5px] sm:text-xs font-black px-2.5 py-0.5 rounded-full shadow-xs">
+            <div className="flex items-center gap-2.5 sm:gap-4 min-w-0 flex-1 relative z-10">
+              <div className="min-w-0 space-y-0.5">
+                <div className="inline-flex items-center gap-1.5 bg-emerald-50/80 border border-emerald-200/80 text-emerald-900 text-[10px] sm:text-xs font-black px-3 py-0.5 rounded-full shadow-2xs">
                   <span>{dynamicGreeting},</span>
                   <span>☀️</span>
                 </div>
-                <h1 className="text-xs sm:text-2xl font-black text-white leading-tight truncate flex items-center gap-1.5 sm:gap-2.5 drop-shadow-md font-sans tracking-tight">
+                <h1 className="text-base sm:text-2xl font-black text-slate-900 leading-tight truncate flex items-center gap-1.5 sm:gap-2 drop-shadow-2xs font-sans tracking-tight">
                   {displayName}
-                  <span className="text-xs sm:text-2xl shrink-0">👋</span>
+                  <span className="text-base sm:text-2xl shrink-0">👋</span>
                 </h1>
               </div>
             </div>
 
             {/* Right: Bell Notification & Profile Avatar with Dropdowns */}
-            <div className="flex items-center gap-2 sm:gap-3.5 shrink-0 relative z-10">
+            <div className="flex items-center gap-2.5 sm:gap-3.5 shrink-0 relative z-10">
 
               {/* Bell Notification Button */}
               <div className="relative shrink-0">
                 <button
                   type="button"
                   onClick={() => { setShowAccountMenu(false); setShowNotificationMenu(!showNotificationMenu); }}
-                  className="relative flex h-8 w-8 sm:h-11 sm:w-11 items-center justify-center rounded-full border-2 border-white/30 bg-emerald-950/50 text-white hover:bg-emerald-900/70 shadow-xl backdrop-blur-md transition active:scale-95 cursor-pointer"
+                  className="relative flex h-9 w-9 sm:h-11 sm:w-11 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50/60 hover:text-blue-700 shadow-sm backdrop-blur-md transition active:scale-95 cursor-pointer"
                   title="Notifications"
                 >
-                  <Bell size={16} className="sm:hidden text-white drop-shadow-xs" />
-                  <Bell size={20} className="hidden sm:block text-white drop-shadow-xs" />
+                  <Bell size={18} className="sm:hidden" />
+                  <Bell size={20} className="hidden sm:block" />
                   {unreadNotificationCount > 0 && (
                     <span className="absolute -right-1 -top-1 flex h-4 sm:h-5 min-w-[1rem] sm:min-w-[1.25rem] items-center justify-center rounded-full bg-rose-600 px-1 text-[8px] sm:text-[10px] font-black text-white ring-2 ring-white animate-pulse shadow-md">
                       {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
@@ -4708,34 +5342,51 @@ const UserDashboard = () => {
                 <AnimatePresence>
                   {showNotificationMenu && (
                     <>
-                      <div className="fixed inset-0 z-[99990]" onClick={() => setShowNotificationMenu(false)} />
+                      <div 
+                        className="fixed inset-0 z-[99990] bg-slate-950/40 backdrop-blur-[2px] sm:bg-transparent sm:backdrop-blur-none" 
+                        onClick={() => setShowNotificationMenu(false)} 
+                      />
                       <motion.div
-                        className="fixed top-16 left-3 right-3 sm:absolute sm:right-0 sm:left-auto sm:top-full sm:mt-2 sm:w-80 sm:max-w-none overflow-hidden rounded-2xl border border-white/20 shadow-2xl bg-[#02221A]/95 backdrop-blur-xl text-white z-[999999]"
+                        style={{ backgroundColor: '#ffffff' }}
+                        className="fixed top-16 left-3 right-3 sm:absolute sm:right-0 sm:left-auto sm:top-full sm:mt-2 sm:w-84 sm:max-w-none overflow-hidden rounded-2xl border border-slate-200 shadow-2xl ring-1 ring-black/10 bg-white text-slate-800 z-[999999]"
                         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
                       >
-                        <div className="flex items-center justify-between border-b px-4 py-3 border-white/10 bg-white/5">
+                        <div className="flex items-center justify-between border-b px-4 py-3 border-emerald-100 bg-emerald-50">
                           <div className="flex items-center gap-2">
-                            <p className="text-xs font-black uppercase tracking-wider text-white">Notifications</p>
+                            <p className="text-xs font-black uppercase tracking-wider text-slate-900">Notifications</p>
                             {unreadNotificationCount > 0 && (
-                              <span className="rounded-full px-2 py-0.5 text-[10px] font-black bg-rose-500/30 text-rose-200 border border-rose-400/30">
+                              <span className="rounded-full px-2 py-0.5 text-[10px] font-black bg-emerald-600 text-white shadow-xs">
                                 {unreadNotificationCount} New
                               </span>
                             )}
                           </div>
-                          {unreadNotificationCount > 0 && (
-                            <button
-                              type="button"
-                              onClick={handleMarkAllNotificationsRead}
-                              className="text-[10px] font-bold text-emerald-300 hover:text-emerald-200 hover:underline cursor-pointer"
-                            >
-                              Mark all read
-                            </button>
-                          )}
+                          <div className="flex items-center gap-2.5">
+                            {unreadNotificationCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={handleMarkAllNotificationsRead}
+                                className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer"
+                              >
+                                Mark all read
+                              </button>
+                            )}
+                            {allNotificationsMerged.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={handleDeleteAllResidentNotifications}
+                                className="text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:underline cursor-pointer flex items-center gap-1 transition"
+                                title="Delete all notifications"
+                              >
+                                <Trash2 size={11} />
+                                Delete all
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="max-h-72 divide-y divide-white/10 overflow-y-auto">
+                        <div className="max-h-80 divide-y divide-slate-100 overflow-y-auto bg-white">
                           {allNotificationsMerged.length === 0 ? (
-                            <div className="p-6 text-center text-xs text-white/60 font-bold flex flex-col items-center gap-1.5">
-                              <CheckCircle2 size={18} className="text-emerald-400" />
+                            <div className="p-6 text-center text-xs text-slate-400 font-bold flex flex-col items-center gap-1.5">
+                              <CheckCircle2 size={18} className="text-emerald-500" />
                               <span>No notifications right now.</span>
                             </div>
                           ) : (
@@ -4769,31 +5420,43 @@ const UserDashboard = () => {
                                     }
                                   }
                                 }}
-                                className={`group w-full flex items-start gap-3 p-3.5 text-left transition-colors hover:bg-white/10 cursor-pointer ${
-                                  !n.is_read ? "bg-emerald-950/40" : "bg-transparent opacity-80 hover:opacity-100"
+                                className={`group w-full flex items-start gap-3 p-3.5 text-left transition-colors cursor-pointer border-l-4 ${
+                                  !n.is_read
+                                    ? "bg-emerald-50/70 hover:bg-emerald-50 border-l-emerald-600"
+                                    : "bg-white hover:bg-slate-50 border-l-transparent"
                                 }`}
                               >
-                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
+                                <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border ${
+                                  !n.is_read
+                                    ? "bg-emerald-600 text-white border-emerald-700 shadow-xs"
+                                    : "bg-slate-100 text-slate-600 border-slate-200"
+                                }`}>
                                   {n.isLivelihood ? <Briefcase size={14} /> : n.isAnnouncement ? <Megaphone size={14} /> : <FileText size={14} />}
                                 </span>
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-start justify-between gap-1.5">
-                                    <p className="truncate text-xs font-black text-white">{n.title}</p>
-                                    <div className="flex items-center gap-1 shrink-0">
+                                    <p className={`truncate text-xs ${!n.is_read ? "font-black text-slate-950" : "font-bold text-slate-800"}`}>
+                                      {n.title}
+                                    </p>
+                                    <div className="flex items-center gap-1.5 shrink-0">
                                       {!n.is_read && (
-                                        <span className="h-2 w-2 rounded-full bg-rose-500" />
+                                        <span className="h-2 w-2 rounded-full bg-emerald-600 ring-2 ring-emerald-200" />
                                       )}
                                       <button
                                         type="button"
                                         onClick={(e) => handleDeleteResidentNotification(e, n)}
-                                        className="rounded p-1 text-white/40 opacity-0 group-hover:opacity-100 hover:bg-rose-500/20 hover:text-rose-300 transition"
+                                        className="rounded p-1 text-slate-400 opacity-60 sm:opacity-0 sm:group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600 transition"
                                         title="Delete notification"
                                       >
-                                        <Trash2 size={12} />
+                                        <Trash2 size={13} />
                                       </button>
                                     </div>
                                   </div>
-                                  <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed font-medium text-white/70">{n.message}</p>
+                                  <p className={`mt-0.5 line-clamp-2 text-xs leading-relaxed ${
+                                    !n.is_read ? "font-semibold text-slate-800" : "font-normal text-slate-600"
+                                  }`}>
+                                    {n.message}
+                                  </p>
                                 </div>
                               </div>
                             ))
@@ -4810,12 +5473,12 @@ const UserDashboard = () => {
                 <button
                   type="button"
                   onClick={() => { setShowNotificationMenu(false); setShowAccountMenu(!showAccountMenu); }}
-                  className="relative flex h-8 w-8 sm:h-11 sm:w-11 items-center justify-center overflow-hidden rounded-full border-2 border-emerald-300 bg-slate-100 shadow-xl ring-2 ring-white/30 transition transform hover:scale-105 active:scale-95 cursor-pointer"
+                  className="relative flex h-9 w-9 sm:h-11 sm:w-11 items-center justify-center overflow-hidden rounded-full border-2 border-emerald-400 bg-emerald-50 shadow-md ring-2 ring-emerald-200/50 transition transform hover:scale-105 active:scale-95 cursor-pointer"
                 >
                   {resident?.profile_photo_url ? (
                     <img src={resident.profile_photo_url} alt="" className="h-full w-full object-cover" />
                   ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xs font-black text-white bg-[#064E3B]">
+                    <div className="flex h-full w-full items-center justify-center text-xs font-black text-white bg-emerald-700">
                       {displayName[0]?.toUpperCase() || "R"}
                     </div>
                   )}
@@ -4826,21 +5489,25 @@ const UserDashboard = () => {
                 <AnimatePresence>
                   {showAccountMenu && (
                     <>
-                      <div className="fixed inset-0 z-[99990]" onClick={() => setShowAccountMenu(false)} />
+                      <div 
+                        className="fixed inset-0 z-[99990] bg-slate-950/40 backdrop-blur-[2px] sm:bg-transparent sm:backdrop-blur-none" 
+                        onClick={() => setShowAccountMenu(false)} 
+                      />
                       <motion.div
-                        className="fixed top-16 left-3 right-3 sm:absolute sm:right-0 sm:left-auto sm:top-full sm:mt-2 sm:w-60 sm:max-w-none rounded-2xl border border-white/20 p-2 shadow-2xl bg-[#02221A]/95 backdrop-blur-xl text-white z-[999999]"
+                        style={{ backgroundColor: '#ffffff' }}
+                        className="fixed top-16 left-3 right-3 sm:absolute sm:right-0 sm:left-auto sm:top-full sm:mt-2 sm:w-60 sm:max-w-none rounded-2xl border border-slate-200 p-2 shadow-2xl ring-1 ring-black/10 bg-white text-slate-800 z-[999999]"
                         initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }}
                       >
-                        <div className="px-3 py-3 mb-2 text-center rounded-xl border border-white/10 bg-white/10">
-                          <div className="mx-auto h-11 w-11 overflow-hidden rounded-full border-2 border-emerald-400 mb-1.5 shadow-xs flex items-center justify-center text-xs font-black text-white bg-[#064E3B]">
+                        <div className="px-3 py-3 mb-2 text-center rounded-xl border border-emerald-100 bg-emerald-50/90">
+                          <div className="mx-auto h-11 w-11 overflow-hidden rounded-full border-2 border-emerald-400 mb-1.5 shadow-xs flex items-center justify-center text-xs font-black text-white bg-emerald-700">
                             {resident?.profile_photo_url ? (
                               <img src={resident.profile_photo_url} alt="" className="h-full w-full object-cover" />
                             ) : (
                               displayName[0]?.toUpperCase() || "R"
                             )}
                           </div>
-                          <p className="truncate text-xs font-black text-white">{displayName}</p>
-                          <p className="truncate text-[11px] text-emerald-200 font-bold mt-0.5">{residentUsername}</p>
+                          <p className="truncate text-xs font-black text-slate-900">{displayName}</p>
+                          <p className="truncate text-[11px] text-emerald-700 font-bold mt-0.5">{residentUsername}</p>
                         </div>
 
                         {[
@@ -4852,20 +5519,20 @@ const UserDashboard = () => {
                             key={idx}
                             type="button"
                             onClick={() => { setShowAccountMenu(false); openModule(item.key, item.sub); }}
-                            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-bold transition text-white hover:bg-emerald-600/40 active:scale-98 cursor-pointer"
+                            className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-bold transition text-slate-700 hover:bg-emerald-50/80 hover:text-emerald-900 active:scale-98 cursor-pointer"
                           >
-                            <item.icon size={15} className="text-emerald-300 shrink-0" />
+                            <item.icon size={15} className="text-emerald-600 shrink-0" />
                             <span className="font-bold text-xs">{item.label}</span>
                           </button>
                         ))}
 
-                        <div className="my-1 border-t border-white/10" />
+                        <div className="my-1 border-t border-slate-100" />
                         <button
                           type="button"
                           onClick={() => { setShowAccountMenu(false); handleLogout(); }}
-                          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-bold transition text-rose-300 hover:bg-rose-900/40 active:scale-98 cursor-pointer"
+                          className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-xs font-bold transition text-rose-600 hover:bg-rose-50 active:scale-98 cursor-pointer"
                         >
-                          <LogOut size={15} className="text-rose-400 shrink-0" />
+                          <LogOut size={15} className="text-rose-500 shrink-0" />
                           <span className="font-bold text-xs">Log Out</span>
                         </button>
                       </motion.div>
@@ -4898,14 +5565,17 @@ const UserDashboard = () => {
           {activeNav === "home" && (
             <div className="space-y-4 sm:space-y-6 animate-fadeIn">
               
-              {/* WELCOME HERO BANNER - TRANSLUCENT EMERALD GLASS */}
-              <div className="relative rounded-[2.2rem] overflow-hidden border-2 border-white/20 shadow-2xl bg-emerald-950/35 backdrop-blur-2xl text-white p-4 sm:p-5 space-y-3">
-                <div className="relative z-10 space-y-2.5">
-                  <h2 className="text-base sm:text-xl font-black tracking-tight text-white leading-tight drop-shadow-sm">
-                    Welcome to the KaagapA.I Resident Portal
-                  </h2>
+              {/* WELCOME HERO BANNER - CIVIC EMERALD GLASS */}
+              <div className="relative rounded-3xl overflow-hidden border border-emerald-100/90 shadow-xl shadow-emerald-950/5 bg-white/95 backdrop-blur-2xl text-slate-800 p-4 sm:p-6 space-y-4">
+                <div className="absolute top-0 right-0 w-80 h-40 bg-emerald-100/30 pointer-events-none rounded-bl-full blur-2xl" />
+                <div className="relative z-10 space-y-3">
+                  <div>
+                    <h2 className="text-base sm:text-2xl font-black tracking-tight text-slate-900 leading-tight">
+                      Welcome to the <span className="text-emerald-700 font-black">KaagapA.I Resident Portal</span>
+                    </h2>
+                  </div>
                   
-                  {/* 4 QUICK ACTION BUTTONS: COMPACT ICON-BASED RIBBON ON MOBILE, FULL CARDS ON DESKTOP */}
+                  {/* 4 QUICK ACTION BUTTONS: GREEN GLASS CARDS */}
                   {/* Mobile View: Compact 1-Row Themed Icon Ribbon */}
                   <div className="grid grid-cols-4 gap-2 sm:hidden pt-1">
                     {[
@@ -4913,32 +5583,36 @@ const UserDashboard = () => {
                         title: "Request Document", 
                         label: "Request", 
                         icon: FileText, 
-                        bg: "bg-emerald-900/30 border-emerald-400/30 hover:bg-emerald-800/40", 
-                        iconBg: "bg-emerald-500/25 text-emerald-200 border-emerald-400/30",
+                        bg: "bg-emerald-50/80 border-emerald-200 hover:bg-emerald-100", 
+                        iconBg: "bg-emerald-600 text-white shadow-xs",
+                        labelColor: "text-emerald-900",
                         action: () => setDocumentModalOpen(true) 
                       },
                       { 
                         title: "Livelihoods & Jobs", 
                         label: "Jobs", 
                         icon: Briefcase, 
-                        bg: "bg-teal-900/30 border-teal-400/30 hover:bg-teal-800/40", 
-                        iconBg: "bg-teal-500/25 text-teal-200 border-teal-400/30",
+                        bg: "bg-emerald-50/80 border-emerald-200 hover:bg-emerald-100", 
+                        iconBg: "bg-emerald-600 text-white shadow-xs",
+                        labelColor: "text-emerald-900",
                         action: () => openModule("livelihood") 
                       },
                       { 
                         title: "Announcements", 
                         label: "Advisories", 
                         icon: Megaphone, 
-                        bg: "bg-blue-900/30 border-blue-400/30 hover:bg-blue-800/40", 
-                        iconBg: "bg-blue-500/25 text-blue-200 border-blue-400/30",
+                        bg: "bg-emerald-50/80 border-emerald-200 hover:bg-emerald-100", 
+                        iconBg: "bg-emerald-600 text-white shadow-xs",
+                        labelColor: "text-emerald-900",
                         action: () => openModule("announcements") 
                       },
                       { 
                         title: "Document Logs", 
                         label: "Logs", 
                         icon: FileCheck2, 
-                        bg: "bg-amber-900/30 border-amber-400/30 hover:bg-amber-800/40", 
-                        iconBg: "bg-amber-500/25 text-amber-200 border-amber-400/30",
+                        bg: "bg-emerald-50/80 border-emerald-200 hover:bg-emerald-100", 
+                        iconBg: "bg-emerald-600 text-white shadow-xs",
+                        labelColor: "text-emerald-900",
                         action: () => openModule("my_documents") 
                       },
                     ].map((card, idx) => {
@@ -4948,13 +5622,13 @@ const UserDashboard = () => {
                           key={idx}
                           type="button"
                           onClick={card.action}
-                          className={`flex flex-col items-center justify-center p-2 rounded-2xl border ${card.bg} backdrop-blur-md shadow-md active:scale-95 transition-all text-center h-14 cursor-pointer group`}
+                          className={`flex flex-col items-center justify-center p-2 rounded-2xl border ${card.bg} backdrop-blur-md shadow-xs active:scale-95 transition-all text-center h-14 cursor-pointer group`}
                           title={card.title}
                         >
-                          <div className={`h-7 w-7 rounded-xl border flex items-center justify-center ${card.iconBg} group-hover:scale-110 transition`}>
-                            <Icon size={16} />
+                          <div className={`h-7 w-7 rounded-xl flex items-center justify-center ${card.iconBg} group-hover:scale-110 transition`}>
+                            <Icon size={15} />
                           </div>
-                          <span className="text-[10px] font-black text-white leading-none mt-1 truncate w-full">
+                          <span className={`text-[10px] font-black ${card.labelColor} leading-none mt-1 truncate w-full`}>
                             {card.label}
                           </span>
                         </button>
@@ -4969,13 +5643,13 @@ const UserDashboard = () => {
                         title: "Request Document", 
                         icon: FileText, 
                         badge: "INSTANT", 
-                        bg: "bg-emerald-900/30 backdrop-blur-xl border-emerald-400/30 hover:border-emerald-400/60 hover:bg-emerald-800/40 hover:shadow-emerald-900/20", 
-                        badgeBg: "bg-emerald-500/30 text-emerald-200 border-emerald-400/40", 
-                        iconBg: "bg-emerald-500/25 border-emerald-400/40 text-emerald-200", 
-                        textColor: "text-white font-black drop-shadow-xs",
+                        bg: "bg-emerald-50/70 hover:bg-emerald-100/70 border-emerald-200 hover:border-emerald-400", 
+                        badgeBg: "bg-emerald-100 text-emerald-800 border-emerald-300", 
+                        iconBg: "bg-emerald-600 text-white shadow-xs", 
+                        textColor: "text-slate-900 font-black",
                         action: () => setDocumentModalOpen(true),
                         watermark: (
-                          <div className="absolute right-1 -bottom-2 pointer-events-none opacity-20 text-emerald-300">
+                          <div className="absolute right-1 -bottom-2 pointer-events-none opacity-15 text-emerald-600">
                             <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                               <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
                               <polyline points="14 2 14 8 20 8" />
@@ -4988,13 +5662,13 @@ const UserDashboard = () => {
                         title: "Livelihoods & Jobs", 
                         icon: Briefcase, 
                         badge: "ACTIVE", 
-                        bg: "bg-teal-900/30 backdrop-blur-xl border-teal-400/30 hover:border-teal-400/60 hover:bg-teal-800/40 hover:shadow-teal-900/20", 
-                        badgeBg: "bg-teal-500/30 text-teal-200 border-teal-400/40", 
-                        iconBg: "bg-teal-500/25 border-teal-400/40 text-teal-200", 
-                        textColor: "text-white font-black drop-shadow-xs",
+                        bg: "bg-emerald-50/70 hover:bg-emerald-100/70 border-emerald-200 hover:border-emerald-400", 
+                        badgeBg: "bg-emerald-100 text-emerald-800 border-emerald-300", 
+                        iconBg: "bg-emerald-600 text-white shadow-xs", 
+                        textColor: "text-slate-900 font-black",
                         action: () => openModule("livelihood"),
                         watermark: (
-                          <div className="absolute right-1 -bottom-2 pointer-events-none opacity-20 text-teal-300">
+                          <div className="absolute right-1 -bottom-2 pointer-events-none opacity-15 text-emerald-600">
                             <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                               <rect width="20" height="14" x="2" y="7" rx="2" ry="2" />
                               <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
@@ -5006,13 +5680,13 @@ const UserDashboard = () => {
                         title: "Announcements", 
                         icon: Megaphone, 
                         badge: "OFFICIAL", 
-                        bg: "bg-blue-900/30 backdrop-blur-xl border-blue-400/30 hover:border-blue-400/60 hover:bg-blue-800/40 hover:shadow-blue-900/20", 
-                        badgeBg: "bg-blue-500/30 text-blue-200 border-blue-400/40", 
-                        iconBg: "bg-blue-500/25 border-blue-400/40 text-blue-200", 
-                        textColor: "text-white font-black drop-shadow-xs",
+                        bg: "bg-emerald-50/70 hover:bg-emerald-100/70 border-emerald-200 hover:border-emerald-400", 
+                        badgeBg: "bg-emerald-100 text-emerald-800 border-emerald-300", 
+                        iconBg: "bg-emerald-600 text-white shadow-xs", 
+                        textColor: "text-slate-900 font-black",
                         action: () => openModule("announcements"),
                         watermark: (
-                          <div className="absolute right-1 -bottom-2 pointer-events-none opacity-20 text-blue-300">
+                          <div className="absolute right-1 -bottom-2 pointer-events-none opacity-15 text-emerald-600">
                             <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                               <path d="m3 11 18-5v12L3 14v-3z" />
                               <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
@@ -5023,14 +5697,14 @@ const UserDashboard = () => {
                       { 
                         title: "Document Logs", 
                         icon: FileCheck2, 
-                        badge: "HISTORY", 
-                        bg: "bg-amber-900/30 backdrop-blur-xl border-amber-400/30 hover:border-amber-400/60 hover:bg-amber-800/40 hover:shadow-amber-900/20", 
-                        badgeBg: "bg-amber-500/30 text-amber-200 border-amber-400/40", 
-                        iconBg: "bg-amber-500/25 border-amber-400/40 text-amber-200", 
-                        textColor: "text-white font-black drop-shadow-xs",
+                        badge: "TRACK", 
+                        bg: "bg-emerald-50/70 hover:bg-emerald-100/70 border-emerald-200 hover:border-emerald-400", 
+                        badgeBg: "bg-emerald-100 text-emerald-800 border-emerald-300", 
+                        iconBg: "bg-emerald-600 text-white shadow-xs", 
+                        textColor: "text-slate-900 font-black",
                         action: () => openModule("my_documents"),
                         watermark: (
-                          <div className="absolute right-1 -bottom-2 pointer-events-none opacity-20 text-amber-300">
+                          <div className="absolute right-1 -bottom-2 pointer-events-none opacity-15 text-emerald-600">
                             <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                               <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
                               <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
@@ -5048,14 +5722,14 @@ const UserDashboard = () => {
                           key={idx}
                           type="button"
                           onClick={card.action}
-                          className={`relative overflow-hidden p-3.5 rounded-2xl border ${card.bg} shadow-md hover:shadow-xl hover:scale-[1.02] transition-all duration-200 cursor-pointer flex flex-col justify-between items-start text-left group min-h-[64px]`}
+                          className={`relative overflow-hidden p-3.5 rounded-2xl border ${card.bg} backdrop-blur-md shadow-xs hover:shadow-md hover:scale-[1.02] transition-all duration-200 cursor-pointer flex flex-col justify-between items-start text-left group min-h-[64px]`}
                         >
                           {card.watermark}
                           <div className="relative z-10 flex items-center justify-between w-full mb-1.5">
-                            <div className={`h-7 w-7 rounded-xl border flex items-center justify-center shrink-0 group-hover:scale-110 transition ${card.iconBg}`}>
+                            <div className={`h-7 w-7 rounded-xl flex items-center justify-center shrink-0 group-hover:scale-110 transition ${card.iconBg}`}>
                               <Icon size={14} />
                             </div>
-                            <span className={`text-[9.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-xs ${card.badgeBg}`}>
+                            <span className={`text-[9.5px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border shadow-2xs ${card.badgeBg}`}>
                               {card.badge}
                             </span>
                           </div>
@@ -5072,16 +5746,15 @@ const UserDashboard = () => {
                 
                 {/* LEFT SIDE: ANNOUNCEMENTS & UPCOMING EVENTS */}
                 <div className="space-y-5 sm:space-y-6">
-                  {/* 1. BARANGAY ANNOUNCEMENTS - TRANSLUCENT EMERALD GLASS */}
+                  {/* 1. BARANGAY ANNOUNCEMENTS - EMERALD GREEN GLASS HEADER */}
                   {(() => {
                     const annTitle = featuredAnnouncement?.title || "No Active Announcements";
                     const annBody = featuredAnnouncement?.body || "There are currently no active barangay advisories or emergency announcements.";
                     const annCat = featuredAnnouncement?.category || "HEALTH";
                     const annTheme = getAnnouncementVisualTheme(annTitle, annBody, annCat);
                     return (
-                      <div className="bg-emerald-950/35 backdrop-blur-2xl border-2 border-white/20 rounded-[2.2rem] p-4 sm:p-5 shadow-2xl hover:shadow-emerald-900/40 transition-all duration-300 space-y-3 text-white">
-                        <div className={`bg-gradient-to-r ${annTheme.headerBg} px-3.5 py-2.5 rounded-2xl flex justify-between items-center shadow-md relative overflow-hidden`}>
-                          <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-transparent pointer-events-none" />
+                      <div className="bg-white/95 backdrop-blur-2xl border border-emerald-100/90 rounded-3xl p-4 sm:p-5 shadow-lg shadow-emerald-950/5 hover:shadow-emerald-500/10 transition-all duration-300 space-y-3 text-slate-800">
+                        <div className="bg-emerald-800/90 backdrop-blur-xl border border-emerald-500/40 text-white px-4 py-2.5 rounded-2xl flex justify-between items-center shadow-md relative overflow-hidden">
                           <div className="flex items-center gap-2 relative z-10">
                             <span className="text-base sm:text-lg animate-bounce">{annTheme.icon || "📢"}</span>
                             <h4 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
@@ -5091,14 +5764,14 @@ const UserDashboard = () => {
                           <button
                             type="button"
                             onClick={() => openModule("announcements")}
-                            className="text-xs font-bold text-white/90 hover:text-white hover:underline flex items-center gap-0.5 relative z-10 cursor-pointer"
+                            className="text-xs font-bold text-emerald-100 hover:text-white hover:underline flex items-center gap-0.5 relative z-10 cursor-pointer"
                           >
                             <span>View All</span>
                             <ChevronRight size={14} />
                           </button>
                         </div>
 
-                        {/* Space-Saving Item with Automatic Dynamic Category Background and SVG Watermark */}
+                        {/* Space-Saving Item with Dynamic Category Background */}
                         <div 
                           onClick={() => featuredAnnouncement && setSelectedAnnouncementDetail(featuredAnnouncement)}
                           className={`relative overflow-hidden z-10 p-3.5 rounded-2xl border shadow-xs transition-all duration-300 ${annTheme.cardBg} cursor-pointer hover:shadow-md hover:scale-[1.01] active:scale-[0.99]`}
@@ -5107,10 +5780,10 @@ const UserDashboard = () => {
                           {annTheme.patternSvg}
                           <div className="relative z-10 space-y-1.5">
                             <div className="flex items-center justify-between">
-                              <span className={`text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border shadow-xs ${annTheme.badgeBg}`}>
+                              <span className={`text-[9px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border shadow-2xs ${annTheme.badgeBg}`}>
                                 {annCat}
                               </span>
-                              <span className="text-[10px] text-emerald-200/80 font-bold">
+                              <span className="text-[10px] text-emerald-700 font-bold">
                                 {featuredAnnouncement?.publish_date ? new Date(featuredAnnouncement.publish_date).toLocaleDateString() : "8/13/2026"}
                               </span>
                             </div>
@@ -5121,7 +5794,7 @@ const UserDashboard = () => {
                             <p className={`text-xs font-medium leading-relaxed hidden sm:line-clamp-2 ${annTheme.bodyColor}`}>
                               {annBody}
                             </p>
-                            <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-300 hover:text-white hover:underline pt-0.5">
+                            <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-700 hover:underline pt-0.5">
                               <span>Read Full Details</span>
                               <ChevronRight size={12} />
                             </span>
@@ -5131,7 +5804,7 @@ const UserDashboard = () => {
                     );
                   })()}
 
-                  {/* 2. UPCOMING EVENTS & OPPORTUNITIES - BLUE HEADER */}
+                  {/* 2. UPCOMING EVENTS & OPPORTUNITIES - EMERALD GREEN GLASS HEADER */}
                   {(() => {
                     const topOpportunity = opportunities[0];
                     const eventTitle = topOpportunity?.title || "TESDA Computer Literacy Training";
@@ -5140,9 +5813,8 @@ const UserDashboard = () => {
                     const monthStr = eventDate.toLocaleDateString(undefined, { month: "short" }).toUpperCase();
                     const dayStr = eventDate.getDate();
                     return (
-                      <div className="bg-emerald-950/35 backdrop-blur-2xl border-2 border-white/20 rounded-[2.2rem] p-4 sm:p-5 shadow-2xl hover:shadow-blue-900/30 transition-all duration-300 space-y-3 text-white">
-                        <div className="bg-gradient-to-r from-[#0F366C] via-[#1D4ED8] to-[#1E40AF] text-white px-3.5 py-2.5 rounded-2xl flex justify-between items-center shadow-md relative overflow-hidden border border-blue-400/30">
-                          <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-transparent pointer-events-none" />
+                      <div className="bg-white/95 backdrop-blur-2xl border border-emerald-100/90 rounded-3xl p-4 sm:p-5 shadow-lg shadow-emerald-950/5 hover:shadow-emerald-500/10 transition-all duration-300 space-y-3 text-slate-800">
+                        <div className="bg-emerald-800/90 backdrop-blur-xl border border-emerald-500/40 text-white px-4 py-2.5 rounded-2xl flex justify-between items-center shadow-md relative overflow-hidden">
                           <div className="flex items-center gap-2 relative z-10">
                             <span className="text-base sm:text-lg animate-pulse">💻</span>
                             <h4 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
@@ -5152,7 +5824,7 @@ const UserDashboard = () => {
                           <button
                             type="button"
                             onClick={() => openModule("livelihood")}
-                            className="text-xs font-bold text-blue-200 hover:text-white hover:underline flex items-center gap-0.5 relative z-10 cursor-pointer"
+                            className="text-xs font-bold text-emerald-100 hover:text-white hover:underline flex items-center gap-0.5 relative z-10 cursor-pointer"
                           >
                             <span>View All</span>
                             <ChevronRight size={14} />
@@ -5168,22 +5840,22 @@ const UserDashboard = () => {
                                 openModule("livelihood");
                               }
                             }}
-                            className="flex items-center gap-3 p-3.5 rounded-2xl bg-blue-950/30 hover:bg-blue-900/40 backdrop-blur-xl border border-blue-400/30 hover:border-blue-400/60 shadow-md transition cursor-pointer hover:scale-[1.01] active:scale-[0.99]"
+                            className="flex items-center gap-3 p-3.5 rounded-2xl bg-emerald-50/70 hover:bg-emerald-100/70 backdrop-blur-xl border border-emerald-200/80 shadow-xs transition cursor-pointer hover:scale-[1.01] active:scale-[0.99]"
                             title="Click to view full event and opportunity details"
                           >
-                            <div className="rounded-xl px-3 py-1.5 text-center shrink-0 shadow-md bg-gradient-to-br from-[#1E40AF] to-[#2563EB] text-white border border-blue-400/30">
-                              <p className="text-[9.5px] font-black uppercase leading-none text-blue-200 tracking-wider">{monthStr}</p>
+                            <div className="rounded-xl px-3 py-1.5 text-center shrink-0 shadow-sm bg-emerald-700 text-white border border-emerald-500/30">
+                              <p className="text-[9.5px] font-black uppercase leading-none text-emerald-100 tracking-wider">{monthStr}</p>
                               <p className="text-base font-black leading-none mt-0.5 text-white">{dayStr}</p>
                             </div>
                             <div className="min-w-0 flex-1 space-y-0.5">
-                              <h5 className="text-xs sm:text-sm font-black leading-tight truncate text-white">
+                              <h5 className="text-xs sm:text-sm font-black leading-tight truncate text-slate-900">
                                 {eventTitle}
                               </h5>
-                              <div className="flex items-center gap-1.5 text-[11px] font-bold text-blue-200">
-                                <Clock size={13} className="text-blue-400 shrink-0" />
+                              <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-800">
+                                <Clock size={13} className="text-emerald-600 shrink-0" />
                                 <span className="truncate">8:00 AM - 5:00 PM • {eventLoc}</span>
                               </div>
-                              <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-blue-300 hover:text-white hover:underline pt-0.5">
+                              <span className="inline-flex items-center gap-1 text-[10.5px] font-bold text-emerald-700 hover:underline pt-0.5">
                                 <span>View Full Program Details</span>
                                 <ChevronRight size={12} />
                               </span>
@@ -5197,54 +5869,68 @@ const UserDashboard = () => {
 
                 {/* RIGHT SIDE: RECENT DOCUMENT REQUESTS, NEED HELP, & WORKING HOURS */}
                 <div className="space-y-5 sm:space-y-6">
-                  {/* 1. RECENT DOCUMENT REQUESTS (Moved here in place of Mission & Vision) */}
-                  <div className="bg-emerald-950/35 backdrop-blur-2xl border-2 border-white/20 rounded-[2.2rem] p-4 sm:p-5 shadow-2xl hover:shadow-emerald-900/40 transition-all duration-300 space-y-3 text-white">
-                    <div className="bg-gradient-to-r from-[#044E35] via-[#057A55] to-[#046C4E] text-white px-3.5 py-2.5 rounded-2xl flex justify-between items-center shadow-md relative overflow-hidden border border-emerald-400/30">
-                      <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-white/5 to-transparent pointer-events-none" />
+                  {/* 1. RECENT DOCUMENT REQUESTS - EMERALD GREEN GLASS */}
+                  <div className="bg-white/95 backdrop-blur-2xl border border-emerald-100/90 rounded-3xl p-4 sm:p-5 shadow-lg shadow-emerald-950/5 hover:shadow-emerald-500/10 transition-all duration-300 space-y-3 text-slate-800">
+                    <div className="bg-emerald-800/90 backdrop-blur-xl border border-emerald-500/40 text-white px-4 py-2.5 rounded-2xl flex justify-between items-center shadow-md relative overflow-hidden">
                       <div className="flex items-center gap-2 relative z-10">
                         <FileText size={16} className="text-emerald-200" />
                         <h4 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
-                          RECENT DOCUMENT REQUESTS
+                          DOCUMENT REQUESTS
                         </h4>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => openModule("my_documents")}
-                        className="text-xs font-bold text-emerald-200 hover:text-white hover:underline flex items-center gap-0.5 relative z-10 cursor-pointer"
-                      >
-                        <span>View All</span>
-                        <ChevronRight size={14} />
-                      </button>
+                      <div className="flex items-center gap-2 relative z-10">
+                        <button
+                          type="button"
+                          onClick={() => openModule("my_documents")}
+                          className="text-xs font-bold text-emerald-100 hover:text-white hover:underline flex items-center gap-0.5 cursor-pointer"
+                        >
+                          <span>View All</span>
+                          <ChevronRight size={14} />
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="overflow-x-auto rounded-2xl border border-white/15 bg-emerald-950/30 backdrop-blur-xl">
-                      <table className="w-full text-left text-[11px] min-w-[320px]">
+                    <div className="overflow-x-auto rounded-2xl border border-emerald-100/80 bg-white/70 backdrop-blur-xl">
+                      <table className="w-full text-left text-[11px] min-w-[340px]">
                         <thead>
-                          <tr className="border-b text-[9px] font-black uppercase tracking-wider border-white/15 bg-white/10 text-emerald-200">
-                            <th className="px-2.5 py-2">Document Type</th>
-                            <th className="px-2.5 py-2">Ref No.</th>
-                            <th className="px-2.5 py-2">Date</th>
+                          <tr className="border-b text-[9px] font-black uppercase tracking-wider border-emerald-100 bg-emerald-50/80 text-emerald-950">
+                            <th className="px-2.5 py-2">Document</th>
+                            <th className="px-2.5 py-2">Purpose</th>
                             <th className="px-2.5 py-2">Status</th>
                             <th className="px-2.5 py-2 text-right">Action</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y font-medium divide-white/10 text-emerald-100">
-                          {requests && requests.length > 0 ? (
-                            requests.slice(0, 3).map((req, idx) => {
+                        <tbody className="divide-y font-medium divide-slate-100 text-slate-700 bg-white/60">
+                          {fifoOrderedRequests && fifoOrderedRequests.length > 0 ? (
+                            fifoOrderedRequests.slice(0, 4).map((req, idx) => {
                               const expired = isRequestExpired(req);
-                              const displayStatus = expired ? "Expired" : (req.status || "Pending");
+                              const displayStatus = formatResidentDocumentStatus(req.status, expired);
+                              const isEligibleActive = !expired && (String(req.status || "").toLowerCase() === "pending" || String(req.status || "").toLowerCase() === "processing");
+                              const purposeText = req.purpose || parsePurpose(req.document_type) || "Official purpose";
                               return (
-                                <tr key={req.id || idx} className="hover:bg-white/10 transition">
-                                  <td className="px-2.5 py-2 font-bold text-white truncate max-w-[100px]">{req.document_type}</td>
-                                  <td className="px-2.5 py-2 font-mono text-[10px] text-emerald-200/75">{req.tracking_number || req.ref || `REQ-${String(req.id || idx + 1).slice(0, 8)}`}</td>
-                                  <td className="px-2.5 py-2 text-emerald-200/75 text-[10px]">{req.created_at ? new Date(req.created_at).toLocaleDateString() : (req.date || "-")}</td>
+                                <tr key={req.id || idx} className="hover:bg-emerald-50/40 transition">
+                                  <td className="px-2.5 py-2 font-bold text-slate-900">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="truncate max-w-[120px]" title={req.document_type}>
+                                        {req.document_type}
+                                      </span>
+                                      {isEligibleActive && (
+                                        <span className="inline-flex shrink-0 items-center font-black text-[9px] px-1.5 py-0.5 rounded-md bg-emerald-700 text-white shadow-xs" title={`Queue Position #${idx + 1}`}>
+                                          Q-{idx + 1}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-2.5 py-2 text-[10px] text-slate-600 truncate max-w-[100px]" title={purposeText}>
+                                    {purposeText}
+                                  </td>
                                   <td className="px-2.5 py-2">
-                                    <span className={`inline-flex rounded-md px-1.5 py-0.2 text-[8.5px] font-black ${
+                                    <span className={`inline-flex rounded-md px-2 py-0.5 text-[8.5px] font-black ${
                                       expired || String(req.status || "").toLowerCase() === "rejected" || String(req.status || "").toLowerCase() === "cancelled"
-                                        ? "bg-rose-500/25 text-rose-200 border border-rose-400/40"
-                                        : String(req.status || "").toLowerCase() === "completed" || String(req.status || "").toLowerCase() === "ready"
-                                        ? "bg-emerald-500/25 text-emerald-200 border border-emerald-400/40"
-                                        : "bg-amber-500/25 text-amber-200 border border-amber-400/40"
+                                        ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                        : String(displayStatus).toLowerCase().includes("ready") || String(req.status || "").toLowerCase() === "completed" || String(req.status || "").toLowerCase() === "released"
+                                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                        : "bg-amber-50 text-amber-700 border border-amber-200"
                                     }`}>
                                       {displayStatus}
                                     </span>
@@ -5253,7 +5939,7 @@ const UserDashboard = () => {
                                     <button
                                       type="button"
                                       onClick={() => openModule("my_documents")}
-                                      className="text-[10px] font-black text-emerald-300 hover:text-white hover:underline cursor-pointer"
+                                      className="text-[10px] font-black text-emerald-700 hover:underline cursor-pointer"
                                     >
                                       View
                                     </button>
@@ -5263,8 +5949,8 @@ const UserDashboard = () => {
                             })
                           ) : (
                             <tr>
-                              <td colSpan="5" className="px-3 py-6 text-center text-xs text-emerald-200/60 font-semibold">
-                                <FileText size={20} className="mx-auto mb-1.5 text-emerald-400/40" />
+                              <td colSpan="5" className="px-3 py-6 text-center text-xs text-slate-400 font-semibold">
+                                <FileText size={20} className="mx-auto mb-1.5 text-emerald-400/50" />
                                 Walang kasalukuyang document requests.
                               </td>
                             </tr>
@@ -5275,10 +5961,9 @@ const UserDashboard = () => {
                   </div>
 
                   {/* 2. NEED HELP? CARD */}
-                  <div className="bg-emerald-950/35 backdrop-blur-2xl border-2 border-white/20 rounded-[2.2rem] p-4 sm:p-5 shadow-2xl hover:shadow-emerald-900/40 transition-all duration-300 flex items-center justify-between gap-3 text-white">
+                  <div className="bg-white/95 backdrop-blur-2xl border border-emerald-100/90 rounded-3xl p-4 sm:p-5 shadow-lg shadow-emerald-950/5 hover:shadow-emerald-500/10 transition-all duration-300 flex items-center justify-between gap-3 text-slate-800">
                     <div className="space-y-1 w-full">
-                      <div className="bg-gradient-to-r from-[#044E35] via-[#057A55] to-[#046C4E] text-white px-3.5 py-2 rounded-xl flex items-center justify-between gap-2 shadow-md relative overflow-hidden border border-emerald-400/30">
-                        <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-white/5 to-transparent pointer-events-none" />
+                      <div className="bg-emerald-800/90 backdrop-blur-xl border border-emerald-500/40 text-white px-3.5 py-2 rounded-xl flex items-center justify-between gap-2 shadow-md relative overflow-hidden">
                         <h4 className="text-xs sm:text-sm font-black uppercase text-white relative z-10">NEED HELP?</h4>
                         <button
                           type="button"
@@ -5288,39 +5973,39 @@ const UserDashboard = () => {
                           Contact Office
                         </button>
                       </div>
-                      <p className="text-[10.5px] sm:text-xs text-emerald-100/80 font-medium">For inquiries and assistance, you may contact the barangay office.</p>
-                      <div className="pt-1.5 space-y-0.5 text-[10.5px] sm:text-xs font-bold text-emerald-300">
+                      <p className="text-[10.5px] sm:text-xs text-slate-600 font-medium">For inquiries and assistance, you may contact the barangay office.</p>
+                      <div className="pt-1.5 space-y-0.5 text-[10.5px] sm:text-xs font-bold text-emerald-800">
                         {Boolean(systemSettings?.officePhone && systemSettings.officePhone.trim()) && (
                           <p className="flex items-center gap-1.5">
-                            📞 <span className="text-white font-extrabold">{systemSettings.officePhone.trim()}</span>
+                            📞 <span className="text-slate-900 font-extrabold">{systemSettings.officePhone.trim()}</span>
                           </p>
                         )}
                         {Boolean(systemSettings?.officeEmail && systemSettings.officeEmail.trim()) && (
                           <p className="flex items-center gap-1.5 truncate">
-                            ✉ <span className="text-white font-extrabold truncate">{systemSettings.officeEmail.trim()}</span>
+                            ✉ <span className="text-slate-900 font-extrabold truncate">{systemSettings.officeEmail.trim()}</span>
                           </p>
                         )}
                         {!systemSettings?.officePhone?.trim() && !systemSettings?.officeEmail?.trim() && (
-                          <p className="text-[10px] text-emerald-200/70 italic">
+                          <p className="text-[10px] text-slate-400 italic">
                             Official hotline details not provided. Please visit during office hours.
                           </p>
                         )}
                       </div>
                     </div>
-                    <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-2xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center justify-center shrink-0 shadow-xs">
+                    <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center justify-center shrink-0 shadow-2xs">
                       <HelpCircle size={22} />
                     </div>
                   </div>
 
                   {/* 3. BARANGAY OFFICE HOURS */}
-                  <div className="bg-emerald-950/50 backdrop-blur-2xl text-white rounded-2xl p-4 sm:p-5 border-2 border-emerald-400/30 shadow-xl flex items-center justify-between">
+                  <div className="bg-white/95 backdrop-blur-2xl text-slate-800 rounded-3xl p-4 sm:p-5 border border-emerald-100/90 shadow-md flex items-center justify-between">
                     <div className="space-y-1 text-left">
-                      <div className="inline-flex items-center gap-1.5 text-emerald-300 text-xs font-black">
-                        <Clock size={14} />
+                      <div className="inline-flex items-center gap-1.5 text-emerald-800 text-xs font-black">
+                        <Clock size={14} className="text-emerald-600" />
                         <span>Barangay Office Working Hours</span>
                       </div>
-                      <h4 className="text-sm sm:text-base font-black text-white">Monday - Friday: 8:00 AM - 5:00 PM</h4>
-                      <p className="text-xs text-emerald-200/80 font-medium">Barangay Hall, Upper Mingading, Aleosan, Cotabato</p>
+                      <h4 className="text-sm sm:text-base font-black text-slate-900">Monday - Friday: 8:00 AM - 5:00 PM</h4>
+                      <p className="text-xs text-slate-500 font-medium">Barangay Hall, Upper Mingading, Aleosan, Cotabato</p>
                     </div>
                   </div>
                 </div>
@@ -5334,19 +6019,19 @@ const UserDashboard = () => {
           {activeNav === "dashboard" && (
             <div className="space-y-5 sm:space-y-6 animate-fadeIn">
               
-              {/* HIGH-TECH HEADER BANNER */}
-              <div className="relative rounded-2xl overflow-hidden border border-emerald-400/40 shadow-xl bg-gradient-to-r from-[#023322]/80 via-[#044E35]/80 to-[#02221A]/80 backdrop-blur-xl text-white p-4 sm:p-6">
-                <div className="absolute top-0 right-0 w-80 h-80 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none" />
+              {/* EMERALD GREEN GLASS HEADER BANNER */}
+              <div className="relative rounded-3xl overflow-hidden border border-emerald-500/40 shadow-xl bg-emerald-800/90 backdrop-blur-xl text-white p-4 sm:p-6">
+                <div className="absolute top-0 right-0 w-80 h-80 bg-white/10 rounded-full blur-3xl pointer-events-none" />
                 <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                   <div className="space-y-1.5 max-w-xl">
-                    <div className="inline-flex items-center gap-1.5 bg-emerald-500/20 border border-emerald-300/30 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black text-emerald-200 shadow-xs">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <div className="inline-flex items-center gap-1.5 bg-emerald-700/60 border border-emerald-400/30 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black text-emerald-100 shadow-xs">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 animate-pulse" />
                       <span>My Resident Activity Hub</span>
                     </div>
                     <h2 className="text-lg sm:text-2xl font-black tracking-tight text-white drop-shadow-sm">
                       Personal Dashboard & Activity Overview
                     </h2>
-                    <p className="text-xs text-emerald-200/90 font-medium">
+                    <p className="text-xs text-emerald-100/90 font-medium">
                       Real-time tracker of your document requests, livelihood applications, and community engagement.
                     </p>
                   </div>
@@ -5355,7 +6040,7 @@ const UserDashboard = () => {
                     <button
                       type="button"
                       onClick={() => setDocumentModalOpen(true)}
-                      className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black text-xs shadow-md transition active:scale-95 cursor-pointer flex items-center gap-1.5"
+                      className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs shadow-md transition active:scale-95 cursor-pointer flex items-center gap-1.5 border border-emerald-400/40"
                     >
                       <FileText size={14} />
                       <span>Request Document</span>
@@ -5365,7 +6050,7 @@ const UserDashboard = () => {
               </div>
 
               {/* 4 REAL-TIME KPI SUMMARY CARDS (Calculated for logged-in user) */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
                 {[
                   {
                     title: "Total Requests",
@@ -5374,9 +6059,8 @@ const UserDashboard = () => {
                     change: `${userDashboardMetrics.completedRequests} Released`,
                     sub: `${userDashboardMetrics.pendingRequests} in progress`,
                     icon: FileText,
-                    color: "from-emerald-900/60 to-teal-950/60",
-                    border: "border-emerald-400/40",
-                    text: "text-emerald-300",
+                    badgeBg: "bg-emerald-50 text-emerald-800 border-emerald-300",
+                    iconColor: "text-emerald-700 bg-emerald-50 border-emerald-300",
                     onClick: () => setActiveNav("my_documents"),
                   },
                   {
@@ -5386,9 +6070,8 @@ const UserDashboard = () => {
                     change: userDashboardMetrics.pendingRequests > 0 ? "Under Review" : "All Clear",
                     sub: userDashboardMetrics.pendingRequests > 0 ? "Being processed" : "No pending queue",
                     icon: Clock,
-                    color: "from-teal-900/60 to-cyan-950/60",
-                    border: "border-teal-400/40",
-                    text: "text-teal-300",
+                    badgeBg: "bg-blue-50 text-blue-800 border-blue-300",
+                    iconColor: "text-blue-700 bg-blue-50 border-blue-300",
                     onClick: () => setActiveNav("my_documents"),
                   },
                   {
@@ -5398,9 +6081,8 @@ const UserDashboard = () => {
                     change: `${userDashboardMetrics.activeApplications} Active`,
                     sub: "Community programs",
                     icon: Briefcase,
-                    color: "from-blue-900/60 to-indigo-950/60",
-                    border: "border-blue-400/40",
-                    text: "text-blue-300",
+                    badgeBg: "bg-teal-50 text-teal-800 border-teal-300",
+                    iconColor: "text-teal-700 bg-teal-50 border-teal-300",
                     onClick: () => setActiveNav("livelihood"),
                   },
                   {
@@ -5410,9 +6092,8 @@ const UserDashboard = () => {
                     change: resident?.status || "Active",
                     sub: userDashboardMetrics.profileCompleteness === 100 ? "Fully verified & complete" : "Complete your info",
                     icon: UserCheck,
-                    color: "from-amber-900/60 to-yellow-950/60",
-                    border: "border-amber-400/40",
-                    text: "text-amber-300",
+                    badgeBg: "bg-amber-50 text-amber-900 border-amber-300",
+                    iconColor: "text-amber-700 bg-amber-50 border-amber-300",
                     onClick: () => setActiveNav("personal_info"),
                   },
                 ].map((kpi, idx) => {
@@ -5421,28 +6102,27 @@ const UserDashboard = () => {
                     <div
                       key={idx}
                       onClick={kpi.onClick}
-                      className={`relative rounded-xl sm:rounded-2xl overflow-hidden p-3 sm:p-4 border ${kpi.border} bg-gradient-to-br ${kpi.color} backdrop-blur-xl text-white shadow-lg hover:shadow-2xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 cursor-pointer group flex flex-col justify-between`}
+                      className="relative rounded-2xl sm:rounded-3xl overflow-hidden p-4 sm:p-5 border-2 border-emerald-100 hover:border-emerald-400 bg-white shadow-sm hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200 cursor-pointer group flex flex-col justify-between"
                       title={`Click to open ${kpi.fullTitle || kpi.title}`}
                     >
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-[8.5px] sm:text-[10px] font-black uppercase tracking-wider text-slate-300 truncate">
+                      <div className="flex items-center justify-between gap-1.5">
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 truncate">
                           <span className="sm:hidden">{kpi.title}</span>
                           <span className="hidden sm:inline">{kpi.fullTitle}</span>
                         </span>
-                        <div className={`h-6 w-6 sm:h-7 sm:w-7 rounded-lg sm:rounded-xl bg-white/10 border border-white/20 flex items-center justify-center ${kpi.text} shrink-0 shadow-xs group-hover:scale-110 transition-transform duration-200`}>
-                          <Icon size={13} className="sm:hidden" />
-                          <Icon size={15} className="hidden sm:block" />
+                        <div className={`h-8 w-8 rounded-xl border-2 flex items-center justify-center shrink-0 shadow-xs group-hover:scale-110 transition-transform duration-200 ${kpi.iconColor}`}>
+                          <Icon size={16} />
                         </div>
                       </div>
-                      <div className="mt-1.5 flex items-baseline justify-between sm:justify-start gap-1">
-                        <span className="text-lg sm:text-2xl font-black text-white leading-none">
+                      <div className="mt-3 flex items-baseline justify-between sm:justify-start gap-2">
+                        <span className="text-2xl sm:text-3xl font-black text-slate-900 leading-none">
                           {kpi.value}
                         </span>
-                        <span className={`text-[7.5px] sm:text-[10px] font-extrabold ${kpi.text} bg-white/10 px-1.5 py-0.5 rounded border border-white/10 truncate`}>
+                        <span className={`text-xs font-extrabold px-2.5 py-0.5 rounded-full border truncate ${kpi.badgeBg}`}>
                           {kpi.change}
                         </span>
                       </div>
-                      <p className="text-[9px] sm:text-[10px] text-slate-300/80 font-medium mt-1 truncate">{kpi.sub}</p>
+                      <p className="text-xs text-slate-600 font-semibold mt-2 truncate">{kpi.sub}</p>
                     </div>
                   );
                 })}
@@ -5452,74 +6132,77 @@ const UserDashboard = () => {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6">
                 
                 {/* CHART 1: USER'S MONTHLY DOCUMENT REQUEST VOLUME (BAR CHART) - TAKES 2 COLS */}
-                <div className="lg:col-span-2 bg-emerald-950/35 backdrop-blur-2xl border-2 border-white/20 rounded-2xl p-4 sm:p-5 shadow-2xl hover:shadow-emerald-900/40 transition space-y-4 text-white">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="h-7 w-7 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center justify-center">
-                        <BarChart3 size={16} />
+                <div className="lg:col-span-2 bg-white border-2 border-emerald-100 rounded-3xl p-5 sm:p-6 shadow-sm hover:shadow-md transition space-y-4 text-slate-900">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-9 w-9 rounded-xl bg-emerald-50 text-emerald-700 border-2 border-emerald-200 flex items-center justify-center shadow-xs">
+                        <BarChart3 size={18} />
                       </div>
                       <div>
-                        <h4 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
+                        <h4 className="text-sm font-black uppercase tracking-wider text-slate-900">
                           MONTHLY DOCUMENT REQUEST VOLUME
                         </h4>
-                        <p className="text-[10px] text-emerald-200/80 font-bold">Your document requests throughout {userDashboardMetrics.currentYear}</p>
+                        <p className="text-xs text-slate-500 font-medium">Your document requests throughout {userDashboardMetrics.currentYear}</p>
                       </div>
                     </div>
-                    <span className="text-[10px] font-black bg-emerald-500/25 text-emerald-200 px-2 py-0.5 rounded-full border border-emerald-400/30">
+                    <span className="text-xs font-black bg-emerald-50 text-emerald-800 px-3 py-1 rounded-full border border-emerald-300 shadow-2xs">
                       {userDashboardMetrics.totalThisYear} {userDashboardMetrics.totalThisYear === 1 ? "Request" : "Requests"} in {userDashboardMetrics.currentYear}
                     </span>
                   </div>
 
                   {/* SVG ANIMATED BAR CHART (Calculated for user) */}
                   <div className="h-56 w-full pt-2 flex flex-col justify-between">
-                    <div className="h-44 w-full flex items-end justify-between gap-1.5 px-2 pb-4 border-b border-white/10 relative">
+                    <div className="h-44 w-full flex items-end justify-between gap-1.5 px-2 pb-4 border-b border-slate-100 relative">
                       {userDashboardMetrics.monthlyData.map((item, idx) => (
-                        <div key={idx} className="flex-1 flex flex-col items-center gap-1 group relative h-full justify-end">
+                        <div key={idx} className="flex-1 flex flex-col items-center gap-1.5 group relative h-full justify-end">
                           {/* Tooltip */}
-                          <div className="absolute -top-7 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-md pointer-events-none z-20 whitespace-nowrap border border-white/10">
+                          <div className="absolute -top-8 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-xs font-black px-2.5 py-1 rounded-lg shadow-lg pointer-events-none z-20 whitespace-nowrap border border-slate-800">
                             {item.val} {item.val === 1 ? "Request" : "Requests"} in {item.month}
                           </div>
                           {/* Animated Bar */}
                           <div
                             style={{ height: item.height }}
-                            className={`w-full max-w-[20px] rounded-t-md shadow-xs transition duration-300 relative overflow-hidden ${
+                            className={`w-full max-w-[24px] rounded-t-lg shadow-xs transition duration-300 relative overflow-hidden ${
                               item.val > 0
-                                ? "bg-gradient-to-t from-emerald-600 via-emerald-500 to-emerald-300 group-hover:brightness-125 shadow-[0_0_8px_rgba(16,185,129,0.5)]"
-                                : "bg-white/10 group-hover:bg-white/20"
+                                ? "bg-gradient-to-t from-[#047857] via-[#059669] to-[#10B981] group-hover:brightness-110 shadow-sm"
+                                : "bg-slate-100 group-hover:bg-slate-200"
                             }`}
                           >
-                            {item.val > 0 && <div className="absolute top-0 inset-x-0 h-1 bg-emerald-200 opacity-90" />}
+                            {item.val > 0 && <div className="absolute top-0 inset-x-0 h-1.5 bg-emerald-200 opacity-90" />}
                           </div>
-                          <span className={`text-[9px] font-black transition ${item.val > 0 ? "text-emerald-200 font-bold group-hover:text-white" : "text-emerald-300/50"}`}>
+                          <span className={`text-xs transition ${item.val > 0 ? "text-emerald-800 font-black" : "text-slate-500 font-bold"}`}>
                             {item.month}
                           </span>
                         </div>
                       ))}
                     </div>
 
-                    <div className="flex items-center justify-between text-[10px] text-emerald-200/80 font-bold px-2 pt-1">
-                      <span>• Peak Month: {userDashboardMetrics.peakMonth.val > 0 ? `${userDashboardMetrics.peakMonth.month} (${userDashboardMetrics.peakMonth.val} requests)` : "None"}</span>
-                      <span>• Active Months: {userDashboardMetrics.activeMonthsCount} months</span>
-                      <span>• Ready for Pickup: {userDashboardMetrics.completedRequests} docs</span>
+                    <div className="flex flex-wrap items-center justify-between text-xs text-slate-700 font-semibold px-2 pt-2 gap-2">
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+                        Peak: <strong className="text-slate-900 font-black">{userDashboardMetrics.peakMonth.val > 0 ? `${userDashboardMetrics.peakMonth.month} (${userDashboardMetrics.peakMonth.val} docs)` : "None"}</strong>
+                      </span>
+                      <span>Active Months: <strong className="text-slate-900 font-black">{userDashboardMetrics.activeMonthsCount} months</strong></span>
+                      <span>Ready for Pickup: <strong className="text-emerald-700 font-black">{userDashboardMetrics.completedRequests} docs</strong></span>
                     </div>
                   </div>
                 </div>
 
                 {/* CHART 2: USER'S DOCUMENT TYPE DISTRIBUTION (DONUT CHART) - TAKES 1 COL */}
-                <div className="bg-emerald-950/35 backdrop-blur-2xl border-2 border-white/20 rounded-2xl p-4 sm:p-5 shadow-2xl hover:shadow-teal-900/40 transition space-y-4 text-white">
-                  <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="h-7 w-7 rounded-lg bg-teal-500/20 text-teal-300 border border-teal-400/30 flex items-center justify-center">
-                        <PieChartIcon size={16} />
+                <div className="bg-white border-2 border-blue-100 rounded-3xl p-5 sm:p-6 shadow-sm hover:shadow-md transition space-y-4 text-slate-900">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="h-9 w-9 rounded-xl bg-blue-50 text-blue-700 border-2 border-blue-200 flex items-center justify-center shadow-xs">
+                        <PieChartIcon size={18} />
                       </div>
                       <div>
-                        <h4 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
+                        <h4 className="text-sm font-black uppercase tracking-wider text-slate-900">
                           DOCUMENT TYPES
                         </h4>
-                        <p className="text-[10px] text-teal-200/80 font-bold">Your requested certificates</p>
+                        <p className="text-xs text-slate-500 font-medium">Your requested certificates</p>
                       </div>
                     </div>
-                    <span className="text-[10px] font-black bg-teal-500/25 text-teal-200 px-2 py-0.5 rounded-full border border-teal-400/30">
+                    <span className="text-xs font-black bg-blue-50 text-blue-800 px-3 py-1 rounded-full border border-blue-300 shadow-2xs">
                       {userDashboardMetrics.totalRequests} Total
                     </span>
                   </div>
@@ -5530,7 +6213,7 @@ const UserDashboard = () => {
                       <div className="relative h-36 w-36 flex items-center justify-center">
                         <svg className="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
                           <path
-                            className="text-white/15"
+                            className="text-slate-100"
                             strokeWidth="4"
                             stroke="currentColor"
                             fill="none"
@@ -5545,50 +6228,50 @@ const UserDashboard = () => {
                               strokeWidth="4.2"
                               strokeLinecap="round"
                               fill="none"
-                              className="transition-all duration-700 hover:opacity-80 drop-shadow-sm"
+                              className="transition-all duration-700 hover:opacity-80 drop-shadow-xs"
                               d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                             />
                           ))}
                         </svg>
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
-                          <span className="text-lg font-black text-white leading-none">
+                          <span className="text-2xl font-black text-slate-900 leading-none">
                             {userDashboardMetrics.totalRequests}
                           </span>
-                          <span className="text-[8.5px] font-bold text-emerald-300 uppercase tracking-wider mt-0.5">
+                          <span className="text-xs font-black text-slate-500 uppercase tracking-wider mt-0.5">
                             {userDashboardMetrics.totalRequests === 1 ? "Request" : "Requests"}
                           </span>
                         </div>
                       </div>
 
                       {/* LEGEND CHIPS */}
-                      <div className="grid grid-cols-2 gap-1.5 w-full pt-1 max-h-32 overflow-y-auto custom-scrollbar">
+                      <div className="grid grid-cols-2 gap-2 w-full pt-1 max-h-32 overflow-y-auto custom-scrollbar">
                         {userDashboardMetrics.docTypeDistribution.map((lg, i) => (
-                          <div key={i} className="flex items-center gap-1.5 bg-white/10 p-1.5 rounded-lg border border-white/15">
+                          <div key={i} className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100 p-2 rounded-xl border border-slate-200">
                             <span
                               className="h-2.5 w-2.5 rounded-full shrink-0"
                               style={{ backgroundColor: lg.color }}
                             />
-                            <div className="min-w-0 flex-1 flex items-center justify-between text-[9.5px]">
-                              <span className="font-bold text-emerald-100 truncate" title={lg.label}>{lg.label}</span>
-                              <span className="font-black text-white ml-1">{lg.pct}</span>
+                            <div className="min-w-0 flex-1 flex items-center justify-between text-xs">
+                              <span className="font-bold text-slate-700 truncate" title={lg.label}>{lg.label}</span>
+                              <span className="font-black text-slate-900 ml-1">{lg.pct}</span>
                             </div>
                           </div>
                         ))}
                       </div>
                     </div>
                   ) : (
-                    <div className="h-56 flex flex-col items-center justify-center text-center p-4 space-y-2 bg-emerald-950/30 rounded-xl border border-dashed border-white/20">
-                      <div className="h-10 w-10 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center justify-center">
+                    <div className="h-56 flex flex-col items-center justify-center text-center p-4 space-y-2 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
+                      <div className="h-10 w-10 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-300 flex items-center justify-center">
                         <FileText size={20} />
                       </div>
-                      <p className="text-xs font-bold text-white">No Document Requests Yet</p>
-                      <p className="text-[10px] text-emerald-200/80 max-w-[200px]">
+                      <p className="text-xs font-black text-slate-900">No Document Requests Yet</p>
+                      <p className="text-xs text-slate-500 max-w-[200px]">
                         Once you request a barangay clearance or certificate, your breakdown will show here.
                       </p>
                       <button
                         type="button"
                         onClick={() => setDocumentModalOpen(true)}
-                        className="text-[10px] font-black text-white bg-emerald-600 hover:bg-emerald-500 px-2.5 py-1 rounded-md transition cursor-pointer"
+                        className="text-xs font-black text-white bg-emerald-600 hover:bg-emerald-500 px-3.5 py-2 rounded-xl shadow-xs transition cursor-pointer"
                       >
                         + Request Document
                       </button>
@@ -5599,20 +6282,20 @@ const UserDashboard = () => {
               </div>
 
               {/* 3. PERFORMANCE GAUGES & USER PARTICIPATION SUMMARY */}
-              <div className="bg-emerald-950/35 backdrop-blur-2xl border-2 border-white/20 rounded-2xl p-4 sm:p-5 shadow-2xl hover:shadow-emerald-900/40 transition space-y-4 text-white">
-                <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="h-7 w-7 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center justify-center">
-                      <Sparkles size={16} />
+              <div className="bg-white border-2 border-emerald-100 rounded-3xl p-5 sm:p-6 shadow-sm hover:shadow-md transition space-y-4 text-slate-900">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-9 w-9 rounded-xl bg-emerald-50 text-emerald-700 border-2 border-emerald-200 flex items-center justify-center shadow-xs">
+                      <Sparkles size={18} />
                     </div>
                     <div>
-                      <h4 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
+                      <h4 className="text-sm font-black uppercase tracking-wider text-slate-900">
                         SERVICE ADOPTION & QUALITY INDEX
                       </h4>
-                      <p className="text-[10px] text-emerald-200/80 font-bold">Personal performance and community participation indicators</p>
+                      <p className="text-xs text-slate-500 font-medium">Personal performance and community participation indicators</p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-black text-emerald-200 bg-emerald-500/25 border border-emerald-400/30 px-2 py-0.5 rounded-full">
+                  <span className="text-xs font-black text-emerald-800 bg-emerald-50 border border-emerald-300 px-3 py-1 rounded-full shadow-2xs">
                     {userDashboardMetrics.overallIndexScore}% Activity Score
                   </span>
                 </div>
@@ -5623,19 +6306,19 @@ const UserDashboard = () => {
                       label: "Document Processing Rate",
                       pct: userDashboardMetrics.completionRate,
                       sub: `${userDashboardMetrics.completedRequests} of ${userDashboardMetrics.totalRequests} completed`,
-                      color: "from-emerald-500 to-teal-400",
+                      color: "from-emerald-600 to-teal-400",
                     },
                     {
                       label: "Profile Completeness",
                       pct: userDashboardMetrics.profileCompleteness,
                       sub: userDashboardMetrics.profileCompleteness === 100 ? "All fields verified" : "Complete your profile",
-                      color: "from-teal-500 to-cyan-400",
+                      color: "from-teal-600 to-cyan-400",
                     },
                     {
                       label: "Advisories Engagement",
                       pct: userDashboardMetrics.announcementReadRate,
                       sub: `${userDashboardMetrics.readAnnouncementsCount} of ${userDashboardMetrics.totalAnnouncements} viewed`,
-                      color: "from-blue-500 to-indigo-400",
+                      color: "from-blue-600 to-sky-400",
                     },
                     {
                       label: "Livelihood Participation",
@@ -5644,41 +6327,41 @@ const UserDashboard = () => {
                       color: "from-amber-500 to-orange-400",
                     },
                   ].map((gauge, idx) => (
-                    <div key={idx} className="bg-white/10 p-3 rounded-xl border border-white/15 space-y-2">
-                      <div className="flex items-center justify-between text-[11px]">
-                        <span className="font-bold text-emerald-100 truncate">{gauge.label}</span>
-                        <span className="font-black text-white">{gauge.pct}%</span>
+                    <div key={idx} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-700 truncate">{gauge.label}</span>
+                        <span className="font-black text-slate-900">{gauge.pct}%</span>
                       </div>
-                      <div className="h-2 w-full bg-white/15 rounded-full overflow-hidden">
+                      <div className="h-2.5 w-full bg-slate-200 rounded-full overflow-hidden">
                         <div
                           style={{ width: `${gauge.pct}%` }}
-                          className={`h-full bg-gradient-to-r ${gauge.color} rounded-full transition-all duration-1000 shadow-sm`}
+                          className={`h-full bg-gradient-to-r ${gauge.color} rounded-full transition-all duration-1000 shadow-xs`}
                         />
                       </div>
-                      <p className="text-[9.5px] text-emerald-200/70 font-medium truncate">{gauge.sub}</p>
+                      <p className="text-xs text-slate-500 font-medium truncate">{gauge.sub}</p>
                     </div>
                   ))}
                 </div>
               </div>
 
               {/* 4. MY RECENT ACTIVITIES & ACTIONS */}
-              <div className="bg-emerald-950/35 backdrop-blur-2xl border-2 border-white/20 rounded-2xl p-4 sm:p-5 shadow-2xl hover:shadow-emerald-900/40 transition space-y-4 text-white">
-                <div className="flex items-center justify-between border-b border-white/10 pb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="h-7 w-7 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center justify-center">
-                      <History size={16} />
+              <div className="bg-white border-2 border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm hover:shadow-md transition space-y-4 text-slate-900">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-9 w-9 rounded-xl bg-emerald-50 text-emerald-700 border-2 border-emerald-200 flex items-center justify-center shadow-xs">
+                      <History size={18} />
                     </div>
                     <div>
-                      <h4 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
+                      <h4 className="text-sm font-black uppercase tracking-wider text-slate-900">
                         MY RECENT ACTIVITIES & ACTIONS
                       </h4>
-                      <p className="text-[10px] text-emerald-200/80 font-bold">What you've submitted and updated recently</p>
+                      <p className="text-xs text-slate-500 font-medium">What you've submitted and updated recently</p>
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => openModule("my_documents")}
-                    className="text-xs font-bold text-emerald-300 hover:text-white hover:underline flex items-center gap-0.5 cursor-pointer"
+                    className="text-xs font-black text-emerald-700 hover:text-emerald-800 hover:underline flex items-center gap-0.5 cursor-pointer"
                   >
                     <span>View Document Logs</span>
                     <ChevronRight size={14} />
@@ -5686,47 +6369,47 @@ const UserDashboard = () => {
                 </div>
 
                 {userDashboardMetrics.recentActivities.length > 0 ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
                     {userDashboardMetrics.recentActivities.map((act) => (
                       <div
                         key={act.id}
                         onClick={() => openModule(act.actionKey)}
-                        className="group p-3 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 hover:border-emerald-400/40 transition duration-200 cursor-pointer flex flex-col justify-between gap-2 shadow-xs text-white"
+                        className="group p-4 rounded-2xl bg-slate-50 hover:bg-emerald-50/50 border border-slate-200 hover:border-emerald-400 transition-all duration-200 cursor-pointer flex flex-col justify-between gap-3 shadow-2xs hover:shadow-md text-slate-900"
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="h-8 w-8 rounded-lg bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-300 shrink-0 group-hover:scale-105 transition-transform">
-                              {act.type === "document" ? <FileText size={16} /> : <Briefcase size={16} />}
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="h-9 w-9 rounded-xl bg-emerald-50 border border-emerald-300 flex items-center justify-center text-emerald-700 shrink-0 group-hover:scale-105 transition-transform shadow-xs">
+                              {act.type === "document" ? <FileText size={17} /> : <Briefcase size={17} />}
                             </div>
                             <div className="min-w-0 flex-1">
-                              <h5 className="text-xs font-bold text-white truncate group-hover:text-emerald-300 transition">
+                              <h5 className="text-xs font-black text-slate-900 truncate group-hover:text-emerald-700 transition">
                                 {act.title}
                               </h5>
-                              <p className="text-[10px] text-emerald-200/80 font-medium truncate">{act.subtitle}</p>
+                              <p className="text-xs text-slate-500 font-medium truncate">{act.subtitle}</p>
                             </div>
                           </div>
-                          <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${getStatusClass(act.status)} shrink-0`}>
+                          <span className={`text-xs font-black px-2.5 py-0.5 rounded-full border ${getStatusClass(act.status)} shrink-0 shadow-2xs`}>
                             {act.status}
                           </span>
                         </div>
 
-                        <div className="flex items-center justify-between text-[9px] text-emerald-300/80 font-medium pt-1 border-t border-white/10">
+                        <div className="flex items-center justify-between text-xs text-slate-500 font-medium pt-2 border-t border-slate-200">
                           <span className="flex items-center gap-1">
-                            <Calendar size={10} />
+                            <Calendar size={12} />
                             {act.date ? new Date(act.date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "Recent"}
                           </span>
-                          <span className="text-emerald-300 font-bold group-hover:underline flex items-center gap-0.5">
-                            Open <ChevronRight size={10} />
+                          <span className="text-emerald-700 font-black group-hover:underline flex items-center gap-0.5">
+                            Open <ChevronRight size={12} />
                           </span>
                         </div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-8 px-4 bg-emerald-950/30 rounded-xl border border-dashed border-white/20">
-                    <ClipboardList size={28} className="mx-auto text-emerald-300/60 mb-2" />
-                    <p className="text-xs font-bold text-white">No Submissions or Activity Yet</p>
-                    <p className="text-[10px] text-emerald-200/80 mt-1 max-w-sm mx-auto">
+                  <div className="text-center py-8 px-4 bg-slate-50 rounded-2xl border border-dashed border-slate-300">
+                    <ClipboardList size={30} className="mx-auto text-slate-400 mb-2" />
+                    <p className="text-xs font-black text-slate-900">No Submissions or Activity Yet</p>
+                    <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
                       When you submit a document request, apply for a job or program, or update your information, your history will appear here.
                     </p>
                   </div>
@@ -5736,63 +6419,64 @@ const UserDashboard = () => {
             </div>
           )}
 
-          {/* TAB 2: REQUEST DOCUMENTS - TRANSLUCENT EMERALD GLASS */}
+          {/* TAB 2: REQUEST DOCUMENTS - EMERALD GREEN GLASS */}
           {activeNav === "documents" && (
-            <div className="bg-emerald-950/35 backdrop-blur-2xl border-2 border-white/20 rounded-[2.2rem] p-6 shadow-2xl animate-fadeIn text-white">
-              <div className="bg-gradient-to-r from-[#044E35] via-[#057A55] to-[#046C4E] text-white px-4 py-3 rounded-2xl flex justify-between items-center shadow-md mb-6 border border-emerald-400/30 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-transparent pointer-events-none" />
+            <div className="bg-white/95 backdrop-blur-2xl border border-emerald-100/90 rounded-3xl p-6 shadow-xl shadow-emerald-950/5 animate-fadeIn text-slate-800">
+              <div className="bg-emerald-800/90 backdrop-blur-xl border border-emerald-500/40 text-white px-4 py-3 rounded-2xl flex justify-between items-center shadow-md mb-6 relative overflow-hidden">
                 <div className="relative z-10">
                   <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
                     Document Request
                   </h2>
-                  <p className="text-[10px] text-emerald-200 font-bold mt-0.5">Submit clearance and certificate requests directly to the Barangay Hall.</p>
+                  <p className="text-[10px] text-emerald-100 font-bold mt-0.5">Submit clearance and certificate requests directly to the Barangay Hall.</p>
                 </div>
               </div>
 
               <div className="grid gap-6 md:grid-cols-3">
                 {/* Form Card */}
-                <div className="bg-emerald-950/30 backdrop-blur-xl border border-white/20 rounded-3xl p-5 shadow-md md:col-span-1 space-y-4 text-white">
+                <div className="bg-white/90 backdrop-blur-xl border border-emerald-200/80 rounded-3xl p-5 shadow-xs md:col-span-1 space-y-4 text-slate-800">
                   <div>
-                    <h3 className="text-xs font-black uppercase tracking-wider text-emerald-300">Clearance Application</h3>
-                    <p className="text-xs text-emerald-200/80 mt-0.5 font-bold">Choose a template type and supply any required details.</p>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-emerald-900">Clearance Application</h3>
+                    <p className="text-xs text-slate-600 mt-0.5 font-bold">Choose a template type and supply any required details.</p>
                   </div>
                   {renderDocumentRequestForm()}
                 </div>
 
                 {/* Specs/Details Card */}
-                <div className="bg-emerald-950/30 backdrop-blur-xl border border-white/20 rounded-3xl p-5 shadow-md md:col-span-2 text-white">
+                <div className="bg-white/90 backdrop-blur-xl border border-emerald-200/80 rounded-3xl p-5 shadow-xs md:col-span-2 text-slate-800">
                   {selectedTemplateDetails ? (
                     <div className="space-y-4 animate-fadeIn">
-                      <div className="flex items-center gap-2.5 border-b border-white/15 pb-3">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-300">
+                      <div className="flex items-center gap-2.5 border-b border-emerald-200/60 pb-3">
+                        <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700">
                           <Info size={16} />
                         </span>
-                        <h4 className="text-xs font-black uppercase tracking-wider text-emerald-200">Clearance specifications</h4>
+                        <h4 className="text-xs font-black uppercase tracking-wider text-emerald-900">Clearance specifications</h4>
                       </div>
-                      <h3 className="text-lg font-black text-white">{selectedTemplateDetails.template_name}</h3>
+                      <h3 className="text-lg font-black text-slate-900">{selectedTemplateDetails.template_name}</h3>
                       <div className="grid gap-4 sm:grid-cols-2 text-xs leading-relaxed font-semibold">
-                        <div className="p-3.5 rounded-2xl bg-white/10 border border-white/15 shadow-xs">
-                          <p className="text-xs text-emerald-300 font-bold uppercase block">Description</p>
-                          <p className="mt-1 font-medium text-emerald-100">{selectedTemplateDetails.description || "Official document certificate."}</p>
+                        <div className="p-3.5 rounded-2xl bg-white border border-emerald-200/60 shadow-2xs">
+                          <p className="text-xs text-emerald-700 font-bold uppercase block">Description</p>
+                          <p className="mt-1 font-medium text-slate-700">{selectedTemplateDetails.description || "Official document certificate."}</p>
                         </div>
-                        <div className="p-3.5 rounded-2xl bg-white/10 border border-white/15 shadow-xs">
-                          <p className="text-xs text-emerald-300 font-bold uppercase block">Requirements</p>
-                          <p className="mt-1 font-medium text-emerald-100">{selectedTemplateDetails.requirements || "None listed."}</p>
+                        <div className="p-3.5 rounded-2xl bg-white border border-emerald-200/60 shadow-2xs">
+                          <p className="text-xs text-emerald-700 font-bold uppercase block">Requirements</p>
+                          <p className="mt-1 font-medium text-slate-700">
+                            {(selectedTemplateDetails.requirements || "None listed.").replace(/business details/gi, "business name")}
+                          </p>
                         </div>
-                        <div className="p-3.5 rounded-2xl bg-white/10 border border-white/15 shadow-xs">
-                          <p className="text-xs text-emerald-300 font-bold uppercase block">Processing Duration</p>
-                          <p className="text-white font-black mt-0.5">{selectedTemplateDetails.processing_time || "Same Day"}</p>
+                        <div className="p-3.5 rounded-2xl bg-white border border-emerald-200/60 shadow-2xs">
+                          <p className="text-xs text-emerald-700 font-bold uppercase block">Processing Duration</p>
+                          <p className="text-slate-900 font-black mt-0.5">{selectedTemplateDetails.processing_time || "Same Day"}</p>
                         </div>
-                        <div className="p-3.5 rounded-2xl bg-white/10 border border-white/15 shadow-xs">
-                          <p className="text-xs text-emerald-300 font-bold uppercase block">Application Fee</p>
-                          <p className="text-white font-black mt-0.5">{selectedTemplateDetails.fee || "Free"}</p>
+                        <div className="p-3.5 rounded-2xl bg-white border border-emerald-200/60 shadow-2xs">
+                          <p className="text-xs text-emerald-700 font-bold uppercase block">Application Fee</p>
+                          <p className="text-slate-900 font-black mt-0.5">{selectedTemplateDetails.fee || "Free"}</p>
                         </div>
                       </div>
                     </div>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center py-12 space-y-2">
-                      <FileText className="text-emerald-300/60" size={32} />
-                      <p className="text-xs text-emerald-200/70 font-bold">Select document template to view specifications.</p>
+                      <FileText className="text-emerald-400/60" size={32} />
+                      <p className="text-xs text-slate-500 font-bold">Select document template to view specifications.</p>
                     </div>
                   )}
                 </div>
@@ -5800,16 +6484,17 @@ const UserDashboard = () => {
             </div>
           )}
 
-          {/* TAB 2.5: MY DOCUMENTS - TRANSLUCENT EMERALD GLASS */}
+          {/* TAB 2.5: MY DOCUMENTS - EMERALD GREEN GLASS */}
           {activeNav === "my_documents" && (
-            <div className="bg-emerald-950/35 backdrop-blur-2xl border-2 border-white/20 rounded-[2.2rem] p-6 shadow-2xl animate-fadeIn text-white">
-              <div className="bg-gradient-to-r from-[#044E35] via-[#057A55] to-[#046C4E] text-white px-4 py-3.5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-md mb-6 border border-emerald-400/30 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-transparent pointer-events-none" />
+            <div className="bg-white/95 backdrop-blur-2xl border border-emerald-100/90 rounded-3xl p-6 shadow-xl shadow-emerald-950/5 animate-fadeIn text-slate-800">
+              <div className="bg-emerald-800/90 backdrop-blur-xl border border-emerald-500/40 text-white px-4 py-3.5 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-md mb-6 relative overflow-hidden">
                 <div className="relative z-10">
-                  <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
-                    My Documents
-                  </h2>
-                  <p className="text-[10px] text-emerald-200 font-bold mt-0.5">Logs and progress of your requested clearances.</p>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xs sm:text-sm font-black uppercase tracking-wider text-white">
+                      My Documents & Requests
+                    </h2>
+                  </div>
+                  <p className="text-[10px] text-emerald-100 font-bold mt-0.5">Logs and live status of your requested clearances.</p>
                 </div>
                 <button
                   type="button"
@@ -5824,12 +6509,12 @@ const UserDashboard = () => {
 
               {/* Batch Action Bar when rows are selected */}
               {selectedLogIds.length > 0 && (
-                <div className="flex flex-wrap items-center justify-between gap-2 bg-rose-500/25 border border-rose-400/50 rounded-2xl px-4 py-2.5 mb-4 shadow-lg backdrop-blur-md animate-fadeIn">
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-rose-500/15 border border-rose-400/40 rounded-2xl px-4 py-2.5 mb-4 shadow-md backdrop-blur-md animate-fadeIn">
                   <div className="flex items-center gap-2">
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-rose-500 text-white text-[11px] font-black">
                       {selectedLogIds.length}
                     </span>
-                    <span className="text-xs font-bold text-rose-100">
+                    <span className="text-xs font-bold text-rose-800 dark:text-rose-200">
                       {selectedLogIds.length} document log(s) selected
                     </span>
                   </div>
@@ -5837,7 +6522,7 @@ const UserDashboard = () => {
                     <button
                       type="button"
                       onClick={() => setSelectedLogIds([])}
-                      className="px-3 py-1 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition border border-white/20 cursor-pointer"
+                      className="px-3 py-1 rounded-xl bg-slate-200 dark:bg-white/10 hover:bg-slate-300 dark:hover:bg-white/20 text-slate-800 dark:text-white text-xs font-bold transition border border-slate-300 dark:border-white/20 cursor-pointer"
                     >
                       Deselect All
                     </button>
@@ -5854,44 +6539,46 @@ const UserDashboard = () => {
                 </div>
               )}
 
-              <div className="overflow-x-auto rounded-2xl border border-white/15 bg-emerald-950/30 backdrop-blur-xl">
-                {requests.length === 0 ? (
-                  <p className="text-xs text-emerald-200/70 text-center py-10 font-bold">No clearance applications submitted.</p>
+              <div className="overflow-x-auto rounded-2xl border-2 border-emerald-200 bg-white shadow-sm">
+                {!fifoOrderedRequests || fifoOrderedRequests.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-10 font-bold">No clearance applications submitted.</p>
                 ) : (
-                  <table className="w-full text-left text-xs min-w-[640px]">
+                  <table className="w-full text-left text-xs min-w-[760px]">
                     <thead>
-                      <tr className="border-b font-bold uppercase tracking-wider text-xs border-white/15 bg-white/10 text-emerald-200">
-                        <th className="px-3 py-3 w-10 text-center">
+                      <tr className="border-b-2 font-black uppercase tracking-wider text-xs border-emerald-200 bg-emerald-50/90 text-emerald-950">
+                        <th className="px-3 py-3.5 w-10 text-center">
                           <input
                             type="checkbox"
-                            checked={requests.length > 0 && selectedLogIds.length === requests.length}
+                            checked={fifoOrderedRequests.length > 0 && selectedLogIds.length === fifoOrderedRequests.length}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setSelectedLogIds(requests.map((r) => r.id));
+                                setSelectedLogIds(fifoOrderedRequests.map((r) => r.id));
                               } else {
                                 setSelectedLogIds([]);
                               }
                             }}
-                            className="h-4 w-4 rounded border-white/30 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#10b981]"
+                            className="h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#059669]"
                             title="Select all logs"
                           />
                         </th>
-                        <th className="px-4 py-3">Document Type</th>
-                        <th className="px-4 py-3">Date Applied</th>
-                        <th className="px-4 py-3">Last Updated</th>
-                        <th className="px-4 py-3">Status</th>
-                        <th className="px-4 py-3 text-right">Actions</th>
+                        <th className="px-4 py-3.5">Document Type</th>
+                        <th className="px-4 py-3.5">Purpose of Request</th>
+                        <th className="px-4 py-3.5">Date Applied</th>
+                        <th className="px-4 py-3.5">Status</th>
+                        <th className="px-4 py-3.5 text-right">Actions</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y font-semibold divide-white/10 text-emerald-100">
-                      {requests.map((req) => {
+                    <tbody className="divide-y divide-slate-100 font-semibold text-slate-800">
+                      {fifoOrderedRequests.map((req, idx) => {
                         const expired = isRequestExpired(req);
-                        const displayStatus = expired ? "Expired" : req.status;
-                        const isPending = !expired && req.status === "Pending";
+                        const displayStatus = formatResidentDocumentStatus(req.status, expired);
+                        const isEligibleActive = !expired && (String(req.status || "").toLowerCase() === "pending" || String(req.status || "").toLowerCase() === "processing");
+                        const isPending = !expired && String(req.status || "").toLowerCase() === "pending";
                         const isSelected = selectedLogIds.includes(req.id);
+                        const purposeText = req.purpose || parsePurpose(req.document_type) || "Not specified";
                         return (
-                          <tr key={req.id} className={`transition hover:bg-white/10 ${isSelected ? "bg-white/15" : ""}`}>
-                            <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                          <tr key={req.id} className={`transition hover:bg-emerald-50/40 ${isSelected ? "bg-emerald-50/60" : "bg-white"}`}>
+                            <td className="px-3 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
                               <input
                                 type="checkbox"
                                 checked={isSelected}
@@ -5900,25 +6587,49 @@ const UserDashboard = () => {
                                     prev.includes(req.id) ? prev.filter((id) => id !== req.id) : [...prev, req.id]
                                   );
                                 }}
-                                className="h-4 w-4 rounded border-white/30 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#10b981]"
+                                className="h-4 w-4 rounded border-emerald-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer accent-[#059669]"
                               />
                             </td>
-                            <td className="px-4 py-3 font-black text-white">{req.document_type}</td>
-                            <td className="px-4 py-3 text-emerald-200/80">{new Date(req.created_at).toLocaleDateString()}</td>
-                            <td className="px-4 py-3 text-emerald-200/80">{new Date(req.updated_at || req.created_at).toLocaleDateString()}</td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-black border ${getStatusClass(displayStatus)}`}>
+                            <td className="px-4 py-3.5 font-black text-slate-900">
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-black text-slate-900">{req.document_type}</span>
+                                  {isEligibleActive && (
+                                    <span className="inline-flex items-center gap-1 font-black text-xs px-2.5 py-0.5 rounded-full bg-emerald-700 text-white shadow-xs">
+                                      Queue #{idx + 1} {idx === 0 ? "(Priority)" : ""}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs font-mono text-slate-500 font-medium mt-0.5">
+                                  {req.tracking_number || req.ref || `REQ-${String(req.id).slice(0, 8)}`}
+                                </p>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3.5 text-xs max-w-[200px] truncate" title={purposeText}>
+                              <span className="font-semibold text-slate-700">{purposeText}</span>
+                            </td>
+                            <td className="px-4 py-3.5 text-slate-600 text-xs font-semibold">
+                              {req.created_at ? new Date(req.created_at).toLocaleDateString(undefined, { month: "numeric", day: "numeric", year: "numeric" }) : "-"}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black border shadow-2xs ${
+                                expired || String(req.status || "").toLowerCase() === "rejected" || String(req.status || "").toLowerCase() === "cancelled"
+                                  ? "bg-rose-50 text-rose-800 border-rose-300"
+                                  : String(displayStatus).toLowerCase().includes("ready") || String(req.status || "").toLowerCase() === "completed" || String(req.status || "").toLowerCase() === "released"
+                                  ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                                  : "bg-amber-50 text-amber-900 border-amber-300"
+                              }`}>
                                 {displayStatus}
                               </span>
                             </td>
-                            <td className="px-4 py-3 text-right">
+                            <td className="px-4 py-3.5 text-right">
                               <div className="flex items-center justify-end gap-1.5">
                                 {isPending && (
                                   <>
                                     <button
                                       type="button"
                                       onClick={() => handleOpenEditRequest(req)}
-                                      className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 text-blue-200 text-xs font-bold transition border border-blue-400/30 shadow-2xs"
+                                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold transition border border-emerald-300 shadow-2xs"
                                       title="Edit Request Type"
                                     >
                                       <Pencil size={12} />
@@ -5929,7 +6640,7 @@ const UserDashboard = () => {
                                       type="button"
                                       onClick={() => handleCancelRequestAction(req)}
                                       disabled={cancellingRequestId === req.id}
-                                      className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold transition border border-rose-400/30 shadow-2xs disabled:opacity-50"
+                                      className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-bold transition border border-amber-300 shadow-2xs disabled:opacity-50"
                                       title="Cancel Request"
                                     >
                                       {cancellingRequestId === req.id ? <Loader size={12} className="animate-spin" /> : <XCircle size={12} />}
@@ -5938,10 +6649,22 @@ const UserDashboard = () => {
                                   </>
                                 )}
 
+                                {req.attachment_url && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedResidentProofRequest(req)}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-emerald-50 text-slate-700 hover:text-emerald-800 text-xs font-bold transition border border-slate-200 hover:border-emerald-300 shadow-2xs cursor-pointer"
+                                    title="View Attached Valid ID / Proof"
+                                  >
+                                    <FileText size={12} className="text-emerald-700" />
+                                    <span>Proof</span>
+                                  </button>
+                                )}
+
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteRequestAction(req)}
-                                  className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-bold transition border border-rose-400/30 cursor-pointer shadow-2xs"
+                                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold transition border border-rose-300 cursor-pointer shadow-2xs"
                                   title="Delete Document Log"
                                 >
                                   <Trash2 size={12} />
@@ -5959,14 +6682,13 @@ const UserDashboard = () => {
             </div>
           )}
 
-          {/* TAB 3: ANNOUNCEMENTS - TRANSLUCENT EMERALD GLASS */}
+          {/* TAB 3: ANNOUNCEMENTS - EMERALD GREEN GLASS */}
           {activeNav === "announcements" && (
-            <div className="bg-emerald-950/35 backdrop-blur-2xl border-2 border-white/20 rounded-[2.2rem] p-6 shadow-2xl space-y-5 animate-fadeIn text-white">
-              <div className="bg-gradient-to-r from-[#044E35] via-[#057A55] to-[#046C4E] text-white px-4 py-3 rounded-2xl flex items-center justify-between shadow-md mb-5 border border-emerald-400/30 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-transparent pointer-events-none" />
+            <div className="bg-white/95 backdrop-blur-2xl border border-emerald-100/90 rounded-3xl p-6 shadow-xl shadow-emerald-950/5 space-y-5 animate-fadeIn text-slate-800">
+              <div className="bg-emerald-800/90 backdrop-blur-xl border border-emerald-500/40 text-white px-4 py-3 rounded-2xl flex items-center justify-between shadow-md mb-5 relative overflow-hidden">
                 <div className="relative z-10">
                   <h3 className="text-xs sm:text-sm font-black text-white uppercase tracking-wider">Barangay Bulletins & Advisories</h3>
-                  <p className="text-[10px] text-emerald-200 mt-0.5 font-bold">Verified public service announcements for residents.</p>
+                  <p className="text-[10px] text-emerald-100 mt-0.5 font-bold">Verified public service announcements for residents.</p>
                 </div>
                 <span className="text-xs font-bold text-white bg-white/20 px-3 py-1 rounded-full border border-white/30 backdrop-blur-xs relative z-10">
                   {filteredAnnouncements.length} Active
@@ -5979,28 +6701,32 @@ const UserDashboard = () => {
                     <article
                       key={ann.id}
                       onClick={() => setSelectedAnnouncementDetail(ann)}
-                      className={`relative overflow-hidden rounded-3xl border p-5 flex gap-4 transition-all duration-300 shadow-md hover:shadow-xl backdrop-blur-xl ${visualTheme.cardBg} cursor-pointer group hover:scale-[1.005]`}
+                      className={`relative overflow-hidden rounded-3xl border-2 p-5 sm:p-6 flex gap-4 transition-all duration-300 shadow-sm hover:shadow-md ${visualTheme.cardBg} cursor-pointer group hover:scale-[1.005]`}
                       title="Click to view full announcement details"
                     >
                       {visualTheme.patternSvg}
-                      <span className={`h-11 w-11 flex items-center justify-center rounded-2xl text-xl shrink-0 shadow-md border relative z-10 ${visualTheme.badgeBg}`}>
+                      <span className={`h-12 w-12 flex items-center justify-center rounded-2xl text-2xl shrink-0 relative z-10 ${visualTheme.iconBg || visualTheme.badgeBg}`}>
                         {visualTheme.icon || "📢"}
                       </span>
-                      <div className="space-y-2 min-w-0 flex-1 relative z-10">
+                      <div className="space-y-2.5 min-w-0 flex-1 relative z-10">
                         <div className="flex items-center gap-2 flex-wrap justify-between">
-                          <h4 className={`text-xs sm:text-sm font-black leading-snug ${visualTheme.titleColor}`}>{ann.title}</h4>
-                          <span className={`rounded-full px-2.5 py-0.5 text-[9.5px] font-black uppercase tracking-wider border shadow-xs ${visualTheme.badgeBg}`}>
+                          <h4 className="text-base sm:text-lg font-black leading-snug text-slate-900 group-hover:text-blue-700 transition">
+                            {ann.title}
+                          </h4>
+                          <span className={`rounded-full px-3 py-1 text-xs font-black uppercase tracking-wider border shadow-xs ${visualTheme.badgeBg}`}>
                             {ann.category || "General"}
                           </span>
                         </div>
-                        <p className={`text-xs leading-relaxed font-medium whitespace-pre-line ${visualTheme.bodyColor}`}>{ann.body}</p>
-                        <div className="flex justify-between items-center pt-2.5 text-[11px] border-t border-white/15">
-                          <p className="text-emerald-200/80 font-bold">
-                            Published: {new Date(ann.publish_date || ann.created_at).toLocaleDateString()}
+                        <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-line text-slate-700 font-medium">
+                          {ann.body}
+                        </p>
+                        <div className="flex justify-between items-center pt-3 text-xs border-t border-slate-100">
+                          <p className="text-slate-500 font-semibold">
+                            Published: {new Date(ann.publish_date || ann.created_at).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}
                           </p>
-                          <span className="text-[11px] font-bold text-emerald-300 flex items-center gap-0.5 group-hover:underline">
+                          <span className="text-xs font-black text-blue-700 group-hover:text-blue-800 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                             <span>Read Full Advisory</span>
-                            <ChevronRight size={13} />
+                            <ChevronRight size={14} />
                           </span>
                         </div>
                       </div>
@@ -6009,67 +6735,66 @@ const UserDashboard = () => {
                 })}
                 {filteredAnnouncements.length === 0 && (
                   <div className="text-center py-10 space-y-2">
-                    <p className="text-2xl">📢</p>
-                    <p className="text-xs text-emerald-200/80 font-bold">No active announcements available.</p>
+                    <p className="text-3xl">📢</p>
+                    <p className="text-xs text-slate-500 font-bold">No active announcements available.</p>
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* TAB 4: LIVELIHOODS & JOBS - TRANSLUCENT EMERALD GLASS */}
+          {/* TAB 4: LIVELIHOODS & JOBS - BARANGAY EMERALD GREEN GLASS */}
           {activeNav === "livelihood" && (
-            <div className="bg-emerald-950/35 backdrop-blur-2xl border-2 border-white/20 rounded-[2.2rem] p-6 shadow-2xl space-y-5 animate-fadeIn text-white">
-              <div className="bg-gradient-to-r from-[#044E35] via-[#057A55] to-[#046C4E] text-white px-4 py-3 rounded-2xl flex justify-between items-center shadow-md mb-5 border border-emerald-400/30 relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-b from-white/20 via-transparent to-transparent pointer-events-none" />
+            <div className="bg-white/95 backdrop-blur-2xl border border-emerald-100/90 rounded-3xl p-6 shadow-xl shadow-emerald-950/5 space-y-5 animate-fadeIn text-slate-900">
+              <div className="bg-emerald-800/90 backdrop-blur-xl border border-emerald-500/40 text-white px-5 py-4 rounded-2xl flex justify-between items-center shadow-md mb-5 relative overflow-hidden">
                 <div className="relative z-10">
-                  <h3 className="text-xs sm:text-sm font-black text-white uppercase tracking-wider">Livelihoods & jobs</h3>
-                  <p className="text-[10px] text-emerald-200 mt-0.5 font-bold">Active training sessions and program listings.</p>
+                  <h3 className="text-sm font-black text-white uppercase tracking-wider">Livelihoods & Jobs</h3>
+                  <p className="text-xs text-emerald-100 mt-0.5 font-bold">Active training sessions and program listings.</p>
                 </div>
-                <span className="text-xs font-bold bg-white/20 border border-white/30 text-white px-3 py-1 rounded-full backdrop-blur-xs relative z-10">
+                <span className="text-xs font-black bg-white/20 border border-white/30 text-white px-3.5 py-1.5 rounded-full backdrop-blur-xs relative z-10 shadow-xs">
                   {opportunities.length} Openings
                 </span>
               </div>
-              <div className="grid gap-4.5 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
                 {opportunities.map((opp) => (
                   <div
                     key={opp.id}
-                    className="rounded-3xl border border-emerald-400/30 bg-emerald-950/30 backdrop-blur-xl p-5 flex flex-col justify-between hover:border-emerald-400/70 hover:shadow-2xl transition-all duration-300 shadow-md group relative overflow-hidden text-white"
+                    className="rounded-3xl border-2 border-emerald-100 hover:border-emerald-400 bg-white p-5 flex flex-col justify-between hover:shadow-md transition-all duration-300 shadow-sm group relative overflow-hidden text-slate-900"
                   >
                     <div>
                       <div className="flex items-center justify-between gap-1 mb-2.5">
-                        <span className="inline-flex rounded-xl bg-emerald-500/20 border border-emerald-400/30 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-200 shadow-2xs backdrop-blur-xs">
+                        <span className="inline-flex rounded-xl bg-emerald-50 border border-emerald-300 px-3 py-1 text-xs font-black uppercase tracking-wider text-emerald-800 shadow-2xs">
                           {opp.category}
                         </span>
                         {opp.slots && (
-                          <span className="text-[10px] font-bold text-emerald-200/90 bg-white/10 px-2 py-0.5 rounded-lg border border-white/10">
+                          <span className="text-xs font-bold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-lg border border-emerald-200">
                             {opp.slots} slots
                           </span>
                         )}
                       </div>
                       <h4 
                         onClick={() => setSelectedLivelihoodDetail(opp)}
-                        className="text-xs font-black text-white leading-snug cursor-pointer hover:text-emerald-300 transition"
+                        className="text-base font-black text-slate-900 leading-snug cursor-pointer hover:text-emerald-700 transition mt-2"
                         title="Click to view whole details"
                       >
                         {opp.title}
                       </h4>
                       <p 
                         onClick={() => setSelectedLivelihoodDetail(opp)}
-                        className="text-xs text-emerald-100/90 mt-2 line-clamp-3 leading-relaxed font-semibold cursor-pointer"
+                        className="text-xs sm:text-[13px] text-slate-600 mt-2.5 line-clamp-3 leading-relaxed font-medium cursor-pointer"
                         title="Click to view whole details"
                       >
                         {opp.description || "No specific details provided."}
                       </p>
                     </div>
-                    <div className="mt-4 pt-3.5 border-t border-white/15 space-y-2.5">
-                      <div className="space-y-1 text-xs font-bold text-emerald-200/80">
+                    <div className="mt-4 pt-3.5 border-t border-slate-100 space-y-3">
+                      <div className="space-y-1.5 text-xs font-semibold text-slate-700">
                         <div className="flex items-center gap-1.5">
-                          <Calendar size={12} className="text-emerald-300 shrink-0" />
+                          <Calendar size={14} className="text-emerald-700 shrink-0" />
                           <span>Closing: {new Date(opp.deadline).toLocaleDateString()}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
-                          <Home size={12} className="text-emerald-300 shrink-0" />
+                          <Home size={14} className="text-emerald-700 shrink-0" />
                           <span className="truncate">Venue: {opp.location || "Community Hall"}</span>
                         </div>
                       </div>
@@ -6078,9 +6803,9 @@ const UserDashboard = () => {
                       <button
                         type="button"
                         onClick={() => setSelectedLivelihoodDetail(opp)}
-                        className="w-full py-1.5 rounded-xl border border-emerald-400/30 bg-emerald-500/20 hover:bg-emerald-500/30 text-white font-black text-[11px] transition flex items-center justify-center gap-1 cursor-pointer shadow-2xs"
+                        className="w-full py-2.5 rounded-xl border border-emerald-200 bg-emerald-50/80 hover:bg-emerald-100 text-emerald-900 font-extrabold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
                       >
-                        <Search size={12} className="text-emerald-300" />
+                        <Search size={14} className="text-emerald-700" />
                         <span>View Whole Details</span>
                       </button>
 
@@ -6092,7 +6817,7 @@ const UserDashboard = () => {
                             <button
                               type="button"
                               onClick={() => handleApplyLivelihood(opp.id)}
-                              className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-[#044E35] via-[#057A55] to-[#046C4E] text-white font-black text-xs hover:scale-[1.02] active:scale-[0.99] hover:shadow-lg transition-all border border-emerald-400/30 flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+                              className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs hover:scale-[1.01] active:scale-[0.99] hover:shadow-lg transition-all border border-emerald-400/40 flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
                             >
                               Apply Now
                             </button>
@@ -6100,21 +6825,21 @@ const UserDashboard = () => {
                         }
                         if (application.status === "Approved") {
                           return (
-                            <div className="py-2 px-3 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-xs font-bold text-center backdrop-blur-md">
-                              <p className="flex items-center justify-center gap-1.5 mb-1"><CheckCircle size={14} className="text-emerald-300"/> Application Approved</p>
-                              <span className="text-[10px] font-semibold text-emerald-100 leading-tight">You are listed. You need to visit the barangay for your verifications, and orientations etc.</span>
+                            <div className="py-2.5 px-3 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold text-center">
+                              <p className="flex items-center justify-center gap-1.5 mb-1 text-emerald-800 font-black"><CheckCircle size={14} className="text-emerald-600"/> Application Approved</p>
+                              <span className="text-xs font-medium text-slate-700 leading-tight">You are listed. Please visit the barangay for verifications and orientations.</span>
                             </div>
                           );
                         }
                         if (application.status === "Rejected") {
                           return (
-                            <div className="mt-2 py-2 px-3 rounded-2xl bg-rose-500/20 border border-rose-400/40 text-rose-200 text-xs font-bold text-center backdrop-blur-md">
+                            <div className="mt-2 py-2 px-3 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-xs font-bold text-center">
                               Application Rejected
                             </div>
                           );
                         }
                         return (
-                          <div className="mt-2 py-2 px-3 rounded-2xl bg-amber-500/20 border border-amber-400/40 text-amber-200 text-xs font-bold text-center backdrop-blur-md">
+                          <div className="mt-2 py-2 px-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold text-center">
                             Application Pending
                           </div>
                         );
@@ -6123,7 +6848,7 @@ const UserDashboard = () => {
                   </div>
                 ))}
                 {opportunities.length === 0 && (
-                  <div className="text-xs text-slate-400 text-center py-10 sm:col-span-2 xl:col-span-4 font-bold">
+                  <div className="text-xs text-slate-500 text-center py-10 sm:col-span-2 xl:col-span-4 font-bold">
                     No active program logs.
                   </div>
                 )}
@@ -7824,7 +8549,7 @@ const UserDashboard = () => {
             />
             {/* Floating Chat Container */}
             <motion.div
-              className="relative z-10 flex h-[min(780px,calc(100dvh-2.5rem))] max-h-[calc(100dvh-2.5rem)] w-full sm:w-[420px] md:w-[430px] flex-col overflow-hidden rounded-3xl border border-emerald-500/30 bg-[#042015]/95 shadow-2xl backdrop-blur-2xl pointer-events-auto ring-1 ring-emerald-500/20 mb-14 sm:mb-0"
+              className="relative z-10 flex h-[calc(100vh-5.5rem)] max-h-[720px] sm:max-h-[680px] w-full sm:w-[430px] flex-col overflow-hidden rounded-3xl border border-emerald-500/30 bg-[#042015]/95 shadow-2xl backdrop-blur-2xl pointer-events-auto ring-1 ring-emerald-500/20 mb-14 sm:mb-0"
               initial={{ opacity: 0, scale: 0.92, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.92, y: 20 }}
@@ -7840,29 +8565,39 @@ const UserDashboard = () => {
                   backgroundRepeat: "no-repeat"
                 }}
               />
+              {/* Centered High-Definition 3D Robot Watermark */}
+              <div className="absolute inset-0 z-0 flex items-center justify-center pointer-events-none overflow-hidden select-none">
+                <img 
+                  src="/robot/Robot.cutout.png" 
+                  alt="" 
+                  className="w-64 h-64 sm:w-72 sm:h-72 object-contain opacity-30 filter drop-shadow-[0_0_35px_rgba(16,185,129,0.35)] pointer-events-none"
+                  onError={(e) => { e.target.src = "/ai-robot.webp"; }}
+                />
+              </div>
+
               {/* Dark Emerald Vignette Overlay for Readability */}
               <div className="absolute inset-0 z-0 bg-gradient-to-b from-[#042015]/80 via-[#022c22]/75 to-[#041a11]/85 pointer-events-none" />
 
               {/* Header */}
-              <div className="flex h-14 shrink-0 items-center justify-between bg-gradient-to-r from-[#0B5D3B] via-[#0E6B46] to-[#157347] px-3 text-white relative shadow-sm z-10">
-                <div className="flex items-center gap-1.5 min-w-0">
+              <div className="flex h-14 shrink-0 items-center justify-between bg-gradient-to-r from-[#0B5D3B] via-[#0E6B46] to-[#157347] px-3.5 text-white relative shadow-sm z-10 border-b border-emerald-500/30">
+                <div className="flex items-center gap-2 min-w-0">
                   {/* Recents Navigation Menu Toggle Button */}
                   <button
                     type="button"
                     onClick={() => setChatNavOpen(!chatNavOpen)}
-                    className="p-1.5 rounded-xl hover:bg-white/15 text-emerald-100 hover:text-white transition flex items-center gap-1"
+                    className="p-1.5 rounded-xl hover:bg-white/15 text-emerald-100 hover:text-white transition flex items-center gap-1.5 border border-transparent cursor-pointer"
                     title="Open Recent Chats Navigation"
                   >
                     <Menu size={18} />
-                    <div className="h-7 w-7 overflow-hidden rounded-full border border-white/20 bg-emerald-950/40 shrink-0 flex items-center justify-center">
+                    <div className="h-7 w-7 overflow-hidden rounded-full border border-white/20 bg-emerald-950/40 shrink-0 flex items-center justify-center shadow-xs">
                       <AssistantAiIcon />
                     </div>
                   </button>
 
                   <div className="min-w-0 cursor-pointer" onClick={() => setChatNavOpen(!chatNavOpen)}>
-                    <h3 className="text-sm font-black leading-none truncate flex items-center gap-1">
+                    <h3 className="text-sm font-black leading-none truncate flex items-center gap-1.5">
                       KaagapAI
-                      <span className="text-[10px] font-bold bg-white/20 px-1.5 py-0.2 rounded-full text-emerald-100">AI</span>
+                      <span className="text-[10px] font-bold bg-white/20 px-1.5 py-0.2 rounded-full text-emerald-100 uppercase">AI</span>
                     </h3>
                     <span className="text-[11px] text-emerald-200 mt-0.5 block truncate">Upper Mingading Virtual Assistant</span>
                   </div>
@@ -7891,18 +8626,18 @@ const UserDashboard = () => {
                     className={`flex items-center justify-center p-1.5 rounded-xl text-xs font-bold transition border active:scale-95 cursor-pointer ${
                       voiceEnabled
                         ? "bg-emerald-500/30 text-emerald-200 border-emerald-400/40 hover:bg-emerald-500/40 shadow-xs"
-                        : "bg-rose-500/20 text-rose-300 border-rose-400/30 hover:bg-rose-500/30"
+                        : "bg-white/10 text-emerald-200 border-white/20 hover:bg-white/20 hover:text-white"
                     }`}
                     title={voiceEnabled ? "Voice Output is ON (Click to Mute Voice)" : "Voice Output is MUTED (Click to Unmute Voice)"}
                   >
-                    {voiceEnabled ? <Volume2 size={16} className="text-emerald-300 animate-pulse" /> : <VolumeX size={16} className="text-rose-300" />}
+                    {voiceEnabled ? <Volume2 size={16} className="text-emerald-300 animate-pulse" /> : <VolumeX size={16} className="text-emerald-200/80" />}
                   </button>
 
                   {/* New Chat Button */}
                   <button
                     type="button"
                     onClick={handleNewChat}
-                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition shadow-2xs border border-white/10 active:scale-95"
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition shadow-2xs border border-white/20 active:scale-95 cursor-pointer"
                     title="Start New Clean Chat"
                   >
                     <Plus size={14} />
@@ -7917,7 +8652,7 @@ const UserDashboard = () => {
                       setSpeakingChatId(null);
                       setAssistantOpen(false);
                     }}
-                    className="rounded-xl p-1.5 text-emerald-100 hover:bg-white/10 hover:text-white transition"
+                    className="rounded-xl p-1.5 text-emerald-100 hover:bg-white/15 hover:text-white transition cursor-pointer"
                     aria-label="Close assistant"
                   >
                     <X size={18} />
@@ -7933,10 +8668,10 @@ const UserDashboard = () => {
                     animate={{ x: 0, opacity: 1 }}
                     exit={{ x: "-100%", opacity: 0 }}
                     transition={{ type: "spring", damping: 25, stiffness: 250 }}
-                    className="absolute inset-0 z-30 bg-slate-900/95 text-white backdrop-blur-md flex flex-col p-4 border-r border-slate-800"
+                    className="absolute inset-0 z-30 bg-[#031d13]/98 text-white backdrop-blur-xl flex flex-col p-4 border-r border-emerald-500/30"
                   >
                     {/* Recents Nav Header */}
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                    <div className="flex items-center justify-between pb-3 border-b border-emerald-500/20">
                       <div className="flex items-center gap-2">
                         <History size={18} className="text-emerald-400" />
                         <h4 className="text-xs font-black uppercase tracking-wider text-slate-200">Recent Chats</h4>
@@ -7944,7 +8679,7 @@ const UserDashboard = () => {
                       <button
                         type="button"
                         onClick={() => setChatNavOpen(false)}
-                        className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition"
+                        className="p-1 rounded-lg hover:bg-emerald-900/50 text-slate-400 hover:text-white transition cursor-pointer"
                       >
                         <X size={16} />
                       </button>
@@ -7955,7 +8690,7 @@ const UserDashboard = () => {
                       <button
                         type="button"
                         onClick={handleNewChat}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-[#0B5D3B] to-[#157347] text-white text-xs font-bold shadow-md hover:scale-101 transition border border-white/10"
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-[#0B5D3B] to-[#157347] hover:from-emerald-600 hover:to-teal-600 text-white text-xs font-bold shadow-md hover:scale-101 transition border border-white/10 cursor-pointer"
                       >
                         <Plus size={15} />
                         <span>Start New Clean Chat</span>
@@ -7965,10 +8700,10 @@ const UserDashboard = () => {
                     {/* List of Recent Sessions */}
                     <div className="flex-1 overflow-y-auto space-y-1.5 py-2 pr-1 scrollbar-hide">
                       {chatSessions.length === 0 ? (
-                        <div className="h-40 flex flex-col items-center justify-center text-center text-slate-500 text-xs font-semibold px-4 space-y-2">
-                          <Clock size={24} className="text-slate-600" />
+                        <div className="h-40 flex flex-col items-center justify-center text-center text-slate-400 text-xs font-semibold px-4 space-y-2">
+                          <Clock size={24} className="text-emerald-600" />
                           <p>No recent chat history yet.</p>
-                          <p className="text-[11px] text-slate-600">Start a conversation and it will automatically appear here!</p>
+                          <p className="text-[11px] text-slate-500">Start a conversation and it will automatically appear here!</p>
                         </div>
                       ) : (
                         chatSessions.map((session) => {
@@ -7979,22 +8714,22 @@ const UserDashboard = () => {
                               onClick={() => handleSelectSession(session)}
                               className={`group flex items-center justify-between p-2.5 rounded-xl text-xs font-semibold cursor-pointer transition ${
                                 isActive
-                                  ? "bg-emerald-600/20 border border-emerald-500/40 text-emerald-300"
-                                  : "hover:bg-slate-800/80 text-slate-300 hover:text-white"
+                                  ? "bg-emerald-600/30 border border-emerald-500/50 text-emerald-200"
+                                  : "hover:bg-emerald-950/60 text-slate-300 hover:text-white border border-transparent hover:border-emerald-500/20"
                               }`}
                             >
                               <div className="flex items-center gap-2 min-w-0 pr-2">
-                                <MessageSquare size={14} className={isActive ? "text-emerald-400 shrink-0" : "text-slate-500 shrink-0 group-hover:text-slate-300"} />
+                                <MessageSquare size={14} className={isActive ? "text-emerald-400 shrink-0" : "text-slate-400 shrink-0 group-hover:text-emerald-300"} />
                                 <div className="min-w-0">
                                   <p className="truncate text-xs font-bold leading-snug">{session.title || "Chat session"}</p>
-                                  <span className="text-[10px] text-slate-500 block">{new Date(session.updatedAt || session.createdAt).toLocaleDateString()}</span>
+                                  <span className="text-[10px] text-slate-400 block">{new Date(session.updatedAt || session.createdAt).toLocaleDateString()}</span>
                                 </div>
                               </div>
 
                               <button
                                 type="button"
                                 onClick={(e) => handleDeleteSession(session.id, e)}
-                                className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-rose-500/20 hover:text-rose-400 text-slate-500 transition"
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 transition cursor-pointer"
                                 title="Delete chat"
                               >
                                 <Trash2 size={13} />
@@ -8007,12 +8742,12 @@ const UserDashboard = () => {
 
                     {/* Footer in Recents Nav */}
                     {chatSessions.length > 0 && (
-                      <div className="pt-3 border-t border-slate-800 flex justify-between items-center text-xs">
-                        <span className="text-slate-500 font-medium text-[11px]">{chatSessions.length} saved thread(s)</span>
+                      <div className="pt-3 border-t border-emerald-500/20 flex justify-between items-center text-xs">
+                        <span className="text-slate-400 font-medium text-[11px]">{chatSessions.length} saved thread(s)</span>
                         <button
                           type="button"
                           onClick={handleClearAllRecents}
-                          className="text-[11px] text-rose-400 hover:text-rose-300 font-bold hover:underline"
+                          className="text-[11px] text-rose-400 hover:text-rose-300 font-bold hover:underline cursor-pointer"
                         >
                           Clear all recents
                         </button>
@@ -8022,25 +8757,25 @@ const UserDashboard = () => {
                 )}
               </AnimatePresence>
 
-              {/* Chat messages & Vertical Suggested Questions */}
+              {/* Chat messages & Suggested Questions */}
               <div className="flex-1 min-h-0 flex flex-col relative z-10 bg-transparent">
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                   {assistantMessages.length === 0 && (
                     <div className="space-y-4 py-2">
                       <div className="rounded-2xl border border-emerald-500/25 bg-[#031d13]/85 backdrop-blur-md p-4 text-center shadow-lg">
-                        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-[#14532D] text-white shadow-sm mb-2">
+                        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-[#14532D] text-white shadow-md mb-2.5">
                           <Bot size={22} />
                         </div>
                         <h4 className="text-sm font-extrabold text-slate-100">
                           Magandang araw! Ako si KaagapAI
                         </h4>
-                        <p className="mt-1 text-xs text-slate-300">
+                        <p className="mt-1 text-xs text-slate-300 leading-relaxed">
                           Ang iyong Upper Mingading Virtual Assistant. Piliin ang alinman sa mga madalas itanong sa ibaba o mag-type ng katanungan:
                         </p>
                       </div>
 
                       <div className="space-y-2">
-                        <p className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-200 flex items-center gap-1.5 px-1">
+                        <p className="text-[11px] font-black uppercase tracking-wider text-emerald-300 flex items-center gap-1.5 px-1">
                           <Sparkles size={13} className="text-emerald-400" />
                           Suggested Questions / Mga Madalas Itanong:
                         </p>
@@ -8060,7 +8795,7 @@ const UserDashboard = () => {
                               key={item.text}
                               type="button"
                               onClick={() => handlePrompt(item.text)}
-                              className="group flex items-center justify-between w-full rounded-xl border border-emerald-500/20 bg-[#031d13]/85 backdrop-blur-md p-2.5 px-3 text-left text-xs font-bold text-slate-100 transition hover:bg-[#14532D] hover:text-white hover:border-[#14532D] shadow-2xs active:scale-[0.98] cursor-pointer"
+                              className="group flex items-center justify-between w-full rounded-xl border border-emerald-500/20 bg-[#031d13]/85 hover:bg-[#14532D] hover:text-white hover:border-emerald-500/40 backdrop-blur-md p-2.5 px-3 text-left text-xs font-bold text-slate-200 transition shadow-2xs active:scale-[0.98] cursor-pointer"
                             >
                               <div className="flex items-center gap-2.5 min-w-0">
                                 <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#14532D]/40 group-hover:bg-white/20 text-emerald-300 group-hover:text-white transition">
@@ -8094,15 +8829,15 @@ const UserDashboard = () => {
                           </div>
                         )}
                         <div
-                          className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs shadow-md ${
+                          className={`max-w-[85%] rounded-2xl px-4 py-3 text-xs shadow-md ${
                             isAi
                               ? "bg-[#031d13]/90 backdrop-blur-md border border-emerald-500/30 text-slate-100 rounded-tl-xs leading-relaxed"
-                              : "bg-gradient-to-r from-[#0B5D3B] to-[#157347] text-white rounded-br-xs font-semibold leading-relaxed border border-emerald-400/40"
+                              : "bg-gradient-to-r from-[#0B5D3B] to-[#157347] text-white rounded-br-xs font-semibold leading-relaxed border border-emerald-400/40 shadow-md"
                           }`}
                         >
                           <RenderChatChart text={chat.text} isAi={isAi} />
                           {isAi && (
-                            <div className="mt-1.5 flex items-center justify-between gap-2 pt-1 border-t border-white/10">
+                            <div className="mt-2 flex items-center justify-between gap-2 pt-1.5 border-t border-emerald-500/20">
                               <button
                                 type="button"
                                 onClick={() => {
@@ -8118,10 +8853,10 @@ const UserDashboard = () => {
                                     );
                                   }
                                 }}
-                                className={`mt-1 inline-flex items-center gap-1.5 text-[10px] font-black px-2.5 py-1 rounded-full border transition active:scale-95 cursor-pointer ${
+                                className={`inline-flex items-center gap-1.5 text-[10px] font-black px-2.5 py-1 rounded-full border transition active:scale-95 cursor-pointer ${
                                   speakingChatId === chat.id
                                     ? "bg-emerald-400 text-slate-950 border-emerald-300 shadow-md shadow-emerald-500/30 animate-pulse"
-                                    : "text-emerald-300/90 hover:text-white bg-emerald-950/60 hover:bg-emerald-900/80 border-emerald-500/30"
+                                    : "text-emerald-200 hover:text-white bg-[#14532D]/40 hover:bg-[#14532D]/70 border-emerald-500/30"
                                 }`}
                                 title={speakingChatId === chat.id ? "Click to Stop Voice" : "Listen in Professional English / Tagalog Voice"}
                               >
@@ -8142,7 +8877,7 @@ const UserDashboard = () => {
                         </div>
 
                         {!isAi && (
-                          <div className="h-7 w-7 overflow-hidden rounded-full shrink-0 border-2 border-emerald-400/60 bg-[#064E3B] flex items-center justify-center shadow-xs">
+                          <div className="h-7 w-7 overflow-hidden rounded-full shrink-0 border-2 border-emerald-400/60 bg-emerald-800 flex items-center justify-center shadow-xs">
                             {resident?.profile_photo_url ? (
                               <img src={resident.profile_photo_url} alt="Resident Profile" className="h-full w-full object-cover" />
                             ) : isFemale ? (
@@ -8174,7 +8909,7 @@ const UserDashboard = () => {
                       >
                         <AssistantAiIcon />
                       </motion.div>
-                      <div className="inline-flex items-center gap-2 rounded-2xl rounded-bl-none border border-emerald-900/30 bg-emerald-900/40 px-4 py-2.5 shadow-sm">
+                      <div className="inline-flex items-center gap-2 rounded-2xl rounded-bl-none border border-emerald-900/30 bg-emerald-950/60 px-4 py-2.5 shadow-sm">
                         <span className="text-xs font-bold text-emerald-400">KaagapAI is thinking</span>
                         <TypingIndicator className="text-emerald-400" />
                       </div>
@@ -8183,51 +8918,20 @@ const UserDashboard = () => {
                   <div ref={assistantMessagesEndRef} />
                 </div>
 
-                {/* ── QUICK QUESTIONS (2-COL CLEAN GRID - NO SCROLL) ── */}
-                <div className="shrink-0 border-t border-emerald-500/20 bg-[#02180f]/95 px-3 py-2 backdrop-blur-md">
-                  <div className="flex items-center justify-between mb-1.5 px-0.5">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400/90 flex items-center gap-1">
-                      <Sparkles size={11} className="text-amber-400" />
-                      Quick Questions:
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-medium">I-click para magtanong</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {[
-                      { label: "📄 Clearance Requirements", prompt: "Ano ang requirements sa Barangay Clearance?" },
-                      { label: "💵 Magkano ang Bayad?", prompt: "Magkano ang bayad sa mga dokumento?" },
-                      { label: "🏛️ Sino ang Kapitan?", prompt: "Sino ang kasalukuyang Barangay Kapitan?" },
-                      { label: "📜 Political History", prompt: "What is the political history of barangay upper mingading?" },
-                      { label: "👴 Seniors sa Kamonsil", prompt: "How many total seniors citizen in purok kamonsil?" },
-                      { label: "💼 Trabaho at Livelihood", prompt: "May bukas bang livelihood programs o trabaho?" },
-                    ].map((chip) => (
-                      <button
-                        key={chip.label}
-                        type="button"
-                        onClick={() => handlePrompt(chip.prompt)}
-                        disabled={assistantLoading}
-                        className="flex items-center justify-start gap-1.5 rounded-xl border border-emerald-500/25 bg-[#032517]/90 hover:bg-[#0e4b30] hover:border-emerald-400 text-emerald-100 hover:text-white px-2.5 py-1.5 text-[11px] font-bold shadow-2xs transition active:scale-[0.98] disabled:opacity-50 cursor-pointer text-left truncate"
-                      >
-                        <span className="truncate">{chip.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Input form */}
-                <form onSubmit={handleAssistantSubmit} className="flex h-14 items-center gap-2 border-t border-emerald-500/25 bg-[#02180f]/90 backdrop-blur-md px-3 shrink-0">
+                <form onSubmit={handleAssistantSubmit} className="flex h-14 items-center gap-2 border-t border-emerald-500/25 bg-[#02180f]/90 backdrop-blur-md px-3.5 shrink-0">
                   <input
                     value={assistantInput}
                     onChange={(e) => setAssistantInput(e.target.value)}
                     placeholder="Ask KaagapAI..."
-                    className="min-w-0 flex-1 rounded-xl border border-emerald-500/30 bg-[#01120b]/90 px-3 py-2.5 text-xs outline-none focus:border-emerald-400 focus:bg-[#02180f] font-semibold text-slate-100 placeholder-emerald-200/50"
+                    className="min-w-0 flex-1 rounded-xl border border-emerald-500/30 bg-[#01120b]/90 px-3.5 py-2.5 text-xs outline-none focus:border-emerald-400 focus:bg-[#02180f] font-semibold text-slate-100 placeholder-emerald-200/50 transition"
                   />
                   <button
                     type="submit"
                     disabled={assistantLoading || !assistantInput.trim()}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-[#0B5D3B] to-[#157347] text-white shadow-xs disabled:opacity-50 hover:scale-101 transition cursor-pointer"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-[#0B5D3B] to-[#157347] text-white shadow-xs disabled:opacity-50 hover:scale-105 active:scale-95 transition cursor-pointer border border-emerald-400/30"
                   >
-                    <Send size={13} />
+                    <Send size={14} />
                   </button>
                 </form>
               </div>
@@ -8239,7 +8943,11 @@ const UserDashboard = () => {
       {/* 6. Document Request Modal */}
       <FloatingModal
         open={documentModalOpen}
-        onClose={() => setDocumentModalOpen(false)}
+        onClose={() => {
+          setDocumentModalOpen(false);
+          handleRemoveAttachment();
+          setRequestMessage(null);
+        }}
         title="Apply for Document Clearance"
         eyebrow="Application Desk"
         maxWidth="max-w-md"
@@ -8680,6 +9388,15 @@ const UserDashboard = () => {
         )}
       </FloatingModal>
 
+      {/* FULL-SCREEN HIGH-PRIORITY EMERGENCY BROADCAST MODAL WITH AUDIBLE SIREN & VIBRATION */}
+      {activeEmergencyBroadcast && (
+        <EmergencyBroadcastModal
+          emergencyAnnouncement={activeEmergencyBroadcast}
+          residentId={resident?.id || "guest"}
+          onAcknowledge={() => setActiveEmergencyBroadcast(null)}
+          onClose={() => setActiveEmergencyBroadcast(null)}
+        />
+      )}
 
       {/* FLOATING TOAST NOTIFICATION (UPPER Z-INDEX ABOVE CHATBOT FAB & MODALS) */}
       <AnimatePresence>
@@ -8906,13 +9623,13 @@ const UserDashboard = () => {
                   {editDocKey === "residency" && (
                     <div className="space-y-2 rounded-2xl bg-black/30 border border-emerald-400/30 p-3.5">
                       <label className="block text-xs font-black uppercase tracking-wider text-emerald-300">
-                        Inire-rekomendang Layunin (Recommendation) *
+                        Recommended Purpose (Recommendation) *
                       </label>
                       <input
                         type="text"
                         value={editResidencyRecommendation}
                         onChange={(e) => setEditResidencyRecommendation(e.target.value)}
-                        placeholder="Halimbawa: for a CAFGU / for Scholarship"
+                        placeholder="Example: for a CAFGU / for Scholarship"
                         className="w-full rounded-xl border border-emerald-400/40 bg-black/40 px-3.5 py-2 text-xs font-bold text-white outline-none focus:border-emerald-300 shadow-inner"
                         required
                       />
@@ -8935,17 +9652,17 @@ const UserDashboard = () => {
                   {editDocKey === "4ps" && (
                     <div className="space-y-2.5 rounded-2xl bg-black/30 border border-emerald-400/30 p-3.5">
                       <label className="block text-xs font-black uppercase tracking-wider text-emerald-300">
-                        Pangalan ng Asawa Abroad (Spouse working Abroad)
+                        Name of Spouse Abroad (Spouse working Abroad)
                       </label>
                       <input
                         type="text"
                         value={editFourPsSpouse}
                         onChange={(e) => setEditFourPsSpouse(e.target.value)}
-                        placeholder="Pangalan ng asawa (hal. Maria Clara Dela Cruz)"
+                        placeholder="Name of spouse (e.g., Maria Clara Dela Cruz)"
                         className="w-full rounded-xl border border-emerald-400/40 bg-black/40 px-3.5 py-2 text-xs font-bold text-white outline-none focus:border-emerald-300 shadow-inner"
                       />
                       <label className="block text-xs font-black uppercase tracking-wider text-emerald-300 mt-2">
-                        Layunin (Purpose) *
+                        Purpose *
                       </label>
                       <input
                         type="text"
@@ -8962,13 +9679,13 @@ const UserDashboard = () => {
                   {editDocKey === "solo" && (
                     <div className="space-y-2 rounded-2xl bg-black/30 border border-amber-400/30 p-3.5">
                       <label className="block text-xs font-black uppercase tracking-wider text-amber-300">
-                        Dahilan ng Pagiging Solo Parent (Reason) *
+                        Reason for Solo Parent Status *
                       </label>
                       <input
                         type="text"
                         value={editSoloReason}
                         onChange={(e) => setEditSoloReason(e.target.value)}
-                        placeholder="Halimbawa: death of her husband / separation from spouse"
+                        placeholder="Example: death of her husband / separation from spouse"
                         className="w-full rounded-xl border border-amber-400/40 bg-black/40 px-3.5 py-2 text-xs font-bold text-white outline-none focus:border-amber-300 shadow-inner"
                         required
                       />
@@ -8995,18 +9712,45 @@ const UserDashboard = () => {
 
                   {/* 4. BUSINESS PERMIT FIELDS */}
                   {editDocKey === "business" && (
-                    <div className="space-y-2 rounded-2xl bg-black/30 border border-blue-400/30 p-3.5">
-                      <label className="block text-xs font-black uppercase tracking-wider text-blue-300">
-                        Pangalan at Uri ng Negosyo (Business Name & Nature) *
-                      </label>
-                      <input
-                        type="text"
-                        value={editBusinessName}
-                        onChange={(e) => setEditBusinessName(e.target.value)}
-                        placeholder="Halimbawa: BANANA BUY AND SALE / SARI-SARI STORE"
-                        className="w-full rounded-xl border border-blue-400/40 bg-black/40 px-3.5 py-2 text-xs font-bold text-white outline-none focus:border-blue-300 shadow-inner"
-                        required
-                      />
+                    <div className="space-y-3 rounded-2xl bg-black/30 border border-blue-400/30 p-3.5">
+                      <div>
+                        <label className="block text-xs font-black uppercase tracking-wider text-blue-300 mb-1">
+                          Business Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={editBusinessName}
+                          onChange={(e) => setEditBusinessName(e.target.value)}
+                          placeholder="Example: BANANA BUY AND SALE / SARI-SARI STORE"
+                          className="w-full rounded-xl border border-blue-400/40 bg-black/40 px-3.5 py-2 text-xs font-bold text-white outline-none focus:border-blue-300 shadow-inner"
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-black uppercase tracking-wider text-blue-300 mb-1">
+                          Business Purpose *
+                        </label>
+                        <input
+                          type="text"
+                          value={editPurpose}
+                          onChange={(e) => setEditPurpose(e.target.value)}
+                          placeholder="For Renewal / For Franchising / New Business Permit"
+                          className="w-full rounded-xl border border-blue-400/40 bg-black/40 px-3.5 py-2 text-xs font-bold text-white outline-none focus:border-blue-300 shadow-inner"
+                          required
+                        />
+                        <div className="flex flex-wrap gap-1 pt-1.5">
+                          {["For Renewal", "For Franchising", "New Business Permit Application", "Mayor's Permit Requirement", "Annual Business Clearance"].map((bp) => (
+                            <button
+                              key={bp}
+                              type="button"
+                              onClick={() => setEditPurpose(bp)}
+                              className="rounded-lg bg-blue-500/20 hover:bg-blue-500/30 px-2 py-0.5 text-[9.5px] font-bold text-blue-200 border border-blue-400/30 transition cursor-pointer"
+                            >
+                              + {bp}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -9014,15 +9758,15 @@ const UserDashboard = () => {
                   {editDocKey === "rsbsa" && (
                     <div className="space-y-2.5 rounded-2xl bg-black/30 border border-emerald-400/30 p-3.5">
                       <label className="block text-xs font-black uppercase tracking-wider text-emerald-300">
-                        Pananim at Detalye ng Sakahan (Crop / Farm Details) *
+                        Crop & Farm Details *
                       </label>
                       <div>
-                        <span className="text-[10px] font-bold text-emerald-200/80 block mb-1">Uri ng Pananim / Tilling Crop(s):</span>
+                        <span className="text-[10px] font-bold text-emerald-200/80 block mb-1">Tilling Crop(s) / Farm Commodity:</span>
                         <input
                           type="text"
                           value={editCropsText}
                           onChange={(e) => setEditCropsText(e.target.value)}
-                          placeholder="Halimbawa: Rice Field ½ hectare, and Fruits Crops 1 hectare"
+                          placeholder="Example: Rice Field ½ hectare, and Fruits Crops 1 hectare"
                           className="w-full rounded-xl border border-emerald-400/40 bg-black/40 px-3.5 py-2 text-xs font-bold text-white outline-none focus:border-emerald-300 shadow-inner"
                           required
                         />
@@ -9047,7 +9791,7 @@ const UserDashboard = () => {
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <span className="text-[10px] font-bold text-emerald-200/80 block mb-1">Laki ng Lupa (Farm Size):</span>
+                          <span className="text-[10px] font-bold text-emerald-200/80 block mb-1">Farm Size:</span>
                           <input
                             type="text"
                             value={editFarmSize}
@@ -9058,7 +9802,7 @@ const UserDashboard = () => {
                           />
                         </div>
                         <div>
-                          <span className="text-[10px] font-bold text-emerald-200/80 block mb-1">Pag-aari (Tenure):</span>
+                          <span className="text-[10px] font-bold text-emerald-200/80 block mb-1">Land Tenure:</span>
                           <select
                             value={editTenure}
                             onChange={(e) => setEditTenure(e.target.value)}
@@ -9078,12 +9822,12 @@ const UserDashboard = () => {
                   {editDocKey !== "residency" && editDocKey !== "4ps" && editDocKey !== "solo" && editDocKey !== "business" && editDocKey !== "rsbsa" && (
                     <div className="space-y-2">
                       <label className="block text-xs font-black uppercase tracking-wider text-emerald-300">
-                        Layunin ng Paghingi (Purpose of Request) *
+                        Purpose of Request *
                       </label>
                       <textarea
                         value={editPurpose}
                         onChange={(e) => setEditPurpose(e.target.value)}
-                        placeholder="I-type ang layunin (hal. OWWA, Local Employment, Scholarship, Postal ID, Bank, etc.)"
+                        placeholder="Enter purpose (e.g., OWWA, Local Employment, Scholarship, Postal ID, Bank, etc.)"
                         className="w-full rounded-2xl border border-emerald-400/40 bg-black/40 px-3.5 py-2.5 text-xs font-bold text-white outline-none focus:border-emerald-300 shadow-inner"
                         rows={2}
                         required
@@ -9287,14 +10031,14 @@ const UserDashboard = () => {
 
       <SettingsDrawer isOpen={isSettingsDrawerOpen} onClose={() => setIsSettingsDrawerOpen(false)} />
 
-      {/* Fixed Mobile Bottom Navigation Bar (Menu, Home, Dashboard, My Profile, Info) */}
-      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-[9900] bg-[#0d3b2b] border-t border-emerald-300/50 shadow-[0_-4px_25px_rgba(0,0,0,0.5)] px-1 py-1.5 flex items-center justify-around text-white">
+      {/* Fixed Mobile Bottom Navigation Bar (Menu, Home, Dashboard, Profile, My Info) */}
+      <nav className="lg:hidden fixed bottom-0 inset-x-0 z-[9900] bg-[#08281b] border-t border-emerald-400/40 shadow-[0_-4px_25px_rgba(0,0,0,0.6)] px-1 py-1.5 flex items-center justify-around text-white">
         {[
           { key: "menu", label: "Menu", icon: Menu, action: () => setMobileSidebarOpen(true) },
           { key: "home", label: "Home", icon: Home, action: () => openModule("home") },
           { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, action: () => openModule("dashboard") },
           { key: "profile", label: "Profile", icon: User, action: () => openModule("profile") },
-          { key: "personal_info", label: "My Info", icon: FileText, action: () => openModule("personal_info") },
+          { key: "personal_info", label: "My Info", icon: ClipboardList, action: () => openModule("personal_info") },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = tab.key === "menu" ? mobileSidebarOpen : activeNav === tab.key;
@@ -9303,21 +10047,27 @@ const UserDashboard = () => {
               key={tab.key}
               type="button"
               onClick={tab.action}
-              className={`relative flex flex-col items-center justify-center py-1 px-1 flex-1 min-w-0 transition-all duration-200 cursor-pointer ${
-                isActive ? "text-emerald-300" : "text-emerald-100/80 hover:text-white"
+              className={`relative flex flex-col items-center justify-center py-1.5 px-1 flex-1 min-w-0 transition-all duration-200 cursor-pointer ${
+                isActive ? "text-[#34d399]" : "text-white/85 hover:text-white"
               }`}
             >
               {isActive && (
-                <span className="absolute -top-1.5 h-1 w-7 rounded-b-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)]" />
+                <span className="absolute -top-1.5 h-1 w-8 rounded-b-full bg-[#34d399] shadow-[0_0_12px_#34d399]" />
               )}
-              <Icon size={20} className={`shrink-0 mb-0.5 transition-transform ${isActive ? "text-emerald-300 scale-110 drop-shadow-md" : "text-emerald-100/80 drop-shadow-xs"}`} />
-              <span className={`text-[9.5px] truncate font-black leading-tight max-w-full ${isActive ? "text-emerald-300 drop-shadow-xs" : "text-emerald-100/80"}`}>
+              <Icon size={21} className={`shrink-0 mb-0.5 transition-transform ${isActive ? "text-[#34d399] scale-110 drop-shadow-md" : "text-white/90 drop-shadow-xs"}`} />
+              <span className={`text-[10.5px] truncate font-extrabold leading-tight max-w-full ${isActive ? "text-[#34d399] font-black drop-shadow-sm" : "text-white"}`}>
                 {tab.label}
               </span>
             </button>
           );
         })}
       </nav>
+
+      <ProofViewerModal
+        isOpen={Boolean(selectedResidentProofRequest)}
+        onClose={() => setSelectedResidentProofRequest(null)}
+        request={selectedResidentProofRequest}
+      />
     </div>
   );
 };

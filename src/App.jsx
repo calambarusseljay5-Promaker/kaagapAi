@@ -137,6 +137,8 @@ function App() {
                 <Route path="/livelihood" element={<Livelihood />} />
                 <Route path="/announcements" element={<Announcements />} />
                 <Route path="/ai-knowledge" element={<AIKnowledge />} />
+                <Route path="/ai-settings" element={<AIKnowledge defaultTab="settings" />} />
+                <Route path="/ai-logs" element={<AIKnowledge defaultTab="logs" />} />
                 <Route path="/organization" element={<OrganizationChart />} />
                 <Route path="/users" element={<Users />} />
                 <Route path="/settings" element={<Settings />} />
